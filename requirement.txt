@@ -1,0 +1,9 @@
+deepcell
+autogen
+zarr
+napari[all]
+torch
+scikit-image
+opencv-python
+pyyaml
+tqdm

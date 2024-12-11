@@ -163,3 +163,10 @@ cython_debug/
 
 # virual environment
 sci-agent-dev/
+
+# model weights
+pretrained/
+
+# output
+output/
+intermediate-data/
