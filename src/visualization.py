@@ -18,7 +18,7 @@ from typing import Dict, List
 import matplotlib.pyplot as plt
 from scipy import ndimage
 
-from .dataloading import ImageData
+from .data_io import ImageData
 
 
 class NapariViewer:

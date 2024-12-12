@@ -6,10 +6,10 @@ Automate Scientific Data Analysis using LLM agents
 First, collect all docstrings: 
 ```bash
 # non-recursively
-python collect_docstrings.py --input_path src --output_file intermediate-data/docs.md
+python collect_docstrings.py --input_path src --output_file artifacts/docs.md
 
 # recursively
-python collect_docstrings.py --input_path src --output_file intermediate-data/docs.md --recursive
+python collect_docstrings.py --input_path src --output_file artifacts/docs.md --recursive
 ```
 
 

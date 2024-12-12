@@ -5,7 +5,7 @@ from dataclasses import replace
 
 from deepcell.applications import Mesmer
 
-from .dataloading import ImageData
+from .data_io import ImageData
 
 
 class ChannelSpec:

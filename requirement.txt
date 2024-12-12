@@ -7,3 +7,5 @@ scikit-image
 opencv-python
 pyyaml
 tqdm
+jupyter_kernel_gateway
+PyWavelets

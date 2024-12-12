@@ -21,18 +21,17 @@ load_dotenv()
 import argparse
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 import os
 
 import numpy as np
 import torch
 from skimage.restoration import denoise_nl_means
-import yaml
 
-from src.dataloading import ZarrDataset, ImageData
+from data_io import ZarrDataset, ImageData
 from src.segmentation import MesmerSegmenter, ChannelSpec
 from src.phenotyping import PhenotyperDeepCellTypes, DeepCellTypesConfig
-from src.viewer import visualize_data
+from visualization import visualize_data
 
 # Set up logging
 logging.basicConfig(

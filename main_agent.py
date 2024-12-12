@@ -17,7 +17,7 @@ from autogen.agentchat.contrib.multimodal_conversable_agent import (
 )
 from autogen import ConversableAgent, GroupChat, GroupChatManager
 
-from .src.prompts import (
+from src.prompts import (
     sys_prompt_code_writer,
     sys_prompt_code_verifier,
     prompt_denoise,
@@ -123,7 +123,7 @@ group_chat_manager = GroupChatManager(
 
 #######################################################################################################################################################
 
-with open("intermediate-data/docs.md", "r") as file:
+with open("artifacts/docs.md", "r") as file:
     documentation = file.read()
 
 
@@ -156,6 +156,10 @@ notes = """
     - "HBM786.VLVN.435-2d6d2131e94f60aff982c3d52a9fcb27"
 
 - No need to run visualization for now
+
+- Plot progress bar whenever possible
+
+- the model weights of PhenotyperDeepCellTypes can be found at "pretrained/model_c_patch2_skip_Greenbaum_Uterus_0.pt"
 """
 
 
@@ -187,7 +191,7 @@ Both of these models are provided through APIs.
 ## Available APIs :
 
 see documentation:
-```markdown
+```markdown 
 {documentation}
 ```
 

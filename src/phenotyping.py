@@ -52,7 +52,7 @@ from .deepcell_types.dataset import PatchDataset
 from .deepcell_types.deepcelltypes_kit.config import DCTConfig
 from .deepcell_types.deepcelltypes_kit.image_funcs import patch_generator
 from .deepcell_types.predict import BatchData
-from .dataloading import ImageData
+from .data_io import ImageData
 
 
 @dataclass
@@ -75,7 +75,7 @@ class PhenotyperConfig:
     device: str = "cuda"
     batch_size: int = 256
     num_workers: int = 24
-    intermediate_dir: str = "intermediate-data"
+    intermediate_dir: str = "artifacts"
 
 
 class BasePhenotyper(ABC):
@@ -206,11 +206,11 @@ class DeepCellTypesConfig(PhenotyperConfig):
         img_feature_extractor: Type of feature extractor ('conv' or other options)
     """
 
-    model_path: str = "pretrained/model_c_patch2_skip_Greenbaum_Uterus_0.pt"
+    model_path: str
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     batch_size: int = 32
     num_workers: int = 24
-    intermediate_dir: str = "intermediate-data"
+    intermediate_dir: str = "artifacts"
     n_filters: int = 256
     n_heads: int = 4
     n_domains: int = 6
