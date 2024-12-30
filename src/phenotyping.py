@@ -168,6 +168,19 @@ class BasePhenotyper(ABC):
         """
         pass
 
+    @abstractmethod
+    def calculate_metrics(images: Sequence[ImageData]) -> Dict[str, float]:
+        """Calculate evaluation metrics comparing predicted vs true cell types.
+
+        Args:
+            images: List of ImageData objects containing both ground truth
+                (cell_type_info) and predictions (predicted_cell_types)
+
+        Returns:
+            Dict[str, float]: Dictionary of evaluation metrics
+        """
+        pass
+
     def run_pipeline(
         self,
         images: Sequence[ImageData],
