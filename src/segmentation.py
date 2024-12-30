@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Sequence
 from dataclasses import replace
+from sklearn.metrics import jaccard_score
+from scipy.optimize import linear_sum_assignment
+import pandas as pd
 
 from deepcell.applications import Mesmer
 
@@ -39,6 +42,85 @@ class ChannelSpec:
         """
         self.nuclear = nuclear
         self.membrane = membrane
+
+
+def calculate_object_metrics(true_mask: np.ndarray, pred_mask: np.ndarray, 
+                           iou_threshold: float = 0.5) -> Dict[str, float]:
+    """Calculate instance segmentation metrics between two masks.
+    
+    This function computes key metrics for instance segmentation:
+    - Mean IoU: Average Intersection over Union for matched objects
+    - Precision: TP / (TP + FP)
+    - Recall: TP / (TP + FN)
+    - F1 Score: Harmonic mean of precision and recall
+    
+    Args:
+        true_mask: Ground truth segmentation mask
+        pred_mask: Predicted segmentation mask
+        iou_threshold: IoU threshold for considering an object as correctly detected
+        
+    Returns:
+        Dictionary containing computed metrics
+    """
+    # Get unique objects (excluding background=0)
+    true_objects = np.unique(true_mask)[1:]
+    pred_objects = np.unique(pred_mask)[1:]
+    
+    if len(true_objects) == 0 and len(pred_objects) == 0:
+        return {
+            'mean_iou': 1.0,
+            'precision': 1.0,
+            'recall': 1.0,
+            'f1_score': 1.0
+        }
+    
+    if len(true_objects) == 0:
+        return {
+            'mean_iou': 0.0,
+            'precision': 0.0,
+            'recall': 1.0,
+            'f1_score': 0.0
+        }
+    
+    if len(pred_objects) == 0:
+        return {
+            'mean_iou': 0.0,
+            'precision': 1.0,
+            'recall': 0.0,
+            'f1_score': 0.0
+        }
+    
+    # Compute IoU matrix
+    iou_matrix = np.zeros((len(true_objects), len(pred_objects)))
+    for i, true_id in enumerate(true_objects):
+        true_obj = (true_mask == true_id)
+        for j, pred_id in enumerate(pred_objects):
+            pred_obj = (pred_mask == pred_id)
+            intersection = np.logical_and(true_obj, pred_obj).sum()
+            union = np.logical_or(true_obj, pred_obj).sum()
+            iou_matrix[i, j] = intersection / union if union > 0 else 0
+    
+    # Find optimal matching using Hungarian algorithm
+    true_indices, pred_indices = linear_sum_assignment(-iou_matrix)
+    
+    # Calculate metrics
+    matches = iou_matrix[true_indices, pred_indices] >= iou_threshold
+    true_positives = np.sum(matches)
+    
+    precision = true_positives / len(pred_objects) if len(pred_objects) > 0 else 0
+    recall = true_positives / len(true_objects) if len(true_objects) > 0 else 0
+    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    
+    # Calculate mean IoU for matched objects
+    matched_ious = iou_matrix[true_indices[matches], pred_indices[matches]]
+    mean_iou = matched_ious.mean() if len(matched_ious) > 0 else 0
+    
+    return {
+        'mean_iou': float(mean_iou),
+        'precision': float(precision),
+        'recall': float(recall),
+        'f1_score': float(f1_score)
+    }
 
 
 class BaseSegmenter(ABC):
@@ -82,26 +164,56 @@ class BaseSegmenter(ABC):
         pass
 
     @abstractmethod
-    def predict(
-        self, image_data: ImageData, channel_spec: ChannelSpec, **kwargs
-    ) -> ImageData:
-        """Perform segmentation on input image.
-
-        Args:
-            image_data: ImageData object containing raw image and metadata
-            channel_spec: Specification of required channels
-            **kwargs: Additional model-specific parameters
-
-        Returns:
-            ImageData: Updated ImageData object with predicted_mask field populated.
-                      The predicted_mask will have shape (1, height, width) with
-                      integer labels for each segmented cell.
-
-        Raises:
-            ValueError: If specified channels are not found in image_data.channel_names
-            RuntimeError: If segmentation fails
-        """
+    def predict(self, image_data: ImageData, channel_spec: ChannelSpec, **kwargs) -> ImageData:
         pass
+    
+    @staticmethod
+    def calculate_metrics(images: Sequence[ImageData], 
+                         iou_threshold: float = 0.5) -> Dict[str, float]:
+        """Calculate segmentation quality metrics across multiple images.
+        
+        This method computes average segmentation metrics by comparing predicted masks
+        against ground truth masks. It requires both ground truth masks and
+        predicted masks to be present in the ImageData objects.
+        
+        Args:
+            images: List of ImageData objects containing both ground truth and
+                   predicted masks
+            iou_threshold: IoU threshold for considering an object as correctly detected
+            
+        Returns:
+            Dictionary containing averaged metrics across all images:
+            - mean_iou: Mean Intersection over Union
+            - precision: True Positives / (True Positives + False Positives)
+            - recall: True Positives / (True Positives + False Negatives)
+            - f1_score: Harmonic mean of precision and recall
+            
+        Raises:
+            ValueError: If masks are missing or invalid
+        """
+        metrics_list = []
+        
+        for img in images:
+            if img.mask is None:
+                raise ValueError("Ground truth mask missing")
+            if img.predicted_mask is None:
+                raise ValueError("Predicted mask missing")
+                
+            # Ensure masks are 2D
+            true_mask = img.mask[0] if img.mask.ndim == 3 else img.mask
+            pred_mask = img.predicted_mask[0] if img.predicted_mask.ndim == 3 else img.predicted_mask
+            
+            # Calculate metrics for this image
+            img_metrics = calculate_object_metrics(
+                true_mask, 
+                pred_mask,
+                iou_threshold=iou_threshold
+            )
+            metrics_list.append(img_metrics)
+        
+        # Average metrics across all images
+        df = pd.DataFrame(metrics_list)
+        return df.mean().to_dict()
 
 
 class MesmerSegmenter(BaseSegmenter):
