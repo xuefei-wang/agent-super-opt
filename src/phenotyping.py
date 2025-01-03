@@ -15,7 +15,7 @@ added while maintaining a consistent interface.
 Example usage:
     ```python
     from phenotyping import PhenotyperDeepCellTypes
-    from dataloading import ImageData
+    from data_io import ImageData
     
     # Initialize with custom configuration
     config = DeepCellTypesConfig(
@@ -31,21 +31,22 @@ Example usage:
     )
     
     # Evaluate results
-    metrics = PhenotyperDeepCellTypes.calculate_metrics([image1, image2])
+    metrics = phenotyper.calculate_metrics([image1, image2])
     ```
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from typing import Dict, List, Optional, Any, Sequence
+from typing import Dict, List, Optional, Any, Sequence, Union
 from collections import defaultdict
 import zarr
 from tqdm import tqdm
 import logging
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 
 from .deepcell_types.model import CellTypeCLIPModel
 from .deepcell_types.dataset import PatchDataset
@@ -72,7 +73,7 @@ class PhenotyperConfig:
     """
 
     model_path: str
-    device: str = "cuda"
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
     batch_size: int = 256
     num_workers: int = 24
     intermediate_dir: str = "artifacts"
@@ -85,26 +86,6 @@ class BasePhenotyper(ABC):
     It provides a common structure for data preprocessing, prediction, and result handling.
 
     New phenotyping models should inherit from this class and implement all abstract methods.
-
-    Example:
-        ```python
-        class MyNewPhenotyper(BasePhenotyper):
-            def _initialize_model(self):
-                # Implementation
-                pass
-
-            def prepare_data(self, images, ...):
-                # Implementation
-                pass
-
-            def preprocess(self, data):
-                # Implementation
-                pass
-
-            def predict(self, preprocessed_data, images):
-                # Implementation
-                pass
-        ```
     """
 
     def __init__(self, config: PhenotyperConfig):
@@ -168,18 +149,69 @@ class BasePhenotyper(ABC):
         """
         pass
 
-    @abstractmethod
+    @staticmethod
     def calculate_metrics(images: Sequence[ImageData]) -> Dict[str, float]:
-        """Calculate evaluation metrics comparing predicted vs true cell types.
+        """Calculate classification metrics comparing predicted vs true cell types.
 
         Args:
             images: List of ImageData objects containing both ground truth
                 (cell_type_info) and predictions (predicted_cell_types)
 
         Returns:
-            Dict[str, float]: Dictionary of evaluation metrics
+            Dict[str, float]: Dictionary containing evaluation metrics:
+                - accuracy: Overall classification accuracy
+                - precision_macro: Unweighted mean of precision per class
+                - recall_macro: Unweighted mean of recall per class
+                - f1_macro: Unweighted mean of F1 score per class
+                - precision_weighted: Precision weighted by class support
+                - recall_weighted: Recall weighted by class support
+                - f1_weighted: F1 score weighted by class support
+
+        Note:
+            Returns zeros for all metrics if no valid comparisons can be made.
         """
-        pass
+        y_true = []
+        y_pred = []
+
+        for img in images:
+            if img.cell_type_info is None or img.predicted_cell_types is None:
+                continue
+
+            common_cells = set(img.cell_type_info.keys()) & set(
+                img.predicted_cell_types.keys()
+            )
+
+            y_true.extend(img.cell_type_info[idx] for idx in common_cells)
+            y_pred.extend(img.predicted_cell_types[idx] for idx in common_cells)
+
+        if not y_true:
+            return {
+                "accuracy": 0.0,
+                "precision_macro": 0.0,
+                "recall_macro": 0.0,
+                "f1_macro": 0.0,
+                "precision_weighted": 0.0,
+                "recall_weighted": 0.0,
+                "f1_weighted": 0.0,
+            }
+
+        precision_m, recall_m, f1_m, _ = precision_recall_fscore_support(
+            y_true, y_pred, average="macro"
+        )
+        precision_w, recall_w, f1_w, _ = precision_recall_fscore_support(
+            y_true, y_pred, average="weighted"
+        )
+        acc = accuracy_score(y_true, y_pred)
+
+        return {
+            "accuracy": float(acc),
+            "precision_macro": float(precision_m),
+            "recall_macro": float(recall_m),
+            "f1_macro": float(f1_m),
+            "precision_weighted": float(precision_w),
+            "recall_weighted": float(recall_w),
+            "f1_weighted": float(f1_w),
+        }
 
     def run_pipeline(
         self,
@@ -198,10 +230,15 @@ class BasePhenotyper(ABC):
 
         Returns:
             List of ImageData objects with updated predictions
+
+        Note:
+            Each ImageData object is validated before processing.
         """
+        # Validate all images
+        for image in images:
+            image.validate()
 
         preprocessed_data = self.preprocess(images, **kwargs)
-
         return self.predict(preprocessed_data, images, **kwargs)
 
 
@@ -318,7 +355,7 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
     def preprocess(
         self,
         images: List[ImageData],
-        output_path: str = None,
+        output_path: Optional[str] = None,
         batch_size: int = 2000,
         dct_config: Optional[DCTConfig] = None,
     ) -> str:
@@ -360,11 +397,7 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
         output_group = zarr.open(output_path, mode="w")
 
         # Store metadata
-        channel_names = images[0].channel_names
-        file_names = [img.file_name for img in images]
-
-        output_group.attrs["channel_names"] = channel_names
-        output_group.attrs["file_names"] = file_names
+        output_group.attrs["channel_names"] = images[0].channel_names
 
         # Find all unique cell types
         unique_cell_types = set()
@@ -375,7 +408,7 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
                 unique_cell_types.add("Unknown")
 
         # Create groups for each cell type
-        num_channels = len(channel_names)
+        num_channels = len(images[0].channel_names)
         patch_shape = (
             num_channels,
             dct_config.CROP_SIZE,
@@ -399,7 +432,9 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
             ct_group.create_dataset(
                 "cell_index", shape=(0,), chunks=(64,), dtype="int32"
             )
-            ct_group.create_dataset("file_name", shape=(0,), chunks=(64,), dtype="U100")
+            ct_group.create_dataset(
+                "file_name", shape=(0,), chunks=(64,), dtype="U100"
+            )
 
         # Calculate quantile values for normalization
         q_values = []
@@ -415,22 +450,17 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
         # Process each image
         for image in tqdm(images, desc="Processing images"):
             raw = image.raw.astype(np.float32)
-            if image.predicted_mask is not None:
-                mask = image.predicted_mask
-                logging.info(f"Using predicted mask for {image.file_name}")
-            elif image.mask is not None:
-                mask = image.mask
-                logging.info(f"Using ground truth mask for {image.file_name}")
-            else:
-                raise ValueError("No mask available for image")
+            mask = image.predicted_mask if image.predicted_mask is not None else image.mask
+
+            if mask is None:
+                raise ValueError(f"No mask available for image {image.image_id}")
 
             # Get cell type information
+            cell_indices = None
+            cell_types = None
             if image.cell_type_info:
                 cell_indices = list(image.cell_type_info.keys())
                 cell_types = [image.cell_type_info[idx] for idx in cell_indices]
-            else:
-                cell_indices = None
-                cell_types = None
 
             # Generate and store patches
             batches = defaultdict(list)
@@ -447,29 +477,32 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
 
                 # Process full batches
                 if len(batches[orig_ct]) == batch_size:
-                    ct_group = output_group[orig_ct]
-                    ct_group["raw"].append(np.stack([x[0] for x in batches[orig_ct]]))
-                    ct_group["mask"].append(np.stack([x[1] for x in batches[orig_ct]]))
-                    ct_group["cell_index"].append(
-                        np.array([x[2] for x in batches[orig_ct]])
-                    )
-                    ct_group["file_name"].append(
-                        np.array([image.file_name] * len(batches[orig_ct]), dtype="U80")
-                    )
+                    self._save_batch(output_group[orig_ct], batches[orig_ct], image.image_id)
                     batches[orig_ct] = []
 
             # Process remaining patches
             for orig_ct, items in batches.items():
                 if items:
-                    ct_group = output_group[orig_ct]
-                    ct_group["raw"].append(np.stack([x[0] for x in items]))
-                    ct_group["mask"].append(np.stack([x[1] for x in items]))
-                    ct_group["cell_index"].append(np.array([x[2] for x in items]))
-                    ct_group["file_name"].append(
-                        np.array([image.file_name] * len(items), dtype="U80")
-                    )
+                    self._save_batch(output_group[orig_ct], items, image.image_id)
 
         return str(output_path)
+
+    def _save_batch(self, group: zarr.Group, batch: list, image_id: Union[int, str]) -> None:
+        """Save a batch of patches to a zarr group.
+
+        Args:
+            group: Zarr group to save to
+            batch: List of tuples (raw_patch, mask_patch, cell_index, cell_type)
+            image_id: Identifier for the source image
+        """
+        raw_patches = np.stack([x[0] for x in batch])
+        mask_patches = np.stack([x[1] for x in batch])
+        cell_indices = np.array([x[2] for x in batch])
+        
+        group["raw"].append(raw_patches)
+        group["mask"].append(mask_patches)
+        group["cell_index"].append(cell_indices)
+        group["file_name"].append(np.array([str(image_id)] * len(batch), dtype="U100"))
 
     def predict(
         self, preprocessed_path: str, images: Sequence[ImageData], **kwargs
@@ -487,8 +520,8 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
         dataset = PatchDataset(
             Path(preprocessed_path),
             self.dct_config,
-            celltype_mapping=None,
-            channel_mapping=None,
+            celltype_mapping=kwargs.get('celltype_mapping'),
+            channel_mapping=kwargs.get('channel_mapping')
         )
 
         dataloader = DataLoader(
@@ -499,10 +532,10 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
         )
 
         # Store predictions for each cell
-        cell_predictions = {}  # {image_name: {cell_idx: predicted_type}}
+        cell_predictions = defaultdict(dict)  # {image_name: {cell_idx: predicted_type}}
 
         with torch.no_grad():
-            for batch in dataloader:
+            for batch in tqdm(dataloader, desc="Running predictions"):
                 batch_data = BatchData(*batch)
 
                 # Get predictions
@@ -520,87 +553,18 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
 
                 # Store predictions
                 for idx, pred, img_name in zip(cell_indices, pred_classes, image_names):
-                    if img_name not in cell_predictions:
-                        cell_predictions[img_name] = {}
                     cell_predictions[img_name][idx] = self.dct_config.idx2ct[pred]
 
         # Update ImageData objects with predictions
+        updated_images = []
         for img in images:
-            if img.file_name in cell_predictions:
-                img.predicted_cell_types = cell_predictions[img.file_name]
+            if str(img.image_id) in cell_predictions:
+                updated = replace(
+                    img,
+                    predicted_cell_types=dict(cell_predictions[str(img.image_id)])
+                )
+            else:
+                updated = img
+            updated_images.append(updated)
 
-        return images
-
-    @staticmethod
-    def calculate_metrics(images: Sequence[ImageData]) -> Dict[str, float]:
-        """Calculate classification metrics comparing predicted vs true cell types.
-
-        This method computes various classification metrics by comparing predicted
-        cell types against ground truth annotations. Only cells that have both
-        ground truth and predicted types are included in the evaluation.
-
-        Args:
-            images: List of ImageData objects containing both ground truth
-                (cell_type_info) and predictions (predicted_cell_types)
-
-        Returns:
-            Dict[str, float]: Dictionary of evaluation metrics:
-                accuracy: Overall classification accuracy
-                precision_macro: Unweighted mean of precision per class
-                recall_macro: Unweighted mean of recall per class
-                f1_macro: Unweighted mean of F1 score per class
-                precision_weighted: Precision weighted by class support
-                recall_weighted: Recall weighted by class support
-                f1_weighted: F1 score weighted by class support
-
-        Note:
-            Returns zeros for all metrics if no valid comparisons can be made
-            (e.g., missing ground truth or predictions)
-        """
-        from sklearn.metrics import precision_recall_fscore_support, accuracy_score
-
-        # Collect ground truth and predictions
-        y_true = []
-        y_pred = []
-
-        for img in images:
-            if img.cell_type_info is None or img.predicted_cell_types is None:
-                continue
-
-            # Get cells with both ground truth and predictions
-            common_cells = set(img.cell_type_info.keys()) & set(
-                img.predicted_cell_types.keys()
-            )
-
-            y_true.extend(img.cell_type_info[idx] for idx in common_cells)
-            y_pred.extend(img.predicted_cell_types[idx] for idx in common_cells)
-
-        if not y_true:
-            return {
-                "accuracy": 0.0,
-                "precision_macro": 0.0,
-                "recall_macro": 0.0,
-                "f1_macro": 0.0,
-                "precision_weighted": 0.0,
-                "recall_weighted": 0.0,
-                "f1_weighted": 0.0,
-            }
-
-        # Calculate metrics
-        precision_m, recall_m, f1_m, _ = precision_recall_fscore_support(
-            y_true, y_pred, average="macro"
-        )
-        precision_w, recall_w, f1_w, _ = precision_recall_fscore_support(
-            y_true, y_pred, average="weighted"
-        )
-        acc = accuracy_score(y_true, y_pred)
-
-        return {
-            "accuracy": float(acc),
-            "precision_macro": float(precision_m),
-            "recall_macro": float(recall_m),
-            "f1_macro": float(f1_m),
-            "precision_weighted": float(precision_w),
-            "recall_weighted": float(recall_w),
-            "f1_weighted": float(f1_w),
-        }
+        return updated_images

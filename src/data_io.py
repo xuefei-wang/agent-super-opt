@@ -1,118 +1,156 @@
 import zarr
 import numpy as np
-from typing import List, Dict, Optional, Union, Sequence, Set
+from typing import List, Dict, Optional, Union, Sequence, Set, Tuple
 from dataclasses import dataclass
 import logging
 import torch
 from pathlib import Path
 
 
+import numpy as np
+from typing import Tuple
+
+def standardize_mask(mask: np.ndarray) -> np.ndarray:
+    """Standardize mask shape to (1, height, width) format.
+    
+    Args:
+        mask: Input mask with shape (height, width), (height, width, 1),
+              (1, height, width) or similar variations
+              
+    Returns:
+        np.ndarray: Standardized mask with shape (1, height, width)
+        
+    Raises:
+        ValueError: If mask dimensions are invalid
+    """
+    if mask is None:
+        return None
+        
+    # Handle 2D case
+    if mask.ndim == 2:
+        return mask[np.newaxis, ...]
+        
+    # Handle 3D case
+    elif mask.ndim == 3:
+        if mask.shape[0] == 1:  # Already (1, H, W)
+            return mask
+        elif mask.shape[-1] == 1:  # (H, W, 1)
+            return np.transpose(mask, (2, 0, 1))
+        elif mask.shape[0] > 1:  # Multiple channels - take first channel
+            return mask[0:1, ...]
+        else:
+            raise ValueError(f"Invalid mask shape {mask.shape}. Cannot standardize to (1, H, W) format.")
+    
+    else:
+        raise ValueError(f"Invalid mask dimensionality {mask.ndim}. Expected 2 or 3 dimensions.")
+
+def standardize_raw_image(raw: np.ndarray, is_multichannel: bool = False) -> Tuple[np.ndarray, bool]:
+    """Standardize raw image shape to (C, height, width) or (1, height, width) format.
+    
+    Args:
+        raw: Input image array
+        is_multichannel: Whether the image should be treated as multichannel
+        
+    Returns:
+        Tuple[np.ndarray, bool]: (Standardized array, is_multichannel flag)
+        
+    Raises:
+        ValueError: If dimensions are invalid
+    """
+    if raw is None:
+        return None, is_multichannel
+        
+    # Handle 2D case (single channel)
+    if raw.ndim == 2:
+        return raw[np.newaxis, ...], False
+        
+    # Handle 3D case
+    elif raw.ndim == 3:
+        if raw.shape[-1] == 1:  # (H, W, 1) -> (1, H, W)
+            return np.transpose(raw, (2, 0, 1)), False
+        elif raw.shape[0] == 1:  # Already (1, H, W)
+            return raw, False
+        else:  # Multichannel: ensure (C, H, W)
+            if raw.shape[-1] > 1 and raw.shape[0] != min(raw.shape):  # (H, W, C)
+                raw = np.transpose(raw, (2, 0, 1))
+            return raw, True
+            
+    else:
+        raise ValueError(f"Invalid raw image dimensionality {raw.ndim}. Expected 2 or 3 dimensions.")
+
 @dataclass
 class ImageData:
-    """Container for multichannel microscopy image data and associated metadata.
-
-    This class provides a standardized structure for storing and managing microscopy
-    image data along with segmentation masks, cell type annotations, and metadata.
-    It supports both ground truth and predicted annotations.
-
-    Attributes:
-        raw (np.ndarray): Raw image data with shape (channels, height, width).
-            Values are typically fluorescence intensities.
-        channel_names (List[str]): Names of imaging channels in order matching raw data
-            channels (e.g., ["DAPI", "CD3", "CD20"]).
-        tissue_type (str): Type of tissue imaged (e.g., "lymph_node", "tumor").
-        cell_types (List[str]): List of expected cell types in the image.
-        image_mpp (float): Resolution in microns per pixel.
-        file_name (str): Original source file name.
-        mask (Optional[np.ndarray]): Ground truth segmentation mask with shape
-            (height, width). Each unique integer represents a cell.
-        cell_type_info (Optional[Dict[int, str]]): Maps cell indices from mask
-            to their ground truth cell types.
-        predicted_mask (Optional[np.ndarray]): Model-predicted segmentation mask
-            with shape (height, width).
-        predicted_cell_types (Optional[Dict[int, str]]): Maps cell indices from
-            predicted_mask to their predicted types.
-    """
+    """Container for biological image data and associated metadata."""
 
     raw: np.ndarray
-    channel_names: List[str]
-    tissue_type: str
-    cell_types: List[str]
-    image_mpp: float
-    file_name: str
+    image_id: Union[int, str]
+    channel_names: Optional[List[str]] = None
+    tissue_type: Optional[str] = None
+    cell_types: Optional[List[str]] = None
+    image_mpp: Optional[float] = None
     mask: Optional[np.ndarray] = None
     cell_type_info: Optional[Dict[int, str]] = None
     predicted_mask: Optional[np.ndarray] = None
     predicted_cell_types: Optional[Dict[int, str]] = None
 
+    def __post_init__(self):
+        """Standardize data formats after initialization."""
+        # Determine if multichannel based on channel names
+        is_multichannel = self.channel_names is not None and len(self.channel_names) > 1
+        
+        # Standardize raw image format
+        self.raw, is_multi = standardize_raw_image(self.raw, is_multichannel)
+        
+        # Update channel_names if necessary
+        if self.raw is not None and not is_multi and self.channel_names is None:
+            self.channel_names = ["channel_0"]
+        
+        # Standardize mask formats
+        if self.mask is not None:
+            self.mask = standardize_mask(self.mask)
+        if self.predicted_mask is not None:
+            self.predicted_mask = standardize_mask(self.predicted_mask)
+
     def validate(self) -> None:
-        """Validate structural consistency of the image data.
+        """Validate structural consistency of the image data."""
+        if self.raw is None:
+            raise ValueError("Raw data cannot be None")
+            
+        # Validate raw data shape
+        if not (self.raw.ndim == 3):
+            raise ValueError("Raw data must have 3 dimensions (C/1, H, W)")
+            
+        # Validate channel information
+        if self.raw.shape[0] > 1:  # Multichannel
+            if self.channel_names is None:
+                raise ValueError("Channel names required for multichannel data")
+            if len(self.channel_names) != self.raw.shape[0]:
+                raise ValueError("Number of channel names must match number of channels")
 
-        Checks:
-        - Raw data has correct shape (channels, height, width)
-        - Number of channel names matches number of channels
-        - Mask dimensions match raw data dimensions
+        # Validate mask shapes
+        if self.mask is not None:
+            if self.mask.ndim != 3 or self.mask.shape[0] != 1:
+                raise ValueError("Ground truth mask must have shape (1, height, width)")
+            if self.mask.shape[1:] != self.raw.shape[1:]:
+                raise ValueError("Mask spatial dimensions must match raw data")
+            if not np.issubdtype(self.mask.dtype, np.integer):
+                raise ValueError("Mask must contain integer values")
 
-        Raises:
-            ValueError: If any validation check fails
-        """
-        if self.raw.ndim != 3:
-            raise ValueError("Raw data must have shape (channels, height, width)")
-        if len(self.channel_names) != self.raw.shape[0]:
-            raise ValueError("Number of channel names must match number of channels")
-        if self.mask is not None and self.mask.shape != self.raw.shape[1:]:
-            raise ValueError("Mask dimensions must match raw data dimensions")
+        if self.predicted_mask is not None:
+            if self.predicted_mask.ndim != 3 or self.predicted_mask.shape[0] != 1:
+                raise ValueError("Predicted mask must have shape (1, height, width)")
+            if self.predicted_mask.shape[1:] != self.raw.shape[1:]:
+                raise ValueError("Predicted mask spatial dimensions must match raw data")
+            if not np.issubdtype(self.predicted_mask.dtype, np.integer):
+                raise ValueError("Predicted mask must contain integer values")
 
-    def to_torch(self) -> torch.Tensor:
-        """Convert raw image data to PyTorch tensor.
-
-        Returns:
-            torch.Tensor: Raw data as tensor with same shape and dtype
-        """
-        return torch.from_numpy(self.raw)
-
-    @classmethod
-    def from_torch(cls, tensor: torch.Tensor, **kwargs) -> "ImageData":
-        """Create ImageData instance from PyTorch tensor.
-
-        Args:
-            tensor (torch.Tensor): Tensor with shape (channels, height, width)
-            **kwargs: Additional arguments passed to ImageData constructor
-
-        Returns:
-            ImageData: New instance with tensor data converted to numpy array
-        """
-        return cls(raw=tensor.numpy(), **kwargs)
+            # Check matching dimensions with ground truth if available
+            if self.mask is not None and self.predicted_mask.shape != self.mask.shape:
+                raise ValueError("Predicted mask must have same shape as ground truth mask")
 
 
 class ZarrDataset:
-    """Interface for persistent storage and retrieval of biological image datasets.
-
-    This class provides a standardized interface for storing and loading multichannel
-    image data and associated metadata using Zarr storage format. It supports:
-    - Hierarchical organization of image data
-    - Efficient storage of large datasets
-    - Flexible loading of subsets of data
-    - Automatic validation of data consistency
-
-    The typical workflow involves:
-    1. Loading raw data from an existing dataset
-    2. Processing the images (e.g., segmentation, classification)
-    3. Saving results to a new dataset
-
-    Example workflow:
-        # Load raw data
-        raw_dataset = ZarrDataset("raw_data.zarr")
-        images = raw_dataset.load_all()
-
-        # Process images
-        processed_images = process_images(images)
-
-        # Save processed results
-        processed_dataset = ZarrDataset.create("processed_data.zarr",
-                                             raw_dataset.get_channel_names())
-        processed_dataset.save_all(processed_images)
-    """
+    """Interface for persistent storage and retrieval of biological image datasets."""
 
     def __init__(self, path: str):
         """Initialize dataset for reading.
@@ -185,32 +223,26 @@ class ZarrDataset:
                 continue
 
             group = self.root[name]
-
-            # Load required data
             raw = group["raw"][:]
-
-            # Load optional data
-            mask = group["mask"][0, :] if "mask" in group else None
+            mask = group["mask"][:] if "mask" in group else None
             predicted_mask = (
                 group["predicted_mask"][:] if "predicted_mask" in group else None
             )
 
-            # Load optional cell type info
             cell_type_info = self._load_cell_type_info(group, "cell_type_info")
             predicted_cell_types = self._load_cell_type_info(
                 group, "predicted_cell_type_info"
             )
 
-            # Load metadata
             attrs = dict(group.attrs)
 
             image = ImageData(
                 raw=raw,
+                image_id=name,
                 channel_names=self.root.attrs["channel_names"],
-                tissue_type=attrs.get("tissue_type", "unknown"),
-                cell_types=attrs.get("cell_types", []),
-                image_mpp=attrs.get("mpp", 0.0),
-                file_name=name,
+                tissue_type=attrs.get("tissue_type", None),
+                cell_types=attrs.get("cell_types", None),
+                image_mpp=attrs.get("mpp", None),
                 mask=mask,
                 cell_type_info=cell_type_info,
                 predicted_mask=predicted_mask,
@@ -221,11 +253,7 @@ class ZarrDataset:
         return images
 
     def load_all(self) -> List[ImageData]:
-        """Load all images from dataset.
-
-        Returns:
-            List of all ImageData objects in the dataset
-        """
+        """Load all images from dataset."""
         return self.load()
 
     def _save_cell_type_info(
@@ -268,28 +296,23 @@ class ZarrDataset:
         if self.root.read_only:
             raise ValueError("Dataset opened in read-only mode")
 
-        # Optional validation
         if validate:
             for image in images:
                 image.validate()
                 if image.channel_names != self.root.attrs["channel_names"]:
                     raise ValueError(
-                        f"Channel names mismatch in {image.file_name}. "
+                        f"Channel names mismatch in {image.image_id}. "
                         f"Expected {self.root.attrs['channel_names']}, "
                         f"got {image.channel_names}"
                     )
 
-        # Track new file names
         new_file_names = []
-
         for image in images:
-            # Create group for this file
-            group = self.root.require_group(image.file_name)
+            image_id = str(image.image_id)
+            group = self.root.require_group(image_id)
 
-            # Save required data
             group.create_dataset("raw", data=image.raw, overwrite=True)
 
-            # Save optional masks if present
             if image.mask is not None:
                 group.create_dataset("mask", data=image.mask, overwrite=True)
             if image.predicted_mask is not None:
@@ -297,7 +320,6 @@ class ZarrDataset:
                     "predicted_mask", data=image.predicted_mask, overwrite=True
                 )
 
-            # Save optional cell type info if present
             if image.cell_type_info is not None:
                 self._save_cell_type_info(group, image.cell_type_info, "cell_type_info")
             if image.predicted_cell_types is not None:
@@ -305,23 +327,21 @@ class ZarrDataset:
                     group, image.predicted_cell_types, "predicted_cell_type_info"
                 )
 
-            # Save metadata
-            group.attrs["tissue_type"] = image.tissue_type
-            group.attrs["cell_types"] = image.cell_types
-            group.attrs["mpp"] = image.image_mpp
+            if image.tissue_type is not None:
+                group.attrs["tissue_type"] = image.tissue_type
+            if image.cell_types is not None:
+                group.attrs["cell_types"] = image.cell_types
+            if image.image_mpp is not None:
+                group.attrs["mpp"] = image.image_mpp
 
-            new_file_names.append(image.file_name)
+            new_file_names.append(image_id)
 
-        # Update global file_names attribute
         current_files = set(self.root.attrs["file_names"])
         updated_files = list(current_files.union(new_file_names))
         self.root.attrs["file_names"] = updated_files
 
     def save_all(self, images: List[ImageData], validate: bool = True) -> None:
-        """Save all images to a new dataset.
-
-        Alias for save() to maintain API clarity.
-        """
+        """Save all images to a new dataset."""
         self.save(images, validate=validate)
 
     def get_channel_names(self) -> List[str]:
@@ -339,3 +359,146 @@ class ZarrDataset:
             List[str]: Names of all image files in the dataset
         """
         return list(self.root.attrs["file_names"])
+
+
+class NpzDataset:
+    """Interface for loading and saving single-channel data from npz files.
+
+    This class provides a standardized interface for handling datasets stored in
+    numpy's .npz format, specifically structured for single-channel images and
+    their corresponding masks.
+
+    The data is expected to be stored with keys:
+    - 'X': Raw images with shape (batch, height, width, 1)
+    - 'y': Masks with shape (batch, height, width, 1)
+    - 'meta': Metadata array where first column contains image IDs
+    """
+
+    def __init__(self, path: Union[str, Path]):
+        """Initialize dataset for reading.
+
+        Args:
+            path: Path to existing .npz file
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            ValueError: If file format is invalid
+        """
+        self.path = Path(path)
+        if not self.path.exists():
+            raise FileNotFoundError(f"Dataset not found at {path}")
+
+        try:
+            with np.load(self.path) as data:
+                if not all(key in data.files for key in ["X", "y"]):
+                    raise ValueError("Missing required keys in dataset")
+                self._validate_shapes(data["X"], data["y"])
+        except Exception as e:
+            raise ValueError(f"Invalid dataset format: {str(e)}")
+
+    @staticmethod
+    def _validate_shapes(X: np.ndarray, y: np.ndarray) -> None:
+        """Validate shapes and dimensions of input arrays."""
+        if X.ndim != 4 or X.shape[-1] != 1:
+            raise ValueError("Raw data must have shape (batch, height, width, 1)")
+        if y.ndim != 4 or y.shape[-1] != 1:
+            raise ValueError("Mask data must have shape (batch, height, width, 1)")
+        if X.shape != y.shape:
+            raise ValueError("Raw and mask data must have matching shapes")
+
+    def load(self, indices: Optional[List[int]] = None) -> List[ImageData]:
+        """Load specified images from dataset.
+
+        Args:
+            indices: Optional list of indices to load. If None,
+                loads all images in the dataset.
+
+        Returns:
+            List[ImageData]: Loaded image data objects
+
+        Raises:
+            IndexError: If any index is out of bounds
+        """
+        with np.load(self.path, allow_pickle=True) as data:
+            X = data["X"]
+            y = data["y"]
+
+            if indices is None:
+                indices = range(len(X))
+
+            try:
+                images = [ImageData(raw=X[i], mask=y[i], image_id=i) for i in indices]
+            except IndexError as e:
+                raise IndexError(f"Invalid index in dataset: {str(e)}")
+
+            return images
+
+    def load_all(self) -> List[ImageData]:
+        """Load all images from dataset.
+
+        Returns:
+            List[ImageData]: All images in the dataset
+        """
+        return self.load()
+
+    @classmethod
+    def save(
+        cls, path: Union[str, Path], images: List[ImageData], validate: bool = True
+    ) -> None:
+        """Save images and associated data to a new dataset.
+
+        Args:
+            path: Path where .npz file will be created
+            images: List of ImageData objects to save
+            validate: Whether to validate data consistency before saving
+
+        Raises:
+            ValueError: If validation fails
+            FileExistsError: If file already exists
+        """
+        path = Path(path)
+        if path.exists():
+            raise FileExistsError(f"Dataset already exists at {path}")
+
+        if validate:
+            for image in images:
+                image.validate()
+
+        # Stack data
+        X = np.stack([img.raw for img in images])
+        y = np.stack([img.mask for img in images])
+
+        cls._validate_shapes(X, y)
+
+        # Save to npz file
+        try:
+            np.savez_compressed(path, X=X, y=y)
+        except Exception as e:
+            raise RuntimeError(f"Failed to save dataset: {str(e)}")
+
+    def get_shapes(self) -> Tuple[Tuple[int, ...], ...]:
+        """Get shapes of the raw and mask data.
+
+        Returns:
+            Tuple containing shapes of (X, y) arrays
+        """
+        with np.load(self.path, allow_pickle=True) as data:
+            return data["X"].shape, data["y"].shape
+
+    def get_image_ids(self) -> List[int]:
+        """Get list of all image IDs in the dataset.
+
+        Returns:
+            List[int]: Image IDs in order matching the data (0-based indices)
+        """
+        with np.load(self.path) as data:
+            return list(range(len(data["X"])))
+
+    def __len__(self) -> int:
+        """Get number of samples in the dataset.
+
+        Returns:
+            int: Number of images in the dataset
+        """
+        with np.load(self.path) as data:
+            return len(data["X"])

@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
 """
-Main pipeline script for cell segmentation and phenotyping.
+Main pipeline script for cell segmentation and visual critic evaluation.
 
 This script demonstrates the full analysis pipeline:
-1. Data loading from zarr
+1. Data loading from Npz files
 2. Image preprocessing and denoising
-3. Channel selection for segmentation
-4. Cell segmentation
-5. Cell phenotyping
-6. Result visualization
-
-Example usage:
-    python main.py path/to/dataset.zarr
+3. Cell segmentation using either Mesmer or SAM2
+4. Result visualization and evaluation
 """
 
 from dotenv import load_dotenv
@@ -21,17 +16,18 @@ load_dotenv()
 import argparse
 import logging
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 import os
-
+from dataclasses import replace
 import numpy as np
 import torch
 from skimage.restoration import denoise_nl_means
+from scipy.ndimage import gaussian_filter
+import matplotlib.pyplot as plt
 
-from data_io import ZarrDataset, ImageData
-from src.segmentation import MesmerSegmenter, ChannelSpec
-from src.phenotyping import PhenotyperDeepCellTypes, DeepCellTypesConfig
-from visualization import visualize_data
+from src.data_io import NpzDataset, ImageData
+from src.segmentation import MesmerSegmenter, SAM2Segmenter
+from src.visualization import visualize, VisConfig
 
 # Set up logging
 logging.basicConfig(
@@ -40,140 +36,226 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def denoise_image(image_data: ImageData) -> ImageData:
-    """Apply non-local means denoising to each channel."""
-    denoised = np.zeros_like(image_data.raw)
-    for i in range(image_data.raw.shape[0]):
-        denoised[i] = denoise_nl_means(
-            image_data.raw[i], patch_size=9, patch_distance=15, h=0.1, fast_mode=True
-        )
+def denoise_image(image_data: ImageData, sigma: float = 1.0) -> ImageData:
+    """Apply Gaussian denoising to the image data.
+
+    Args:
+        image_data: Input ImageData object
+        sigma: Standard deviation for Gaussian filter
+
+    Returns:
+        ImageData with denoised raw data
+    """
+    # Handle multichannel vs single channel data
+    raw = image_data.raw
+    if raw.ndim == 3 and raw.shape[0] > 1:  # Multichannel (C, H, W)
+        denoised = np.zeros_like(raw)
+        for i in range(raw.shape[0]):
+            denoised[i] = gaussian_filter(raw[i], sigma=sigma)
+    else:  # Single channel
+        if raw.ndim == 3:
+            raw = raw[..., 0]  # Convert (H, W, 1) to (H, W)
+        denoised = gaussian_filter(raw, sigma=sigma)
+        if image_data.raw.ndim == 3:
+            denoised = denoised[..., np.newaxis]
+
     return ImageData(
         raw=denoised,
+        image_id=image_data.image_id,
         channel_names=image_data.channel_names,
         tissue_type=image_data.tissue_type,
         cell_types=image_data.cell_types,
         image_mpp=image_data.image_mpp,
-        file_name=image_data.file_name,
         mask=image_data.mask,
-        cell_type_info=image_data.cell_type_info,
     )
-
-
-def select_channels(image_data: ImageData) -> ChannelSpec:
-    """Select optimal channels for segmentation based on tissue type."""
-
-    nuclear = "HH3"
-    membrane = ["CD45", "CD56", "Vimentin"]
-
-    return ChannelSpec(nuclear=nuclear, membrane=membrane)
 
 
 def set_gpu_device(gpu_id: int) -> None:
     """Set global GPU device for both PyTorch and TensorFlow."""
-    # Set CUDA visible devices
-    # os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    if torch.cuda.is_available():
+        # Set CUDA device for PyTorch
+        torch.cuda.set_device(gpu_id)
+        # Set environment variable for TensorFlow
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        logger.info(f"Using GPU device {gpu_id}")
+    else:
+        logger.warning("No GPU available, using CPU")
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-    # Tensorflow (used by Mesmer) specific
-    os.environ["TF_CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    # Set PyTorch default device
-    torch.cuda.set_device(gpu_id)
+
+def save_metrics(metrics: Dict[str, float], output_path: Path) -> None:
+    """Save evaluation metrics to a text file.
+
+    Args:
+        metrics: Dictionary of metric names and values
+        output_path: Directory to save the metrics file
+    """
+    metrics_file = output_path / "metrics.txt"
+    with open(metrics_file, "w") as f:
+        for name, value in metrics.items():
+            f.write(f"{name}: {value:.4f}\n")
 
 
-def run_pipeline(zarr_path: str, output_dir: str = "output") -> Dict[str, ImageData]:
+def run_pipeline(
+    data_path: str,
+    output_dir: str = "output",
+    segmenter_type: str = "mesmer",
+    save_visualization: bool = True,
+    interactive_viz: bool = False,
+    seed: int = 42,
+) -> Dict[str, ImageData]:
     """Run the complete analysis pipeline.
 
     Args:
-        zarr_path: Path to input zarr dataset
+        data_path: Path to input dataset (.npz file)
         output_dir: Directory to save results
+        segmenter_type: Type of segmenter to use ('mesmer' or 'sam2')
+        save_visualization: Whether to save static visualizations
+        interactive_viz: Whether to show interactive napari visualization
 
     Returns:
-        Dictionary mapping file names to their fully processed ImageData objects,
-        containing raw data, segmentation masks, and cell type predictions
+        Dictionary mapping file names to their fully processed ImageData objects
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
 
-    # Initialize components
-    raw_dataset = ZarrDataset(zarr_path)
-    # raw_images = raw_dataset.load_all()
-    raw_images = raw_dataset.load(
-        [
-            "HBM555.ZNTK.962-1d988a3a09dd6ab19d70f6c33974eef2",
-            "HBM786.VLVN.435-2d6d2131e94f60aff982c3d52a9fcb27",
-        ]
-    )
+    # Set random seed for reproducibility
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
-    segmenter = MesmerSegmenter()
+    # Load data
+    logger.info(f"Loading data from {data_path}")
+    try:
+        dataset = NpzDataset(data_path)
+        # images = dataset.load_all()
+        images = dataset.load(np.random.choice(len(dataset), 10)) # Load only 10 images for testing
+        logger.info(f"Loaded {len(images)} images")
+    except Exception as e:
+        logger.error(f"Failed to load dataset: {str(e)}")
+        raise
 
-    phenotyper_config = DeepCellTypesConfig(
-        model_path="pretrained/model_c_patch2_skip_Greenbaum_Uterus_0.pt", batch_size=32
-    )
-    phenotyper = PhenotyperDeepCellTypes(phenotyper_config)
+    # Initialize segmenter
+    if segmenter_type.lower() == "mesmer":
+        segmenter = MesmerSegmenter()
+    elif segmenter_type.lower() == "sam2":
+        segmenter = SAM2Segmenter(
+            model_cfg="src/sam2/configs/sam2.1/sam2.1_hiera_l.yaml",
+            checkpoint_path="src/sam2/checkpoints/sam2.1_hiera_large.pt",
+        )
+    else:
+        raise ValueError(f"Unknown segmenter type: {segmenter_type}")
 
-    segmented_data_list = []
+    processed_images = {}
+
     # Process each image
-    for image_data in raw_images[:3]:
-        logger.info(f"Processing {image_data.file_name}")
+    for image in images:
+        logger.info(f"Processing image {image.image_id}")
 
         # Denoise
         logger.info("Applying denoising")
-        denoised_data = denoise_image(image_data)
-
-        # Select channels for segmentation
-        logger.info("Selecting optimal channels")
-        channel_spec = select_channels(denoised_data)
-        logger.info(
-            f"Using nuclear: {channel_spec.nuclear}, "
-            f"membrane: {', '.join(channel_spec.membrane)}"
-        )
+        denoised_image = denoise_image(image)
 
         # Run segmentation
-        logger.info("Running cell segmentation")
-        segmented_data = segmenter.predict(
-            denoised_data, channel_spec, image_mpp=denoised_data.image_mpp
-        )
+        logger.info("Running segmentation")
+        try:
+            segmented_image = segmenter.predict(denoised_image)
+            processed_images[str(image.image_id)] = segmented_image
+            
+        except Exception as e:
+            logger.error(f"Segmentation failed for image {image.image_id}: {str(e)}")
+            continue
 
-        segmented_data_list.append(segmented_data)
+        # Save segmentation mask
+        if segmented_image.predicted_mask is not None:
+            mask_path = output_dir / f"{image.image_id:03d}_predicted_mask.npy"
+            np.save(mask_path, segmented_image.predicted_mask)
 
-    # Run phenotyping
-    logger.info("Running cell phenotyping")
-    phenotyped_data_list = phenotyper.run_pipeline(
-        images=segmented_data_list,
-    )
+        # Generate visualization
+        if save_visualization or interactive_viz:
+            try:
+                # Configure visualization settings
+                vis_config = VisConfig(
+                    output_dir=output_dir if save_visualization else None,
+                    dpi=300,
+                    figsize=(10, 10),
+                    show_raw=True,
+                    show_predicted=True,
+                    opacity=0.5,
+                    label_size=8,
+                )
 
-    # Calculate metrics
-    logger.info("Calculating metrics")
-    metrics = phenotyper.calculate_metrics(phenotyped_data_list)
-    logger.info(f"Metrics: {metrics}")
+                # Determine visualization mode
+                viz_mode = (
+                    "both"
+                    if (save_visualization and interactive_viz)
+                    else "interactive" if interactive_viz else "static"
+                )
 
-    # Save results to a zarr file
-    logger.info("Saving results")
-    processed_dataset = ZarrDataset.create(
-        "output/result.zarr", raw_dataset.get_channel_names()
-    )
-    processed_dataset.save_all(phenotyped_data_list)
+                # Run visualization
+                viewer = visualize(segmented_image, mode=viz_mode, config=vis_config)
 
-    # Visualize the first image
-    logger.info("Generating visualization")
-    viewer = visualize_data(phenotyped_data_list[0])
+                # Clean up viewer if created
+                if viewer is not None:
+                    viewer.clear()
 
-    # Keep viewer window open (comment out for batch processing)
-    viewer.viewer.app.run()
+            except Exception as e:
+                logger.error(
+                    f"Visualization failed for image {image.image_id}: {str(e)}"
+                )
+
+    # Calculate and save metrics if ground truth is available
+    if any(img.mask is not None for img in images):
+        logger.info("Calculating evaluation metrics")
+        metrics = segmenter.calculate_metrics(list(processed_images.values()))
+        save_metrics(metrics, output_dir)
+        logger.info(f"Metrics: {metrics}")
+
+    return processed_images
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Run cell segmentation and phenotyping pipeline"
     )
-    parser.add_argument("--zarr_path", help="Path to input zarr dataset")
+    parser.add_argument("--data_path", required=True, help="Path to input npz dataset")
     parser.add_argument(
         "--output", default="output", help="Output directory for results"
     )
     parser.add_argument("--gpu", type=int, default=0, help="GPU device ID to use")
+    parser.add_argument(
+        "--segmenter",
+        choices=["mesmer", "sam2"],
+        default="mesmer",
+        help="Segmentation model to use",
+    )
+    parser.add_argument(
+        "--no-viz", action="store_true", help="Disable static visualization saving"
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Enable interactive napari visualization",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for reproducibility"
+    )
 
     args = parser.parse_args()
-    set_gpu_device(args.gpu)
-    run_pipeline(args.zarr_path, args.output)
+
+    try:
+        set_gpu_device(args.gpu)
+        run_pipeline(
+            args.data_path,
+            args.output,
+            segmenter_type=args.segmenter,
+            save_visualization=not args.no_viz,
+            interactive_viz=args.interactive,
+            seed=args.seed,
+        )
+        logger.info("Pipeline completed successfully")
+    except Exception as e:
+        logger.error(f"Pipeline failed: {str(e)}")
+        raise
 
 
 if __name__ == "__main__":

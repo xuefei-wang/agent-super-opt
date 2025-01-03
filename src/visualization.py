@@ -1,116 +1,57 @@
 """
-A module for visualizing and analyzing multichannel biological images using napari.
+A module for visualizing and analyzing multichannel biological images using both
+napari (for interactive visualization) and matplotlib (for static image output).
 
 This module provides a comprehensive visualization framework for biological image analysis,
-with specialized support for:
+supporting both interactive and static visualization modes with specialized features for:
 - Multichannel fluorescence image display
 - Cell segmentation mask visualization
 - Cell type annotation overlays
 - Side-by-side comparison of ground truth and predicted results
-
-The primary class NapariViewer provides an intuitive interface for creating
-interactive visualizations, while helper functions facilitate common visualization tasks.
 """
 
+import os
 import napari
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
+from pathlib import Path
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from scipy import ndimage
+from dataclasses import dataclass, replace
 
 from .data_io import ImageData
 
 
-class NapariViewer:
-    """
-    A viewer class for creating interactive visualizations of biological image data.
+@dataclass
+class VisConfig:
+    """Configuration for visualization settings."""
 
-    This class provides a comprehensive interface for visualizing complex biological imaging
-    data, with specialized support for cellular analysis. It handles multiple visualization
-    layers including raw multichannel data, segmentation masks, and cell type annotations.
+    output_dir: Optional[Path] = None  # Directory for saving static visualizations
+    dpi: int = 300  # DPI for saved images
+    figsize: tuple = (10, 10)  # Figure size for matplotlib plots
+    show_raw: bool = True  # Whether to show raw channel data
+    show_predicted: bool = True  # Whether to show predicted masks/types
+    opacity: float = 0.5  # Opacity for mask overlays
+    label_size: int = 8  # Size of cell type labels
 
-    Key features:
-    - Multichannel fluorescence image display with customizable colormaps
-    - Cell segmentation mask visualization with adjustable opacity
-    - Cell type annotation with automatic color assignment
-    - Interactive layer management (show/hide/remove)
-    - Automatic legend generation for cell types
 
-    Attributes:
-        viewer (napari.Viewer): The main napari viewer instance
-        cell_type_colormap (Optional[Dict[str, np.ndarray]]): Dictionary mapping cell types to RGB colors.
-            None if no cell types have been visualized yet.
-        _layers (Dict[str, napari.layers.Layer]): Internal mapping of layer names to napari layer objects
-
-    Example:
-        >>> image_data = ImageData(
-        ...     raw=raw_image,  # Shape: (channels, H, W)
-        ...     channel_names=["DAPI", "CD3", "CD20"],
-        ...     mask=cell_masks,  # Shape: (1, H, W)
-        ...     cell_type_info={1: "T cell", 2: "B cell"}
-        ... )
-        >>> viewer = NapariViewer()
-        >>> viewer.show_channels(image_data)
-        >>> viewer.add_cell_masks(image_data, show_labels=True)
-        >>> viewer.add_legend()
-    """
-
-    def __init__(self):
-        """Initialize the viewer with an empty napari window."""
-        self.viewer = napari.Viewer()
-        self.cell_type_colormap = None
-        self._layers = {}
-
-    def show_channels(
-        self, data: ImageData, name: str = "image", colormap: str = "gray"
-    ) -> None:
-        """
-        Display multichannel raw data as separate layers.
-
-        Each channel is added as a separate layer with additive blending mode for
-        better visualization of overlapping signals.
-
-        Args:
-            data (ImageData): ImageData object containing the raw image and channel information
-            name (str, optional): Base name for the layers. Default: "image"
-            colormap (str, optional): Colormap to use for displaying the channels. Default: 'gray'
-
-        Raises:
-            ValueError: If number of channels doesn't match channel names
-        """
-        if len(data.channel_names) != data.raw.shape[0]:
-            raise ValueError("Number of channels does not match channel names")
-
-        for idx, channel_name in enumerate(data.channel_names):
-            layer = self.viewer.add_image(
-                data.raw[idx],
-                name=f"{name}_{channel_name}",
-                colormap=colormap,
-                blending="additive",
-            )
-            self._layers[f"{name}_{channel_name}"] = layer
+class BaseVisualizer:
+    """Base class for visualization functionality shared between interactive and static modes."""
 
     def _create_cell_type_colormap(
         self, cell_types: List[str]
     ) -> Dict[str, np.ndarray]:
-        """
-        Create a colormap assigning unique colors to each cell type.
-
-        This method generates a consistent color mapping for cell types using matplotlib's
-        tab20 colormap, ensuring visual distinction between different cell populations.
+        """Create a colormap assigning unique colors to each cell type.
 
         Args:
-            cell_types (List[str]): List of unique cell type names to map to colors
+            cell_types: List of unique cell type names to map to colors
 
         Returns:
-            Dict[str, np.ndarray]: Dictionary mapping cell types to RGB color arrays (0-1 range)
+            Dictionary mapping cell types to RGB color arrays (0-1 range)
 
         Raises:
-            ValueError: If more than 20 cell types are provided (limitation of tab20 colormap)
-
-        Note:
-            The same cell type will always get the same color within a session, enabling
-            consistent visualization across multiple images.
+            ValueError: If more than 20 cell types provided
         """
         n_types = len(cell_types)
         if n_types > 20:
@@ -139,43 +80,46 @@ class NapariViewer:
             centroids[cell_idx] = np.array(centroid)
         return centroids
 
-    def add_cell_masks(
-        self,
-        data: ImageData,
-        name: str = "masks",
-        opacity: float = 0.5,
-        show_labels: bool = True,
-        label_size: int = 8,
-    ) -> None:
-        """Add cell masks with optional type coloring and labels.
 
-        Args:
-            data: ImageData object containing mask and cell type information
-            name: Base name for the mask layers
-            opacity: Opacity of the mask layers (0-1)
-            show_labels: Whether to show cell type labels
-            label_size: Size of the cell type labels
+class NapariViewer(BaseVisualizer):
+    """Interactive viewer class using napari for visualization."""
 
-        Note:
-            Creates up to three layers:
-            1. Binary mask layer
-            2. Colored cell type layer (if cell_type_info is provided)
-            3. Text labels layer (if show_labels is True)
+    def __init__(self, config: VisConfig):
+        """Initialize the viewer with an empty napari window."""
+        self.config = config
+        self.viewer = napari.Viewer()
+        self.cell_type_colormap = None
+        self._layers = {}
 
-        Raises:
-            ValueError: If mask shape is invalid
-        """
+    def show_channels(self, data: ImageData, name: str = "image") -> None:
+        """Display multichannel raw data as separate layers."""
+        if len(data.channel_names) != data.raw.shape[0]:
+            raise ValueError("Number of channels does not match channel names")
+
+        for idx, channel_name in enumerate(data.channel_names):
+            layer = self.viewer.add_image(
+                data.raw[idx],
+                name=f"{name}_{channel_name}",
+                colormap="gray",
+                blending="additive",
+            )
+            self._layers[f"{name}_{channel_name}"] = layer
+
+    def add_cell_masks(self, data: ImageData, name: str = "masks") -> None:
+        """Add cell masks with optional type coloring and labels."""
         if data.mask is None:
             return
 
-        if data.mask.ndim != 3 or data.mask.shape[0] != 1:
-            raise ValueError("Mask must have shape (1, height, width)")
+        # Ensure mask is 2D
+        mask = data.mask[0] if data.mask.ndim == 3 else data.mask
+        if mask.ndim != 2:
+            raise ValueError("Mask must be 2D or have shape (1, height, width)")
 
         # Add mask layer
         mask_layer = self.viewer.add_labels(
-            data.mask[0],  # Assuming shape (1, H, W)
+            mask,
             name=f"{name}_masks",
-            opacity=opacity,
+            opacity=self.config.opacity,
         )
         self._layers[f"{name}_masks"] = mask_layer
 
@@ -188,39 +132,37 @@ class NapariViewer:
                 )
 
             # Create RGB visualization
-            rgb_image = np.zeros((*data.mask[0].shape, 3))
+            rgb_image = np.zeros((*mask.shape, 3))
             for cell_idx, cell_type in data.cell_type_info.items():
-                if cell_idx == 0:
-                    continue
                 cell_color = self.cell_type_colormap[cell_type]
-                rgb_image[data.mask[0] == cell_idx] = cell_color
+                rgb_image[mask == cell_idx] = cell_color
 
             # Add colored mask layer
             color_layer = self.viewer.add_image(
                 rgb_image,
                 name=f"{name}_cell_types",
                 rgb=True,
-                opacity=opacity,
+                opacity=self.config.opacity,
                 blending="additive",
             )
             self._layers[f"{name}_cell_types"] = color_layer
 
-            # Add labels if requested
-            if show_labels:
-                centroids = self.get_cell_centroids(data.mask[0])
-                text = []
-                positions = []
+            # Add labels
+            centroids = self.get_cell_centroids(mask)
+            text = []
+            positions = []
 
-                for cell_idx, centroid in centroids.items():
-                    if cell_idx in data.cell_type_info:
-                        text.append(data.cell_type_info[cell_idx])
-                        positions.append(centroid)
+            for cell_idx, centroid in centroids.items():
+                if cell_idx in data.cell_type_info:
+                    text.append(data.cell_type_info[cell_idx])
+                    positions.append(centroid)
 
+            if text and positions:
                 text_layer = self.viewer.add_layer(
                     napari.layers.Text(
                         text=text,
                         pos=positions,
-                        size=label_size,
+                        size=self.config.label_size,
                         color="white",
                         name=f"{name}_labels",
                         anchor="center",
@@ -228,29 +170,37 @@ class NapariViewer:
                 )
                 self._layers[f"{name}_labels"] = text_layer
 
-    def add_legend(self) -> None:
-        """
-        Add a text legend showing cell types and their corresponding colors.
-
-        The legend is positioned in the top-left corner of the viewer with each cell type
-        listed on a new line. Requires cell types to have been previously added via
-        add_cell_masks.
-
-        Note:
-            Silently returns if no cell type colormap has been created yet.
-            Any existing legend will be replaced.
-        """
+    def add_legend(self, position: str = "top-left") -> None:
+        """Add a text legend showing cell types and their corresponding colors."""
         if self.cell_type_colormap is None:
             return
+
+        # Calculate position coordinates based on viewer size
+        canvas_size = self.viewer.window.qt_viewer.canvas.size()
+        if position == "top-right":
+            x_base = canvas_size.width() - 150
+            y_base = 10
+        elif position == "bottom-left":
+            x_base = 10
+            y_base = canvas_size.height() - 20 * len(self.cell_type_colormap) - 10
+        elif position == "bottom-right":
+            x_base = canvas_size.width() - 150
+            y_base = canvas_size.height() - 20 * len(self.cell_type_colormap) - 10
+        else:  # top-left
+            x_base = 10
+            y_base = 10
 
         # Create legend text
         legend_text = []
         positions = []
-        y = 10
+        y = y_base
         for cell_type, color in self.cell_type_colormap.items():
             legend_text.append(cell_type)
-            positions.append([10, y])
+            positions.append([x_base, y])
             y += 20
+
+        if "legend" in self._layers:
+            self.viewer.layers.remove(self._layers["legend"])
 
         legend_layer = self.viewer.add_layer(
             napari.layers.Text(
@@ -263,82 +213,206 @@ class NapariViewer:
         )
         self._layers["legend"] = legend_layer
 
-    def toggle_layer_visibility(self, layer_name: str) -> None:
-        """
-        Toggle visibility of a specific layer.
-
-        Args:
-            layer_name (str): Name of the layer to toggle
-
-        Note:
-            Silently returns if the layer name is not found
-        """
-        if layer_name in self._layers:
-            layer = self._layers[layer_name]
-            layer.visible = not layer.visible
-
-    def remove_layer(self, layer_name: str) -> None:
-        """
-        Remove a specific layer from the viewer.
-
-        Args:
-            layer_name (str): Name of the layer to remove
-
-        Note:
-            Silently returns if the layer name is not found.
-            This operation permanently removes the layer and cannot be undone.
-        """
-        if layer_name in self._layers:
-            self.viewer.layers.remove(self._layers[layer_name])
-            del self._layers[layer_name]
+    def clear(self) -> None:
+        """Remove all layers from the viewer."""
+        self.viewer.layers.clear()
+        self._layers.clear()
+        self.cell_type_colormap = None
 
 
-def visualize_data(image_data: ImageData) -> NapariViewer:
+class MatplotlibVisualizer(BaseVisualizer):
+    """Static visualization class using matplotlib for saving image outputs."""
+
+    def __init__(self, config: VisConfig):
+        """Initialize the matplotlib visualizer with configuration."""
+        self.config = config
+        self.cell_type_colormap = None
+        if config.output_dir:
+            os.makedirs(config.output_dir, exist_ok=True)
+
+    def plot_channels(self, data: ImageData, prefix: str = "") -> None:
+        """Plot each channel separately and save to files."""
+        if data.raw is None or not data.channel_names:
+            return
+
+        for idx, channel_name in enumerate(data.channel_names):
+            plt.figure(figsize=self.config.figsize)
+            plt.imshow(data.raw[idx], cmap="gray")
+            plt.axis("off")
+            plt.title(f"Channel: {channel_name}")
+
+            if self.config.output_dir:
+                output_path = (
+                    self.config.output_dir
+                    / f"{data.image_id}_channel_{channel_name}.png"
+                )
+                plt.savefig(output_path, dpi=self.config.dpi, bbox_inches="tight")
+            plt.close()
+
+    def _prepare_mask_visualization(
+        self, mask: np.ndarray, cell_type_info: Optional[Dict[int, str]] = None
+    ) -> np.ndarray:
+        """Prepare mask for visualization, ensuring correct dimensions and coloring."""
+        # Ensure mask is 2D
+        if mask.ndim == 3:
+            if mask.shape[-1] == 1:
+                mask = mask[..., 0]  # Handle (H, W, 1) format
+            else:
+                mask = mask[0]  # Handle (1, H, W) format
+
+        if cell_type_info is not None:
+            if self.cell_type_colormap is None:
+                self.cell_type_colormap = self._create_cell_type_colormap(
+                    list(set(cell_type_info.values()))
+                )
+
+            # Create RGB visualization
+            rgb_image = np.zeros((*mask.shape, 3))
+            for cell_idx, cell_type in cell_type_info.items():
+                cell_color = self.cell_type_colormap[cell_type]
+                rgb_image[mask == cell_idx] = cell_color
+            return rgb_image
+        else:
+            # Create colored mask visualization without cell types
+            cmap = plt.cm.get_cmap("tab20")
+            rgb_image = np.zeros((*mask.shape, 3))
+            unique_cells = np.unique(mask)[1:]  # Skip background
+            for i, cell_idx in enumerate(unique_cells):
+                rgb_image[mask == cell_idx] = cmap(i % 20)[:3]
+            return rgb_image
+
+    def plot_comparison(self, data: ImageData) -> None:
+        """Plot ground truth and predicted masks side by side with combined visualization."""
+        if data.mask is None:
+            return
+
+        # Create figure with three subplots
+        fig, (ax1, ax2, ax3) = plt.subplots(
+            1, 3, figsize=(self.config.figsize[0] * 3, self.config.figsize[1])
+        )
+
+        # Ground truth visualization
+        gt_vis = self._prepare_mask_visualization(data.mask, data.cell_type_info)
+        ax1.imshow(gt_vis)
+        ax1.set_title("Ground Truth")
+        ax1.axis("off")
+
+        # Predicted mask visualization
+        if data.predicted_mask is not None:
+            pred_vis = self._prepare_mask_visualization(
+                data.predicted_mask, data.predicted_cell_types
+            )
+            ax2.imshow(pred_vis)
+            ax2.set_title("Prediction")
+        ax2.axis("off")
+
+        # Combined visualization
+        if data.predicted_mask is not None:
+            # Create overlay by blending GT and prediction
+            combined = np.zeros(
+                (*gt_vis.shape[:2], 3)
+            )  # Create RGB array with same spatial dimensions
+
+            # Prepare ground truth mask
+            gt_mask = data.mask
+            if gt_mask.ndim == 3:
+                if gt_mask.shape[-1] == 1:
+                    gt_mask = gt_mask[..., 0]
+                else:
+                    gt_mask = gt_mask[0]
+
+            # Prepare predicted mask
+            pred_mask = data.predicted_mask
+            if pred_mask.ndim == 3:
+                if pred_mask.shape[-1] == 1:
+                    pred_mask = pred_mask[..., 0]
+                else:
+                    pred_mask = pred_mask[0]
+
+            # Add ground truth in red channel
+            combined[..., 0] = gt_mask > 0
+            # Add prediction in green channel
+            combined[..., 1] = pred_mask > 0
+            ax3.imshow(combined)
+            ax3.set_title("Overlay (GT=Red, Pred=Green)")
+        ax3.axis("off")
+
+        # Add legend if cell type information is available
+        if self.cell_type_colormap is not None:
+            legend_elements = [
+                Patch(facecolor=color, label=cell_type)
+                for cell_type, color in self.cell_type_colormap.items()
+            ]
+            fig.legend(
+                handles=legend_elements, loc="center right", bbox_to_anchor=(0.98, 0.5)
+            )
+
+        plt.tight_layout()
+
+        # Save figure
+        if self.config.output_dir:
+            output_path = self.config.output_dir / f"{data.image_id:03d}_comparison.png"
+            plt.savefig(output_path, dpi=self.config.dpi, bbox_inches="tight")
+        plt.close()
+
+
+def visualize(
+    image_data: ImageData, mode: str = "both", config: Optional[VisConfig] = None
+) -> Optional[NapariViewer]:
     """
-    Create a complete visualization setup from an ImageData object.
-
-    This convenience function creates a NapariViewer instance and configures it with:
-    1. Ground truth cell masks (if present)
-    2. Predicted cell masks (if present)
-    3. Cell type legend (if cell type information exists)
+    Unified visualization function supporting both interactive and static modes.
 
     Args:
-        image_data (ImageData): ImageData object containing the raw image data,
-            channel information, masks, and cell type annotations
+        image_data: ImageData object containing all data to visualize
+        mode: Visualization mode ('interactive', 'static', or 'both')
+        config: Configuration for visualization settings
 
     Returns:
-        NapariViewer: Configured viewer instance with all available layers added
+        NapariViewer instance if mode is 'interactive' or 'both', None otherwise
 
-    Note:
-        Raw channel visualization is disabled by default to focus on masks.
-        To show channels, call show_channels() on the returned viewer.
-
-    Example:
-        >>> viewer = visualize_data(image_data)
-        >>> # Show raw channels if needed
-        >>> viewer.show_channels(image_data)
+    Raises:
+        ValueError: If mode is not one of 'interactive', 'static', or 'both'
     """
-    viewer = NapariViewer()
+    if mode not in ["interactive", "static", "both"]:
+        raise ValueError("Mode must be 'interactive', 'static', or 'both'")
 
-    # # Show raw channels
-    # viewer.show_channels(image_data)
+    config = config or VisConfig()
+    viewer = None
 
-    # Add cell masks and types
-    viewer.add_cell_masks(image_data, name="groundtruth", show_labels=True, opacity=0.5)
+    # Interactive visualization with napari
+    if mode in ["interactive", "both"]:
+        viewer = NapariViewer(config)
 
-    # Add predicted masks if available
-    if image_data.predicted_mask is not None:
-        predicted_data = ImageData(
-            raw=image_data.raw,
-            channel_names=image_data.channel_names,
-            mask=image_data.predicted_mask,
-            cell_type_info=image_data.predicted_cell_types,
-        )
-        viewer.add_cell_masks(
-            predicted_data, name="predicted", show_labels=True, opacity=0.3
-        )
+        if config.show_raw and image_data.channel_names is not None:
+            viewer.show_channels(image_data)
 
-    # Add legend
-    viewer.add_legend()
+        # Add ground truth masks and types
+        if image_data.mask is not None:
+            viewer.add_cell_masks(image_data, name="groundtruth")
+
+        # Add predicted masks if available and requested
+        if config.show_predicted and image_data.predicted_mask is not None:
+            predicted_data = replace(
+                image_data,
+                mask=image_data.predicted_mask,
+                cell_type_info=image_data.predicted_cell_types,
+            )
+            viewer.add_cell_masks(predicted_data, name="predicted")
+
+        viewer.add_legend()
+
+    # Static visualization with matplotlib
+    if mode in ["static", "both"]:
+        if not config.output_dir:
+            raise ValueError("output_dir must be specified for static visualization")
+
+        visualizer = MatplotlibVisualizer(config)
+
+        # Plot raw channels
+        if config.show_raw:
+            visualizer.plot_channels(image_data)
+
+        # Plot comparison visualization
+        visualizer.plot_comparison(image_data)
 
     return viewer
