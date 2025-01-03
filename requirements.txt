@@ -1,5 +1,4 @@
 deepcell
-autogen
 zarr
 napari[all]
 torch
@@ -9,3 +8,4 @@ pyyaml
 tqdm
 jupyter_kernel_gateway
 PyWavelets
+autogen-agentchat[gemini]
