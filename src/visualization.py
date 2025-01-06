@@ -93,6 +93,10 @@ class NapariViewer(BaseVisualizer):
 
     def show_channels(self, data: ImageData, name: str = "image") -> None:
         """Display multichannel raw data as separate layers."""
+        if data.raw is None:
+            return
+            
+        # Data should already be in (C, H, W) format from ImageData standardization
         if len(data.channel_names) != data.raw.shape[0]:
             raise ValueError("Number of channels does not match channel names")
 
@@ -110,10 +114,8 @@ class NapariViewer(BaseVisualizer):
         if data.mask is None:
             return
 
-        # Ensure mask is 2D
-        mask = data.mask[0] if data.mask.ndim == 3 else data.mask
-        if mask.ndim != 2:
-            raise ValueError("Mask must be 2D or have shape (1, height, width)")
+        # Get 2D mask from standardized (1, H, W) format
+        mask = data.mask[0]
 
         # Add mask layer
         mask_layer = self.viewer.add_labels(
@@ -125,7 +127,6 @@ class NapariViewer(BaseVisualizer):
 
         # Add cell type visualization if available
         if data.cell_type_info is not None:
-            # Create colormap if not exists
             if self.cell_type_colormap is None:
                 self.cell_type_colormap = self._create_cell_type_colormap(
                     list(set(data.cell_type_info.values()))
@@ -235,6 +236,7 @@ class MatplotlibVisualizer(BaseVisualizer):
         if data.raw is None or not data.channel_names:
             return
 
+        # Data should already be in (C, H, W) format
         for idx, channel_name in enumerate(data.channel_names):
             plt.figure(figsize=self.config.figsize)
             plt.imshow(data.raw[idx], cmap="gray")
@@ -291,8 +293,8 @@ class MatplotlibVisualizer(BaseVisualizer):
             1, 3, figsize=(self.config.figsize[0] * 3, self.config.figsize[1])
         )
 
-        # Ground truth visualization
-        gt_vis = self._prepare_mask_visualization(data.mask, data.cell_type_info)
+        # Ground truth visualization (using first channel of standardized mask)
+        gt_vis = self._prepare_mask_visualization(data.mask[0], data.cell_type_info)
         ax1.imshow(gt_vis)
         ax1.set_title("Ground Truth")
         ax1.axis("off")
@@ -300,7 +302,7 @@ class MatplotlibVisualizer(BaseVisualizer):
         # Predicted mask visualization
         if data.predicted_mask is not None:
             pred_vis = self._prepare_mask_visualization(
-                data.predicted_mask, data.predicted_cell_types
+                data.predicted_mask[0], data.predicted_cell_types
             )
             ax2.imshow(pred_vis)
             ax2.set_title("Prediction")
@@ -308,31 +310,10 @@ class MatplotlibVisualizer(BaseVisualizer):
 
         # Combined visualization
         if data.predicted_mask is not None:
-            # Create overlay by blending GT and prediction
-            combined = np.zeros(
-                (*gt_vis.shape[:2], 3)
-            )  # Create RGB array with same spatial dimensions
-
-            # Prepare ground truth mask
-            gt_mask = data.mask
-            if gt_mask.ndim == 3:
-                if gt_mask.shape[-1] == 1:
-                    gt_mask = gt_mask[..., 0]
-                else:
-                    gt_mask = gt_mask[0]
-
-            # Prepare predicted mask
-            pred_mask = data.predicted_mask
-            if pred_mask.ndim == 3:
-                if pred_mask.shape[-1] == 1:
-                    pred_mask = pred_mask[..., 0]
-                else:
-                    pred_mask = pred_mask[0]
-
-            # Add ground truth in red channel
-            combined[..., 0] = gt_mask > 0
-            # Add prediction in green channel
-            combined[..., 1] = pred_mask > 0
+            # Create overlay
+            combined = np.zeros((*gt_vis.shape[:2], 3))
+            combined[..., 0] = data.mask[0] > 0  # Red channel for ground truth
+            combined[..., 1] = data.predicted_mask[0] > 0  # Green channel for prediction
             ax3.imshow(combined)
             ax3.set_title("Overlay (GT=Red, Pred=Green)")
         ax3.axis("off")
@@ -349,7 +330,6 @@ class MatplotlibVisualizer(BaseVisualizer):
 
         plt.tight_layout()
 
-        # Save figure
         if self.config.output_dir:
             output_path = self.config.output_dir / f"{data.image_id:03d}_comparison.png"
             plt.savefig(output_path, dpi=self.config.dpi, bbox_inches="tight")

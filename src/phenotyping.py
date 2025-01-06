@@ -53,7 +53,7 @@ from .deepcell_types.dataset import PatchDataset
 from .deepcell_types.deepcelltypes_kit.config import DCTConfig
 from .deepcell_types.deepcelltypes_kit.image_funcs import patch_generator
 from .deepcell_types.predict import BatchData
-from .data_io import ImageData
+from .data_io import ImageData, standardize_mask, standardize_raw_image
 
 
 @dataclass
@@ -488,83 +488,142 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
         return str(output_path)
 
     def _save_batch(self, group: zarr.Group, batch: list, image_id: Union[int, str]) -> None:
-        """Save a batch of patches to a zarr group.
+        """Save a batch of patches to a zarr group, ensuring consistent shape format.
 
         Args:
             group: Zarr group to save to
             batch: List of tuples (raw_patch, mask_patch, cell_index, cell_type)
             image_id: Identifier for the source image
         """
-        raw_patches = np.stack([x[0] for x in batch])
-        mask_patches = np.stack([x[1] for x in batch])
+        raw_patches = np.stack([x[0] for x in batch])  # Already in (N, C, H, W) format
+        mask_patches = np.stack([x[1] for x in batch])  # Ensure (N, 1, H, W) format
         cell_indices = np.array([x[2] for x in batch])
+        
+        # Standardize mask patches if needed
+        if mask_patches.ndim == 3:  # If (N, H, W)
+            mask_patches = mask_patches[:, np.newaxis, ...]
+        elif mask_patches.ndim == 4 and mask_patches.shape[-1] == 1:  # If (N, H, W, 1)
+            mask_patches = np.transpose(mask_patches, (0, 3, 1, 2))
         
         group["raw"].append(raw_patches)
         group["mask"].append(mask_patches)
         group["cell_index"].append(cell_indices)
         group["file_name"].append(np.array([str(image_id)] * len(batch), dtype="U100"))
 
-    def predict(
-        self, preprocessed_path: str, images: Sequence[ImageData], **kwargs
-    ) -> Sequence[ImageData]:
-        """Run DeepCell Types prediction and update ImageData objects.
 
-        Args:
-            preprocessed_path: Path to preprocessed patches
-            images: ImageData objects to update with predictions
-            **kwargs: Additional prediction parameters
-
-        Returns:
-            phenotyped_images: List of ImageData objects with updated predictions
+    def preprocess(
+        self,
+        images: List[ImageData],
+        output_path: Optional[str] = None,
+        batch_size: int = 2000,
+        dct_config: Optional[DCTConfig] = None,
+    ) -> str:
+        """Preprocess images for cell phenotyping by creating image patches.
+        
+        Updates to ensure consistent shape handling.
         """
-        dataset = PatchDataset(
-            Path(preprocessed_path),
-            self.dct_config,
-            celltype_mapping=kwargs.get('celltype_mapping'),
-            channel_mapping=kwargs.get('channel_mapping')
-        )
+        if not images:
+            raise ValueError("No images provided")
+            
+        # Initialize config if not provided
+        if dct_config is None:
+            dct_config = DCTConfig()
 
-        dataloader = DataLoader(
-            dataset,
-            batch_size=self.config.batch_size,
-            shuffle=False,
-            num_workers=self.config.num_workers,
-        )
+        if output_path is None:
+            output_path = Path(self.config.intermediate_dir) / "preprocessed.zarr"
+        else:
+            output_path = Path(output_path)
 
-        # Store predictions for each cell
-        cell_predictions = defaultdict(dict)  # {image_name: {cell_idx: predicted_type}}
+        # Create output zarr store
+        output_group = zarr.open(output_path, mode="w")
 
-        with torch.no_grad():
-            for batch in tqdm(dataloader, desc="Running predictions"):
-                batch_data = BatchData(*batch)
+        # Store metadata
+        output_group.attrs["channel_names"] = images[0].channel_names
 
-                # Get predictions
-                _, _, _, _, probs, _ = self.model(
-                    batch_data.sample.to(self.config.device),
-                    batch_data.ch_idx.to(self.config.device),
-                    batch_data.mask.to(self.config.device),
-                    batch_data.ct_idx.to(self.config.device),
-                )
-
-                # Process predictions
-                pred_classes = probs.argmax(dim=1).cpu().numpy()
-                cell_indices = batch_data.cell_index.cpu().numpy()
-                image_names = batch_data.fov_name
-
-                # Store predictions
-                for idx, pred, img_name in zip(cell_indices, pred_classes, image_names):
-                    cell_predictions[img_name][idx] = self.dct_config.idx2ct[pred]
-
-        # Update ImageData objects with predictions
-        updated_images = []
-        for img in images:
-            if str(img.image_id) in cell_predictions:
-                updated = replace(
-                    img,
-                    predicted_cell_types=dict(cell_predictions[str(img.image_id)])
-                )
+        # Find all unique cell types
+        unique_cell_types = set()
+        for image in images:
+            if image.cell_type_info:
+                unique_cell_types.update(image.cell_type_info.values())
             else:
-                updated = img
-            updated_images.append(updated)
+                unique_cell_types.add("Unknown")
 
-        return updated_images
+        # Create groups for each cell type
+        num_channels = len(images[0].channel_names)
+        patch_shape = (
+            num_channels,
+            dct_config.CROP_SIZE,
+            dct_config.CROP_SIZE,
+        )
+
+        for cell_type in unique_cell_types:
+            ct_group = output_group.create_group(cell_type)
+            ct_group.create_dataset(
+                "raw",
+                shape=(0, *patch_shape),
+                chunks=(64, *patch_shape),
+                dtype="float32",
+            )
+            ct_group.create_dataset(
+                "mask",
+                shape=(0, 1, patch_shape[1], patch_shape[2]),  # Ensure (N, 1, H, W) format
+                chunks=(64, 1, patch_shape[1], patch_shape[2]),
+                dtype="float32",
+            )
+            ct_group.create_dataset(
+                "cell_index", shape=(0,), chunks=(64,), dtype="int32"
+            )
+            ct_group.create_dataset(
+                "file_name", shape=(0,), chunks=(64,), dtype="U100"
+            )
+
+        # Calculate quantile values for normalization
+        q_values = []
+        for image in images:
+            # Ensure raw is in (C, H, W) format
+            raw = standardize_raw_image(image.raw.astype(np.float32))[0]
+            raw[raw == 0] = np.nan
+            q = np.nanquantile(raw, 0.99, axis=(1, 2))
+            q_values.append(q)
+
+        q_values = np.array(q_values)
+        final_q = np.nanmean(q_values, axis=0)
+
+        # Process each image
+        for image in tqdm(images, desc="Processing images"):
+            raw = standardize_raw_image(image.raw.astype(np.float32))[0]
+            mask = standardize_mask(image.predicted_mask if image.predicted_mask is not None else image.mask)
+
+            if mask is None:
+                raise ValueError(f"No mask available for image {image.image_id}")
+
+            # Get cell type information
+            cell_indices = None
+            cell_types = None
+            if image.cell_type_info:
+                cell_indices = list(image.cell_type_info.keys())
+                cell_types = [image.cell_type_info[idx] for idx in cell_indices]
+
+            # Generate and store patches
+            batches = defaultdict(list)
+            for raw_patch, mask_patch, idx, orig_ct in patch_generator(
+                raw,
+                mask[0],  # Pass 2D mask to patch generator
+                image.image_mpp,
+                dct_config=dct_config,
+                final_q=final_q,
+                cell_index=cell_indices,
+                cell_type=cell_types,
+            ):
+                batches[orig_ct].append((raw_patch, mask_patch, idx, orig_ct))
+
+                if len(batches[orig_ct]) == batch_size:
+                    self._save_batch(output_group[orig_ct], batches[orig_ct], image.image_id)
+                    batches[orig_ct] = []
+
+            # Process remaining patches
+            for orig_ct, items in batches.items():
+                if items:
+                    self._save_batch(output_group[orig_ct], items, image.image_id)
+
+        return str(output_path)

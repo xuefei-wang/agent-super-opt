@@ -13,7 +13,7 @@ from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
 
-from .data_io import ImageData
+from .data_io import ImageData, standardize_mask
 
 
 class ChannelSpec:
@@ -62,7 +62,11 @@ def calculate_object_metrics(
     Returns:
         Dictionary containing computed metrics
     """
-    # Ensure masks are 2D for processing
+    # Ensure masks are standardized
+    true_mask = standardize_mask(true_mask)
+    pred_mask = standardize_mask(pred_mask)
+
+    # Use first channel for processing
     true_mask = true_mask[0]  # Convert (1, H, W) to (H, W)
     pred_mask = pred_mask[0]  # Convert (1, H, W) to (H, W)
 
@@ -82,7 +86,6 @@ def calculate_object_metrics(
 
     if pred_n == 0:
         return {"mean_iou": 0.0, "precision": 1.0, "recall": 0.0, "f1_score": 0.0}
-
 
     # Compute IoU matrix
     iou_matrix = np.zeros((true_n, pred_n))
@@ -378,14 +381,8 @@ class MesmerSegmenter(BaseSegmenter):
         except Exception as e:
             raise RuntimeError(f"Mesmer segmentation failed: {str(e)}") from e
 
-        # Ensure output is in (1, H, W) format
-        if labels.ndim == 4:  # (B, H, W, 1)
-            labels = np.transpose(labels[0], (2, 0, 1))  # Convert to (1, H, W)
-        elif labels.ndim == 3:  # (H, W, 1) or (1, H, W)
-            if labels.shape[-1] == 1:
-                labels = np.transpose(labels, (2, 0, 1))  # Convert to (1, H, W)
-            else:
-                labels = labels[np.newaxis, ...]  # Add channel dimension
+        # Standardize output to (1, H, W) format
+        labels = standardize_mask(labels)
 
         return replace(image_data, predicted_mask=labels)
 
@@ -575,7 +572,7 @@ class SAM2Segmenter(BaseSegmenter):
             mask = mask_data["segmentation"]
             combined_mask[mask] = idx
 
-        # Add channel dimension to match expected format (1, H, W)
-        combined_mask = combined_mask[np.newaxis, ...]
+        # Standardize to (1, H, W) format
+        combined_mask = standardize_mask(combined_mask)
 
         return replace(image_data, predicted_mask=combined_mask)
