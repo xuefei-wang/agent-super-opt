@@ -167,3 +167,6 @@ sci-agent-dev/
 pretrained/
 output/
 artifacts/
+
+src/sam2/
+src/deepcelltypes/
