@@ -386,8 +386,8 @@ class NpzDataset:
     their corresponding masks.
 
     The data is expected to be stored with keys:
-    - 'X': Raw images with shape (batch, channel, height, width)
-    - 'y': Masks with shape (batch, 1, height, width)
+    - 'X': Raw images with shape (batch, height, width, 1) or (batch, height, width)
+    - 'y': Masks with shape (batch, height, width, 1) or (batch, height, width)
     - 'meta': Metadata array where first column contains image IDs
     """
 
@@ -414,20 +414,55 @@ class NpzDataset:
             raise ValueError(f"Invalid dataset format: {str(e)}")
 
     @staticmethod
+    def _standardize_array(arr: np.ndarray, is_mask: bool = False) -> np.ndarray:
+        """Standardize array shape to (batch, channel, height, width) format.
+        
+        Args:
+            arr: Input array with shape (batch, height, width, 1) or (batch, height, width)
+            is_mask: Whether the array is a mask (affects channel handling)
+            
+        Returns:
+            np.ndarray: Standardized array with shape (batch, channel, height, width)
+            
+        Raises:
+            ValueError: If input shape is invalid
+        """
+        if arr.ndim not in [3, 4]:
+            raise ValueError(f"Invalid array dimensionality {arr.ndim}. Expected 3 or 4 dimensions.")
+            
+        # Handle (batch, H, W) -> (batch, 1, H, W)
+        if arr.ndim == 3:
+            arr = arr[..., np.newaxis]
+            
+        # Now arr is (batch, H, W, C)
+        # Convert to (batch, C, H, W)
+        arr = np.transpose(arr, (0, 3, 1, 2))
+        
+        # For masks, ensure single channel and integer type
+        if is_mask:
+            if arr.shape[1] != 1:
+                raise ValueError("Masks must have exactly one channel")
+            arr = arr.astype(np.int32)
+            
+        return arr
+
+    @staticmethod
     def _validate_shapes(X: np.ndarray, y: np.ndarray) -> None:
         """Validate shapes and dimensions of input arrays."""
-        # Check X dimensions
-        if X.ndim != 4:
-            raise ValueError("Raw data must have shape (batch, channel, height, width)")
-
-        # Check y dimensions
-        if y.ndim != 4 or y.shape[1] != 1:
-            raise ValueError("Mask data must have shape (batch, 1, height, width)")
-
-        # Check spatial dimensions match
-        if X.shape[0] != y.shape[0]:  # Batch size
+        # Check basic dimensionality
+        if X.ndim not in [3, 4] or y.ndim not in [3, 4]:
+            raise ValueError("Arrays must have 3 or 4 dimensions")
+            
+        # Get spatial dimensions (height, width)
+        x_spatial = X.shape[1:3] if X.ndim == 3 else X.shape[1:3]
+        y_spatial = y.shape[1:3] if y.ndim == 3 else y.shape[1:3]
+        
+        # Check batch size matches
+        if X.shape[0] != y.shape[0]:
             raise ValueError("Raw and mask data must have matching batch sizes")
-        if X.shape[2:] != y.shape[2:]:  # Height and width
+            
+        # Check spatial dimensions match
+        if x_spatial != y_spatial:
             raise ValueError("Raw and mask data must have matching spatial dimensions")
 
     def load(self, indices: Optional[List[int]] = None) -> List[ImageData]:
@@ -444,8 +479,12 @@ class NpzDataset:
             IndexError: If any index is out of bounds
         """
         with np.load(self.path, allow_pickle=True) as data:
-            X = data["X"]  # (batch, channel, H, W)
-            y = data["y"]  # (batch, 1, H, W)
+            X = data["X"]  # (batch, H, W, 1) or (batch, H, W)
+            y = data["y"]  # (batch, H, W, 1) or (batch, H, W)
+            
+            # Standardize shapes
+            X = self._standardize_array(X, is_mask=False)  # -> (batch, C, H, W)
+            y = self._standardize_array(y, is_mask=True)   # -> (batch, 1, H, W)
 
             if indices is None:
                 indices = range(len(X))
@@ -453,19 +492,20 @@ class NpzDataset:
             try:
                 images = []
                 for i in indices:
-                    # X[i] is already in (C, H, W) format
-                    # y[i] is already in (1, H, W) format
-                    images.append(ImageData(raw=X[i], mask=y[i], image_id=i))
+                    images.append(
+                        ImageData(
+                            raw=X[i],        # (C, H, W)
+                            mask=y[i],       # (1, H, W)
+                            image_id=i,
+                            channel_names=["channel_0"]  # Single channel data
+                        )
+                    )
                 return images
             except IndexError as e:
                 raise IndexError(f"Invalid index in dataset: {str(e)}")
 
     def load_all(self) -> List[ImageData]:
-        """Load all images from dataset.
-
-        Returns:
-            List[ImageData]: All images in the dataset
-        """
+        """Load all images from dataset."""
         return self.load()
 
     @classmethod
@@ -480,8 +520,12 @@ class NpzDataset:
             validate: Whether to validate data consistency before saving
 
         Raises:
-            ValueError: If validation fails
+            ValueError: If validation fails or data format is invalid
             FileExistsError: If file already exists
+            
+        Notes:
+            Saves data in (batch, H, W, 1) format to match the expected input format.
+            Single channel data is enforced for both raw images and masks.
         """
         path = Path(path)
         if path.exists():
@@ -490,10 +534,21 @@ class NpzDataset:
         if validate:
             for image in images:
                 image.validate()
+                # Ensure single channel data
+                if image.raw.shape[0] != 1:
+                    raise ValueError(f"Raw data must be single channel, got {image.raw.shape[0]} channels")
 
-        # Stack data - ImageData objects already have standardized shapes
-        X = np.stack([img.raw for img in images])  # Will be (batch, C, H, W)
-        y = np.stack([img.mask for img in images])  # Will be (batch, 1, H, W)
+        # Stack data - ImageData objects have standardized shapes (C, H, W)
+        X = np.stack([img.raw for img in images])  # (batch, C, H, W)
+        y = np.stack([img.mask for img in images])  # (batch, 1, H, W)
+
+        # Convert to required output format (batch, H, W, 1)
+        X = np.transpose(X, (0, 2, 3, 1))  # -> (batch, H, W, C)
+        y = np.transpose(y, (0, 2, 3, 1))  # -> (batch, H, W, 1)
+
+        # Squeeze any extra dimensions but keep the channel dimension
+        X = np.expand_dims(X.squeeze(), axis=-1)  # Ensure (batch, H, W, 1)
+        y = np.expand_dims(y.squeeze(), axis=-1)  # Ensure (batch, H, W, 1)
 
         cls._validate_shapes(X, y)
 
@@ -507,7 +562,7 @@ class NpzDataset:
         """Get shapes of the raw and mask data.
 
         Returns:
-            Tuple containing shapes of (X, y) arrays
+            Tuple containing shapes of (X, y) arrays in their original format
         """
         with np.load(self.path, allow_pickle=True) as data:
             return data["X"].shape, data["y"].shape
@@ -522,10 +577,6 @@ class NpzDataset:
             return list(range(len(data["X"])))
 
     def __len__(self) -> int:
-        """Get number of samples in the dataset.
-
-        Returns:
-            int: Number of images in the dataset
-        """
+        """Get number of samples in the dataset."""
         with np.load(self.path) as data:
             return len(data["X"])

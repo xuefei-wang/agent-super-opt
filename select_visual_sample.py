@@ -175,9 +175,19 @@ if __name__ == "__main__":
     y = np.stack([img.mask if img.mask is not None else np.zeros_like(img.raw) 
                   for img in selected_images])
 
-    # Save in NPZ format matching the input dataset structure
+    # Create ImageData objects from selected data
+    selected_data = []
+    for i, (x, y) in enumerate(zip(X, y)):
+        selected_data.append(ImageData(
+            raw=x,  # Already in (C, H, W) format from ImageData standardization
+            mask=y,  # Already in (1, H, W) format from ImageData standardization
+            image_id=selected_indices[i],
+            channel_names=["channel_0"]  # Single channel data
+        ))
+    
+    # Save using NpzDataset to ensure consistent format
     output_path = output_dir / "diverse_samples.npz"
-    np.savez_compressed(output_path, X=X, y=y)
+    NpzDataset.save(output_path, selected_data)
     
     # Save indices for reference
     np.save(output_dir / "selected_indices.npy", selected_indices)

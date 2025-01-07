@@ -33,44 +33,41 @@ def visualize_diverse_samples(
         selected_indices = np.load(indices_path)
         logging.info(f"Loaded indices: {selected_indices}")
     
-    # Load diverse samples
+    # Load diverse samples using NpzDataset which handles standardization
     logging.info(f"Loading samples from {npz_path}")
     dataset = NpzDataset(npz_path)
-    images = dataset.load_all()
+    images = dataset.load_all()  # Will return ImageData objects with standardized formats
     logging.info(f"Loaded {len(images)} images")
     
     # Create visualizations for each image
     for i, img in enumerate(images):
         # Create figure with two subplots side by side
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-        fig.suptitle(f'Sample {i}' + (f' (Original Index: {selected_indices[i]})' if selected_indices is not None else ''))
+        
+        # Add title with original index if available
+        fig.suptitle(
+            f'Sample {i}' + 
+            (f' (Original Index: {selected_indices[i]})' if selected_indices is not None else '')
+        )
         
         # Plot raw image
-        raw = img.raw
-        if raw.ndim == 3:
-            if raw.shape[0] == 1:  # (1, H, W)
-                raw = raw[0]
-            elif raw.shape[-1] == 1:  # (H, W, 1)
-                raw = raw[..., 0]
+        # ImageData standardizes raw to (C, H, W) format, so take first channel
+        raw = img.raw[0]  # Get first channel
         im1 = ax1.imshow(raw, cmap='gray')
         ax1.set_title('Raw Image')
         ax1.axis('off')
-        # plt.colorbar(im1, ax=ax1)
         
         # Plot mask
-        mask = img.mask
-        if mask is not None:
-            if mask.ndim == 3:
-                if mask.shape[0] == 1:  # (1, H, W)
-                    mask = mask[0]
-                elif mask.shape[-1] == 1:  # (H, W, 1)
-                    mask = mask[..., 0]
+        # ImageData standardizes mask to (1, H, W) format
+        if img.mask is not None:
+            mask = img.mask[0]  # Get first channel
             
             # Create colored mask visualization
             from scipy import ndimage
             unique_cells = np.unique(mask)
             colored_mask = np.zeros((*mask.shape, 3))
             
+            # Color each cell
             for j, cell_id in enumerate(unique_cells[1:], 1):  # Skip 0 (background)
                 cell_mask = mask == cell_id
                 # Calculate center of mass for label
@@ -89,8 +86,10 @@ def visualize_diverse_samples(
         
         # Adjust layout and save
         plt.tight_layout()
-        orig_id = selected_indices[i]
-        output_path = output_dir / f"diverse_sample_{i:02d}_{orig_id:03d}.png"
+        
+        # Use original index in filename if available
+        orig_id = selected_indices[i] if selected_indices is not None else i
+        output_path = output_dir / f"diverse_sample_{i:02d}_orig_{orig_id:03d}.png"
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
         
