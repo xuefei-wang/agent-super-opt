@@ -13,6 +13,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import hydra
+from hydra.core.global_hydra import GlobalHydra
+
+# Initialize Hydra config path to bypass SAM-2's settings
+if not GlobalHydra().is_initialized():
+    hydra.initialize(config_path="src/sam2/sam2/configs", version_base="1.2")
+
 import argparse
 import logging
 from pathlib import Path
@@ -119,6 +126,11 @@ def run_pipeline(
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
 
+    # Set up SAM2 model config and path
+    PROJECT_ROOT = Path(__file__).parent
+    model_cfg = "sam2.1/sam2.1_hiera_l.yaml" # Config path has already been set to it parent folder
+    checkpoint_path= str(PROJECT_ROOT / "src/sam2/checkpoints/sam2.1_hiera_large.pt")
+
     # Set random seed for reproducibility
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -139,8 +151,8 @@ def run_pipeline(
         segmenter = MesmerSegmenter()
     elif segmenter_type.lower() == "sam2":
         segmenter = SAM2Segmenter(
-            model_cfg="src/sam2/configs/sam2.1/sam2.1_hiera_l.yaml",
-            checkpoint_path="src/sam2/checkpoints/sam2.1_hiera_large.pt",
+            model_cfg=model_cfg,
+            checkpoint_path=checkpoint_path,
         )
     else:
         raise ValueError(f"Unknown segmenter type: {segmenter_type}")

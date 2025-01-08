@@ -469,14 +469,7 @@ class SAM2Segmenter(BaseSegmenter):
 
         Raises:
             RuntimeError: If model initialization fails
-            FileNotFoundError: If model files not found
         """
-        # Validate paths
-        if not Path(model_cfg).exists():
-            raise FileNotFoundError(f"Model config not found at {model_cfg}")
-        if not Path(checkpoint_path).exists():
-            raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
-
         self.device = device
 
         # Initialize SAM2 model
