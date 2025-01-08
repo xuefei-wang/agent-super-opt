@@ -32,6 +32,7 @@ import torch
 from skimage.restoration import denoise_nl_means
 from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from src.data_io import NpzDataset, ImageData
 from src.segmentation import MesmerSegmenter, SAM2Segmenter
@@ -145,6 +146,7 @@ def run_pipeline(
         raise ValueError(f"Unknown segmenter type: {segmenter_type}")
 
     processed_images = {}
+    metrics_list = []
 
     # Process each image
     for image in images:
@@ -159,6 +161,13 @@ def run_pipeline(
         try:
             segmented_image = segmenter.predict(denoised_image)
             processed_images[str(image.image_id)] = segmented_image
+            if segmented_image.mask is not None:
+                logger.info("Calculating evaluation metrics")
+                metrics = segmenter.calculate_object_metrics(segmented_image.mask, segmented_image.predicted_mask)
+                logger.info(f"Metrics: {metrics}")
+                metrics_list.append(metrics)
+            else:
+                logging.info("Grountruth mask not available, skipping metric calculation")
             
         except Exception as e:
             logger.error(f"Segmentation failed for image {image.image_id}: {str(e)}")
@@ -204,10 +213,10 @@ def run_pipeline(
 
     # Calculate and save metrics if ground truth is available
     if any(img.mask is not None for img in images):
-        logger.info("Calculating evaluation metrics")
-        metrics = segmenter.calculate_metrics(list(processed_images.values()))
-        save_metrics(metrics, output_dir)
-        logger.info(f"Metrics: {metrics}")
+        df = pd.DataFrame(metrics_list)
+        avg_metrics = df.mean().to_dict()
+        save_metrics(avg_metrics, output_dir)
+        logger.info(f"Average Metrics: {avg_metrics}")
 
     return processed_images
 
