@@ -20,6 +20,7 @@ from hydra.core.global_hydra import GlobalHydra
 if not GlobalHydra().is_initialized():
     hydra.initialize(config_path="src/sam2/sam2/configs", version_base="1.2")
 
+from pathlib import Path
 import argparse
 import logging
 from pathlib import Path
@@ -53,29 +54,15 @@ def denoise_image(image_data: ImageData, sigma: float = 1.0) -> ImageData:
     Returns:
         ImageData with denoised raw data
     """
-    # Handle multichannel vs single channel data
+    # ImageData already standardizes raw to (C, H, W) format
     raw = image_data.raw
-    if raw.ndim == 3 and raw.shape[0] > 1:  # Multichannel (C, H, W)
-        denoised = np.zeros_like(raw)
-        for i in range(raw.shape[0]):
-            denoised[i] = gaussian_filter(raw[i], sigma=sigma)
-    else:  # Single channel
-        if raw.ndim == 3:
-            raw = raw[..., 0]  # Convert (H, W, 1) to (H, W)
-        denoised = gaussian_filter(raw, sigma=sigma)
-        if image_data.raw.ndim == 3:
-            denoised = denoised[..., np.newaxis]
-
-    return ImageData(
-        raw=denoised,
-        image_id=image_data.image_id,
-        channel_names=image_data.channel_names,
-        tissue_type=image_data.tissue_type,
-        cell_types=image_data.cell_types,
-        image_mpp=image_data.image_mpp,
-        mask=image_data.mask,
-    )
-
+    denoised = np.zeros_like(raw)
+    
+    # Apply denoising to each channel
+    for i in range(raw.shape[0]):
+        denoised[i] = gaussian_filter(raw[i], sigma=sigma)
+    
+    return replace(image_data, raw=denoised)
 
 def set_gpu_device(gpu_id: int) -> None:
     """Set global GPU device for both PyTorch and TensorFlow."""
