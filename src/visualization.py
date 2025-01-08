@@ -95,7 +95,7 @@ class NapariViewer(BaseVisualizer):
         """Display multichannel raw data as separate layers."""
         if data.raw is None:
             return
-            
+
         # Data should already be in (C, H, W) format from ImageData standardization
         if len(data.channel_names) != data.raw.shape[0]:
             raise ValueError("Number of channels does not match channel names")
@@ -313,7 +313,9 @@ class MatplotlibVisualizer(BaseVisualizer):
             # Create overlay
             combined = np.zeros((*gt_vis.shape[:2], 3))
             combined[..., 0] = data.mask[0] > 0  # Red channel for ground truth
-            combined[..., 1] = data.predicted_mask[0] > 0  # Green channel for prediction
+            combined[..., 1] = (
+                data.predicted_mask[0] > 0
+            )  # Green channel for prediction
             ax3.imshow(combined)
             ax3.set_title("Overlay (GT=Red, Pred=Green)")
         ax3.axis("off")

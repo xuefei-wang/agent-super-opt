@@ -116,7 +116,6 @@ class BaseSegmenter(ABC):
         """
         pass
 
-
     @staticmethod
     def calculate_object_metrics(
         true_mask: np.ndarray, pred_mask: np.ndarray, iou_threshold: float = 0.5

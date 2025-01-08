@@ -432,9 +432,7 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
             ct_group.create_dataset(
                 "cell_index", shape=(0,), chunks=(64,), dtype="int32"
             )
-            ct_group.create_dataset(
-                "file_name", shape=(0,), chunks=(64,), dtype="U100"
-            )
+            ct_group.create_dataset("file_name", shape=(0,), chunks=(64,), dtype="U100")
 
         # Calculate quantile values for normalization
         q_values = []
@@ -450,7 +448,9 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
         # Process each image
         for image in tqdm(images, desc="Processing images"):
             raw = image.raw.astype(np.float32)
-            mask = image.predicted_mask if image.predicted_mask is not None else image.mask
+            mask = (
+                image.predicted_mask if image.predicted_mask is not None else image.mask
+            )
 
             if mask is None:
                 raise ValueError(f"No mask available for image {image.image_id}")
@@ -477,7 +477,9 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
 
                 # Process full batches
                 if len(batches[orig_ct]) == batch_size:
-                    self._save_batch(output_group[orig_ct], batches[orig_ct], image.image_id)
+                    self._save_batch(
+                        output_group[orig_ct], batches[orig_ct], image.image_id
+                    )
                     batches[orig_ct] = []
 
             # Process remaining patches
@@ -487,7 +489,9 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
 
         return str(output_path)
 
-    def _save_batch(self, group: zarr.Group, batch: list, image_id: Union[int, str]) -> None:
+    def _save_batch(
+        self, group: zarr.Group, batch: list, image_id: Union[int, str]
+    ) -> None:
         """Save a batch of patches to a zarr group, ensuring consistent shape format.
 
         Args:
@@ -498,18 +502,17 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
         raw_patches = np.stack([x[0] for x in batch])  # Already in (N, C, H, W) format
         mask_patches = np.stack([x[1] for x in batch])  # Ensure (N, 1, H, W) format
         cell_indices = np.array([x[2] for x in batch])
-        
+
         # Standardize mask patches if needed
         if mask_patches.ndim == 3:  # If (N, H, W)
             mask_patches = mask_patches[:, np.newaxis, ...]
         elif mask_patches.ndim == 4 and mask_patches.shape[-1] == 1:  # If (N, H, W, 1)
             mask_patches = np.transpose(mask_patches, (0, 3, 1, 2))
-        
+
         group["raw"].append(raw_patches)
         group["mask"].append(mask_patches)
         group["cell_index"].append(cell_indices)
         group["file_name"].append(np.array([str(image_id)] * len(batch), dtype="U100"))
-
 
     def preprocess(
         self,
@@ -519,12 +522,12 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
         dct_config: Optional[DCTConfig] = None,
     ) -> str:
         """Preprocess images for cell phenotyping by creating image patches.
-        
+
         Updates to ensure consistent shape handling.
         """
         if not images:
             raise ValueError("No images provided")
-            
+
         # Initialize config if not provided
         if dct_config is None:
             dct_config = DCTConfig()
@@ -566,16 +569,19 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
             )
             ct_group.create_dataset(
                 "mask",
-                shape=(0, 1, patch_shape[1], patch_shape[2]),  # Ensure (N, 1, H, W) format
+                shape=(
+                    0,
+                    1,
+                    patch_shape[1],
+                    patch_shape[2],
+                ),  # Ensure (N, 1, H, W) format
                 chunks=(64, 1, patch_shape[1], patch_shape[2]),
                 dtype="float32",
             )
             ct_group.create_dataset(
                 "cell_index", shape=(0,), chunks=(64,), dtype="int32"
             )
-            ct_group.create_dataset(
-                "file_name", shape=(0,), chunks=(64,), dtype="U100"
-            )
+            ct_group.create_dataset("file_name", shape=(0,), chunks=(64,), dtype="U100")
 
         # Calculate quantile values for normalization
         q_values = []
@@ -592,7 +598,9 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
         # Process each image
         for image in tqdm(images, desc="Processing images"):
             raw = standardize_raw_image(image.raw.astype(np.float32))[0]
-            mask = standardize_mask(image.predicted_mask if image.predicted_mask is not None else image.mask)
+            mask = standardize_mask(
+                image.predicted_mask if image.predicted_mask is not None else image.mask
+            )
 
             if mask is None:
                 raise ValueError(f"No mask available for image {image.image_id}")
@@ -618,7 +626,9 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
                 batches[orig_ct].append((raw_patch, mask_patch, idx, orig_ct))
 
                 if len(batches[orig_ct]) == batch_size:
-                    self._save_batch(output_group[orig_ct], batches[orig_ct], image.image_id)
+                    self._save_batch(
+                        output_group[orig_ct], batches[orig_ct], image.image_id
+                    )
                     batches[orig_ct] = []
 
             # Process remaining patches

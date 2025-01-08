@@ -128,7 +128,9 @@ def run_pipeline(
     try:
         dataset = NpzDataset(data_path)
         # images = dataset.load_all()
-        images = dataset.load(np.random.choice(len(dataset), 10)) # Load only 10 images for testing
+        images = dataset.load(
+            np.random.choice(len(dataset), 3)
+        )  # Load only 3 images for testing
         logger.info(f"Loaded {len(images)} images")
     except Exception as e:
         logger.error(f"Failed to load dataset: {str(e)}")
@@ -163,12 +165,16 @@ def run_pipeline(
             processed_images[str(image.image_id)] = segmented_image
             if segmented_image.mask is not None:
                 logger.info("Calculating evaluation metrics")
-                metrics = segmenter.calculate_object_metrics(segmented_image.mask, segmented_image.predicted_mask)
+                metrics = segmenter.calculate_object_metrics(
+                    segmented_image.mask, segmented_image.predicted_mask
+                )
                 logger.info(f"Metrics: {metrics}")
                 metrics_list.append(metrics)
             else:
-                logging.info("Grountruth mask not available, skipping metric calculation")
-            
+                logging.info(
+                    "Grountruth mask not available, skipping metric calculation"
+                )
+
         except Exception as e:
             logger.error(f"Segmentation failed for image {image.image_id}: {str(e)}")
             continue
