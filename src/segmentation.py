@@ -7,6 +7,7 @@ from scipy.optimize import linear_sum_assignment
 import pandas as pd
 from pathlib import Path
 import torch
+import logging
 
 from deepcell.applications import Mesmer
 from sam2.build_sam import build_sam2
@@ -438,24 +439,23 @@ class SAM2Segmenter(BaseSegmenter):
         self,
         model_cfg: str,
         checkpoint_path: str,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        points_per_side: int = 64,
-        points_per_batch: int = 128,
-        pred_iou_thresh: float = 0.7,
-        stability_score_thresh: float = 0.92,
-        stability_score_offset: float = 0.7,
-        crop_n_layers: int = 1,
+        points_per_side: Optional[int] = 32,
+        points_per_batch: int = 64,
+        pred_iou_thresh: float = 0.8,
+        stability_score_thresh: float = 0.95,
+        stability_score_offset: float = 1.0,
         box_nms_thresh: float = 0.7,
-        crop_n_points_downscale_factor: int = 2,
-        min_mask_region_area: float = 25.0,
-        use_m2m: bool = True,
+        crop_n_layers: int = 0,
+        crop_n_points_downscale_factor: int = 1,
+        min_mask_region_area: int = 0,
+        use_m2m: bool = False,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         """Initialize SAM2 model and mask generator.
 
         Args:
             model_cfg: Path to SAM2 model configuration file
             checkpoint_path: Path to SAM2 model weights
-            device: Device to run model on ('cuda' or 'cpu')
             points_per_side: Number of points to sample along each side
             points_per_batch: Number of points to process in parallel
             pred_iou_thresh: Threshold for predicted mask quality
@@ -466,6 +466,7 @@ class SAM2Segmenter(BaseSegmenter):
             crop_n_points_downscale_factor: Factor to reduce points in deeper crops
             min_mask_region_area: Minimum area for mask regions
             use_m2m: Whether to use mask-to-mask refinement
+            device: Device to run model on ('cuda' or 'cpu')
 
         Raises:
             RuntimeError: If model initialization fails
@@ -513,6 +514,7 @@ class SAM2Segmenter(BaseSegmenter):
         Returns:
             np.ndarray: Processed image with shape (height, width, 3)
         """
+
         raw = image_data.raw
 
         # Handle different input formats
