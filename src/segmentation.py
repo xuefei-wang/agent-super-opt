@@ -563,9 +563,15 @@ class SAM2Segmenter(BaseSegmenter):
 
         # Convert SAM2 output to our format
         combined_mask = np.zeros(processed_img.shape[:2], dtype=np.int32)
-        for idx, mask_data in enumerate(masks, start=1):
+        idx = 1
+        for mask_data in masks:
             mask = mask_data["segmentation"]
+            area = mask_data["area"]
+            if area > 5000:
+                logging.info("Skipping potential background segmentation")
+                continue
             combined_mask[mask] = idx
+            idx += 1
 
         # Standardize to (1, H, W) format
         combined_mask = standardize_mask(combined_mask)
