@@ -496,8 +496,8 @@ class SAM2Segmenter(BaseSegmenter):
             output_mode="binary_mask",
         )
 
-    def preprocess_channels(
-        self, image_data: ImageData, channel_spec: ChannelSpec
+    def preprocess(
+        self, image_data: ImageData, channel_spec: Optional[ChannelSpec] = None
     ) -> np.ndarray:
         """Prepare image data for SAM2 input.
 
