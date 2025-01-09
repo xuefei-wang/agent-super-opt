@@ -225,14 +225,26 @@ class MatplotlibVisualizer(BaseVisualizer):
     """Static visualization class using matplotlib for saving image outputs."""
 
     def __init__(self, config: VisConfig):
-        """Initialize the matplotlib visualizer with configuration."""
+        """Initialize the matplotlib visualizer with configuration.
+        
+        Args:
+            config: VisConfig object containing visualization settings
+        """
         self.config = config
         self.cell_type_colormap = None
         if config.output_dir:
             os.makedirs(config.output_dir, exist_ok=True)
 
-    def plot_channels(self, data: ImageData, prefix: str = "") -> None:
-        """Plot each channel separately and save to files."""
+    def plot_channels(self, data: ImageData, prefix: str = "") -> Optional[Path]:
+        """Plot each channel separately and save to files.
+        
+        Args:
+            data: ImageData object containing raw image data
+            prefix: Prefix for saved file names
+        
+        Returns:
+            Path to saved image if output_dir is specified, None otherwise
+        """
         if data.raw is None or not data.channel_names:
             return
 
@@ -249,12 +261,22 @@ class MatplotlibVisualizer(BaseVisualizer):
                     / f"{data.image_id}_channel_{channel_name}.png"
                 )
                 plt.savefig(output_path, dpi=self.config.dpi, bbox_inches="tight")
+                return output_path
             plt.close()
+            return None
 
     def _prepare_mask_visualization(
         self, mask: np.ndarray, cell_type_info: Optional[Dict[int, str]] = None
     ) -> np.ndarray:
-        """Prepare mask for visualization, ensuring correct dimensions and coloring."""
+        """Prepare mask for visualization, ensuring correct dimensions and coloring.
+        
+        Args:
+            mask: 2D array where each value is a cell index
+            cell_type_info: Dictionary mapping cell indices to cell types
+            
+        Returns:
+            RGB image visualization of the mask
+        """
         # Ensure mask is 2D
         if mask.ndim == 3:
             if mask.shape[-1] == 1:
@@ -283,8 +305,14 @@ class MatplotlibVisualizer(BaseVisualizer):
                 rgb_image[mask == cell_idx] = cmap(i % 20)[:3]
             return rgb_image
 
-    def plot_comparison(self, data: ImageData) -> None:
-        """Plot ground truth and predicted masks side by side with combined visualization."""
+    def plot_comparison(self, data: ImageData) -> Optional[Path]:
+        """Plot ground truth and predicted masks side by side with combined visualization.
+        
+        Args:
+            data: ImageData object containing mask and predicted mask data
+        Returns:
+            Path to saved image if output_dir is specified, None otherwise
+        """
         if data.mask is None:
             return
 
@@ -335,66 +363,6 @@ class MatplotlibVisualizer(BaseVisualizer):
         if self.config.output_dir:
             output_path = self.config.output_dir / f"{data.image_id:03d}_comparison.png"
             plt.savefig(output_path, dpi=self.config.dpi, bbox_inches="tight")
+            return output_path
         plt.close()
-
-
-def visualize(
-    image_data: ImageData, mode: str = "both", config: Optional[VisConfig] = None
-) -> Optional[NapariViewer]:
-    """
-    Unified visualization function supporting both interactive and static modes.
-
-    Args:
-        image_data: ImageData object containing all data to visualize
-        mode: Visualization mode ('interactive', 'static', or 'both')
-        config: Configuration for visualization settings
-
-    Returns:
-        NapariViewer instance if mode is 'interactive' or 'both', None otherwise
-
-    Raises:
-        ValueError: If mode is not one of 'interactive', 'static', or 'both'
-    """
-    if mode not in ["interactive", "static", "both"]:
-        raise ValueError("Mode must be 'interactive', 'static', or 'both'")
-
-    config = config or VisConfig()
-    viewer = None
-
-    # Interactive visualization with napari
-    if mode in ["interactive", "both"]:
-        viewer = NapariViewer(config)
-
-        if config.show_raw and image_data.channel_names is not None:
-            viewer.show_channels(image_data)
-
-        # Add ground truth masks and types
-        if image_data.mask is not None:
-            viewer.add_cell_masks(image_data, name="groundtruth")
-
-        # Add predicted masks if available and requested
-        if config.show_predicted and image_data.predicted_mask is not None:
-            predicted_data = replace(
-                image_data,
-                mask=image_data.predicted_mask,
-                cell_type_info=image_data.predicted_cell_types,
-            )
-            viewer.add_cell_masks(predicted_data, name="predicted")
-
-        viewer.add_legend()
-
-    # Static visualization with matplotlib
-    if mode in ["static", "both"]:
-        if not config.output_dir:
-            raise ValueError("output_dir must be specified for static visualization")
-
-        visualizer = MatplotlibVisualizer(config)
-
-        # Plot raw channels
-        if config.show_raw:
-            visualizer.plot_channels(image_data)
-
-        # Plot comparison visualization
-        visualizer.plot_comparison(image_data)
-
-    return viewer
+        return None
