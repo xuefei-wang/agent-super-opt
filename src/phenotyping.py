@@ -492,12 +492,21 @@ class PhenotyperDeepCellTypes(BasePhenotyper):
     def _save_batch(
         self, group: zarr.Group, batch: list, image_id: Union[int, str]
     ) -> None:
-        """Save a batch of patches to a zarr group, ensuring consistent shape format.
+        """Save a batch of processed patches to a zarr group.
 
         Args:
-            group: Zarr group to save to
-            batch: List of tuples (raw_patch, mask_patch, cell_index, cell_type)
+            group: Zarr group where the batch will be saved
+            batch: List of tuples containing (raw_patch, mask_patch, cell_index, cell_type)
+                  - raw_patch: Array of shape (C, H, W)
+                  - mask_patch: Array of shape (H, W) or (1, H, W)
+                  - cell_index: Integer identifier for the cell
+                  - cell_type: String identifier for cell type
             image_id: Identifier for the source image
+            
+        Notes:
+            - Raw patches are stacked as (N, C, H, W)
+            - Mask patches are standardized to (N, 1, H, W)
+            - Cell indices and file names are stored as 1D arrays
         """
         raw_patches = np.stack([x[0] for x in batch])  # Already in (N, C, H, W) format
         mask_patches = np.stack([x[1] for x in batch])  # Ensure (N, 1, H, W) format

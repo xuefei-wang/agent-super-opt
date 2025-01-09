@@ -120,15 +120,26 @@ class BaseSegmenter(ABC):
     def calculate_object_metrics(
         true_mask: np.ndarray, pred_mask: np.ndarray, iou_threshold: float = 0.5
     ) -> Dict[str, float]:
-        """Calculate segmentation metrics between two masks.
+        """Calculate object-level segmentation metrics between ground truth and predicted masks.
 
         Args:
-            true_mask: Ground truth segmentation mask (1, H, W)
-            pred_mask: Predicted segmentation mask (1, H, W)
-            iou_threshold: IoU threshold for considering an object as correctly detected
+            true_mask: Ground truth segmentation mask with shape (1, H, W) where each
+                      unique positive integer represents a distinct object
+            pred_mask: Predicted segmentation mask with shape (1, H, W) with same 
+                      format as true_mask
+            iou_threshold: Minimum IoU required to consider an object as correctly 
+                         detected (range: 0.0 to 1.0)
 
         Returns:
-            Dictionary containing computed metrics
+            Dictionary with the following metrics:
+                - mean_iou: Mean IoU of correctly matched objects
+                - precision: Fraction of predicted objects that match ground truth
+                - recall: Fraction of ground truth objects that were detected
+                - f1_score: Harmonic mean of precision and recall
+
+        Notes:
+            - Background should be labeled as 0 in both masks
+            - Empty masks (only background) are handled as special cases
         """
         # Ensure masks are standardized
         true_mask = standardize_mask(true_mask)
@@ -524,7 +535,32 @@ class SAM2Segmenter(BaseSegmenter):
         channel_spec: Optional[ChannelSpec] = None,
         **kwargs,
     ) -> ImageData:
-        """Perform segmentation using SAM2."""
+        """Perform segmentation using SAM2 automatic mask generation.
+
+        This method:
+        1. Preprocesses the input image to RGB format
+        2. Generates masks using SAM2's automatic mask generator
+        3. Filters out large masks (potential background)
+        4. Combines individual masks into a single labeled mask
+
+        Args:
+            image_data: ImageData object containing raw image to segment
+            channel_spec: Not used by SAM2, included for interface consistency
+            **kwargs: Additional arguments passed to mask generator
+
+        Returns:
+            ImageData: Copy of input with predicted_mask field populated.
+                      The mask has shape (1, H, W) where each unique positive 
+                      integer represents a distinct cell.
+
+        Raises:
+            RuntimeError: If SAM2 segmentation fails
+            
+        Notes:
+            - Masks larger than 5000 pixels are filtered out as potential background
+            - The output mask uses consecutive integers starting from 1 for labeling
+            - Background is labeled as 0
+        """
         # Preprocess image
         processed_img = self.preprocess(image_data)
 

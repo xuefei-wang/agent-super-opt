@@ -45,7 +45,13 @@ def _extract_image_features(image: ImageData) -> np.ndarray:
         image: ImageData object containing raw image and optional mask
 
     Returns:
-        1D numpy array of features
+        np.ndarray: 1D array of features with shape (n_features,), where n_features
+            depends on number of channels (5 features per channel + 2 mask features)
+
+    Notes:
+        - For multichannel images, features are extracted per channel
+        - If no mask is available, cell-based features are set to 0
+        - Input images are automatically standardized to (C, H, W) format
     """
     features = []
     raw = image.raw
@@ -92,15 +98,19 @@ def select_diverse_samples(
     """Select diverse representative samples from a dataset using clustering.
 
     Args:
-        dataset_path: Path to .npz dataset
-        num_samples: Number of diverse samples to select
-        random_seed: Random seed for reproducibility
+        dataset_path: Path to .npz dataset containing images and masks
+        num_samples: Number of diverse samples to select. Should be less than
+            total dataset size and appropriate for dataset diversity
+        random_seed: Random seed for k-means clustering reproducibility
 
     Returns:
-        Tuple of (selected ImageData objects, their indices in original dataset)
+        Tuple containing:
+            - List[ImageData]: Selected diverse image samples
+            - List[int]: Indices of selected samples in original dataset
 
     Raises:
         ValueError: If num_samples is greater than dataset size
+        FileNotFoundError: If dataset_path does not exist
     """
     logging.info(f"Loading dataset from {dataset_path}")
     dataset = NpzDataset(dataset_path)

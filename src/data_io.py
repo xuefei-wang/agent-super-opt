@@ -220,7 +220,12 @@ class ImageData:
 
 
 class ZarrDataset:
-    """Interface for persistent storage and retrieval of biological image datasets."""
+    """Interface for persistent storage and retrieval of biological image datasets.
+    
+    Provides methods for saving and loading image data in Zarr format, which is 
+    optimized for large array storage. Supports multi-channel images, masks, 
+    and associated metadata.
+    """
 
     def __init__(self, path: str):
         """Initialize dataset for reading.
@@ -257,7 +262,15 @@ class ZarrDataset:
     def _load_cell_type_info(
         self, group: zarr.Group, dataset_name: str
     ) -> Optional[Dict[int, str]]:
-        """Load cell type information from a dataset."""
+        """Load cell type information from a dataset.
+        
+        Args:
+            group: Zarr group containing the dataset
+            dataset_name: Name of dataset containing cell type information
+            
+        Returns:
+            Dictionary mapping cell IDs to cell types, or None if loading fails
+        """
         if dataset_name not in group:
             return None
 
@@ -270,18 +283,17 @@ class ZarrDataset:
 
     def load(self, file_names: Optional[List[str]] = None) -> List[ImageData]:
         """Load specified images from dataset.
-
+        
         Args:
             file_names: Optional list of specific files to load. If None,
                 loads all files in the dataset.
-
+                
         Returns:
-            List[ImageData]: Loaded image data objects
-
-        Notes:
-            - Missing files are skipped with a warning
-            - All metadata and available masks are loaded
-            - Channel names must match dataset schema
+            List of loaded ImageData objects
+            
+        Raises:
+            FileNotFoundError: If specified files don't exist
+            ValueError: If file format is invalid
         """
         if file_names is None:
             file_names = list(self.root.attrs["file_names"])
@@ -343,25 +355,14 @@ class ZarrDataset:
 
     def save(self, images: List[ImageData], validate: bool = True) -> None:
         """Save images and associated data to the dataset.
-
-        This method saves both required and optional components:
-        - Raw image data (required)
-        - Channel information (required)
-        - Segmentation masks (optional)
-        - Cell type annotations (optional)
-        - Image metadata (optional)
-
+        
         Args:
             images: List of ImageData objects to save
             validate: Whether to validate data consistency before saving
-
+            
         Raises:
-            ValueError: If dataset is read-only or if validation fails
-
-        Notes:
-            - Existing data with the same file_name will be overwritten
-            - Channel names must match dataset schema when validate=True
-            - New file names are automatically tracked in the dataset
+            ValueError: If dataset is read-only or validation fails
+            ValueError: If channel names don't match dataset schema
         """
         if self.root.read_only:
             raise ValueError("Dataset opened in read-only mode")
@@ -503,7 +504,16 @@ class NpzDataset:
 
     @staticmethod
     def _validate_shapes(X: np.ndarray, y: np.ndarray) -> None:
-        """Validate shapes and dimensions of input arrays."""
+        """Validate shapes and dimensions of input arrays.
+        
+        Args:
+            X: Raw image data array
+            y: Mask data array
+            
+        Raises:
+            ValueError: If dimensions don't match or are invalid
+        """
+
         # Check basic dimensionality
         if X.ndim not in [3, 4] or y.ndim not in [3, 4]:
             raise ValueError("Arrays must have 3 or 4 dimensions")
@@ -617,23 +627,29 @@ class NpzDataset:
 
     def get_shapes(self) -> Tuple[Tuple[int, ...], ...]:
         """Get shapes of the raw and mask data.
-
+        
         Returns:
             Tuple containing shapes of (X, y) arrays in their original format
+            The first shape corresponds to raw data (batch, H, W, 1)
+            The second shape corresponds to mask data (batch, H, W, 1)
         """
         with np.load(self.path, allow_pickle=True) as data:
             return data["X"].shape, data["y"].shape
 
     def get_image_ids(self) -> List[int]:
         """Get list of all image IDs in the dataset.
-
+        
         Returns:
-            List[int]: Image IDs in order matching the data (0-based indices)
+            List of sequential integers from 0 to n-1 where n is dataset size
         """
         with np.load(self.path) as data:
             return list(range(len(data["X"])))
 
     def __len__(self) -> int:
-        """Get number of samples in the dataset."""
+        """Get number of samples in the dataset.
+        
+        Returns:
+            Integer count of images in the dataset
+        """
         with np.load(self.path) as data:
             return len(data["X"])

@@ -101,7 +101,21 @@ class NapariViewer(BaseVisualizer):
         self._layers = {}
 
     def show_channels(self, data: ImageData, name: str = "image") -> None:
-        """Display multichannel raw data as separate layers."""
+        """Display multichannel raw data as separate layers in napari viewer.
+        
+        Args:
+            data: ImageData object containing raw image data
+            name: Base name for the layers. Channel layers will be named 
+                 as {name}_{channel_name}
+        
+        Raises:
+            ValueError: If number of channels doesn't match channel names
+        
+        Notes:
+            - Each channel is displayed as a separate layer
+            - Layers use grayscale colormap with additive blending
+            - Channel names from data.channel_names are used for layer naming
+        """
         if data.raw is None:
             return
 
@@ -119,7 +133,25 @@ class NapariViewer(BaseVisualizer):
             self._layers[f"{name}_{channel_name}"] = layer
 
     def add_cell_masks(self, data: ImageData, name: str = "masks") -> None:
-        """Add cell masks with optional type coloring and labels."""
+        """Add cell segmentation masks with optional type coloring and labels.
+        
+        This method creates up to three types of layers:
+        1. Base segmentation mask (always created)
+        2. Colored cell type visualization (if cell_type_info available)
+        3. Text labels showing cell types (if cell_type_info available)
+        
+        Args:
+            data: ImageData object containing mask and optional cell type info
+            name: Base name for the layers. Created layers will be named:
+                 {name}_masks: Basic segmentation
+                 {name}_cell_types: Colored cell type visualization
+                 {name}_labels: Cell type text labels
+                 
+        Notes:
+            - Mask colors are assigned consistently using tab20 colormap
+            - Text labels are placed at cell centroids
+            - Layer opacity is controlled by config.opacity
+        """
         if data.mask is None:
             return
 
@@ -181,7 +213,20 @@ class NapariViewer(BaseVisualizer):
                 self._layers[f"{name}_labels"] = text_layer
 
     def add_legend(self, position: str = "top-left") -> None:
-        """Add a text legend showing cell types and their corresponding colors."""
+        """Add a text legend showing cell types and their corresponding colors.
+        
+        Args:
+            position: Legend position in viewer window. Options:
+                     "top-left" (default)
+                     "top-right"
+                     "bottom-left"
+                     "bottom-right"
+                     
+        Notes:
+            - Legend is only added if cell type colormap exists
+            - Previous legend is removed before adding new one
+            - Text size is fixed at 12pt for readability
+        """
         if self.cell_type_colormap is None:
             return
 
@@ -224,7 +269,13 @@ class NapariViewer(BaseVisualizer):
         self._layers["legend"] = legend_layer
 
     def clear(self) -> None:
-        """Remove all layers from the viewer."""
+        """Remove all layers from the viewer and reset state.
+        
+        This method:
+        - Removes all image, mask, and text layers
+        - Clears internal layer tracking
+        - Resets cell type colormap
+        """
         self.viewer.layers.clear()
         self._layers.clear()
         self.cell_type_colormap = None
