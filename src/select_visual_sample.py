@@ -1,3 +1,26 @@
+"""
+Tool for selecting diverse samples from biological image datasets.
+
+This module provides functionality for selecting representative samples from a large 
+image dataset for validation and visual inspection. It uses feature extraction and 
+k-means clustering to identify diverse examples that represent different image 
+characteristics in the dataset.
+
+Key Features:
+- Automatic feature extraction from multichannel images and masks
+- K-means clustering for diverse sample selection
+- Support for both single and multichannel images
+- Built-in handling of ImageData objects
+
+Example:
+    >>> from src.select_visual_sample import select_diverse_samples
+    >>> # Select 20 diverse samples
+    >>> samples, indices = select_diverse_samples(
+    ...     dataset_path='path/to/dataset.npz',
+    ...     num_samples=20
+    ... )
+"""
+
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
@@ -5,10 +28,10 @@ from typing import List, Tuple
 import logging
 from pathlib import Path
 
-from src.data_io import NpzDataset, ImageData
+from .data_io import NpzDataset, ImageData
 
 
-def extract_image_features(image: ImageData) -> np.ndarray:
+def _extract_image_features(image: ImageData) -> np.ndarray:
     """Extract features from an image for diversity comparison.
 
     Features include:
@@ -75,6 +98,9 @@ def select_diverse_samples(
 
     Returns:
         Tuple of (selected ImageData objects, their indices in original dataset)
+
+    Raises:
+        ValueError: If num_samples is greater than dataset size
     """
     logging.info(f"Loading dataset from {dataset_path}")
     dataset = NpzDataset(dataset_path)
@@ -90,7 +116,7 @@ def select_diverse_samples(
     logging.info("Extracting image features")
     features = []
     for img in images:
-        img_features = extract_image_features(img)
+        img_features = _extract_image_features(img)
         features.append(img_features)
 
     feature_matrix = np.array(features)
@@ -124,71 +150,3 @@ def select_diverse_samples(
 
     logging.info(f"Selected {len(selected_images)} diverse samples")
     return selected_images, selected_indices
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Select diverse representative images from a dataset"
-    )
-    parser.add_argument(
-        "--dataset", required=True, help="Path to validation dataset (.npz file)"
-    )
-    parser.add_argument(
-        "--num_samples",
-        type=int,
-        default=20,
-        help="Number of diverse samples to select",
-    )
-    parser.add_argument(
-        "--output", default="artifacts", help="Output directory for selected images"
-    )
-    parser.add_argument(
-        "--seed", type=int, default=42, help="Random seed for reproducibility"
-    )
-
-    args = parser.parse_args()
-
-    # Create output directory
-    output_dir = Path(args.output)
-    output_dir.mkdir(exist_ok=True)
-
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
-
-    # Select diverse samples
-    selected_images, selected_indices = select_diverse_samples(
-        args.dataset, args.num_samples, args.seed
-    )
-
-    # Stack selected images and masks
-    X = np.stack([img.raw for img in selected_images])
-    y = np.stack(
-        [
-            img.mask if img.mask is not None else np.zeros_like(img.raw)
-            for img in selected_images
-        ]
-    )
-
-    # Create ImageData objects from selected data
-    selected_data = []
-    for i, (x, y) in enumerate(zip(X, y)):
-        selected_data.append(
-            ImageData(
-                raw=x,  # Already in (C, H, W) format from ImageData standardization
-                mask=y,  # Already in (1, H, W) format from ImageData standardization
-                image_id=selected_indices[i],
-                channel_names=["channel_0"],  # Single channel data
-            )
-        )
-
-    # Save using NpzDataset to ensure consistent format
-    output_path = output_dir / "diverse_samples.npz"
-    NpzDataset.save(output_path, selected_data)
-
-    # Save indices for reference
-    np.save(output_dir / "selected_indices.npy", selected_indices)
-    logging.info(f"Saved {len(selected_images)} diverse samples to {output_path}")
