@@ -25,16 +25,25 @@ from .data_io import ImageData
 
 @dataclass
 class VisConfig:
-    """Configuration for visualization settings."""
+    """Configuration settings for visualization of biological image data.
+    
+    Attributes:
+        output_dir: Directory for saving static visualizations
+        dpi: Resolution for saved images
+        figsize: Figure dimensions (width, height) in inches
+        show_raw: Whether to display raw channel data
+        show_predicted: Whether to display predicted masks/types
+        opacity: Opacity value for mask overlays (0.0-1.0)
+        label_size: Font size for text labels
+    """
 
-    output_dir: Optional[Path] = None  # Directory for saving static visualizations
-    dpi: int = 300  # DPI for saved images
-    figsize: tuple = (10, 10)  # Figure size for matplotlib plots
-    show_raw: bool = True  # Whether to show raw channel data
-    show_predicted: bool = True  # Whether to show predicted masks/types
-    opacity: float = 0.5  # Opacity for mask overlays
-    label_size: int = 8  # Size of cell type labels
-
+    output_dir: Optional[Path] = None
+    dpi: int = 300
+    figsize: tuple = (10, 10)
+    show_raw: bool = True
+    show_predicted: bool = True
+    opacity: float = 0.5
+    label_size: int = 8
 
 class BaseVisualizer:
     """Base class for visualization functionality shared between interactive and static modes."""
@@ -361,7 +370,7 @@ class MatplotlibVisualizer(BaseVisualizer):
         plt.tight_layout()
 
         if self.config.output_dir:
-            output_path = self.config.output_dir / f"{data.image_id:03d}_comparison.png"
+            output_path = Path(self.config.output_dir) / f"{data.image_id:03d}_comparison.png"
             plt.savefig(output_path, dpi=self.config.dpi, bbox_inches="tight")
             return output_path
         plt.close()
