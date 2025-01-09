@@ -84,40 +84,50 @@ class DocstringCollector:
         self, node: ast.AST, module_name: str, parent_name: Optional[str] = None
     ) -> None:
         """Recursively extract documentation info from an AST node."""
-        # Get the qualified name for this node
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
-            if parent_name:
-                qualified_name = f"{parent_name}.{node.name}"
-            else:
-                qualified_name = node.name
-        else:
-            qualified_name = parent_name if parent_name else "module"
-
-        # Extract documentation info
-        docstring = ast.get_docstring(node)
-        if docstring:
-            if module_name not in self.collected_info:
-                self.collected_info[module_name] = {
-                    "imports": self.current_module_imports,
-                    "items": [],
-                }
-
-            item_info = {
-                "name": qualified_name,
-                "type": type(node).__name__,
-                "docstring": docstring,
+        # Initialize module in collected_info if not exists
+        if module_name not in self.collected_info:
+            self.collected_info[module_name] = {
+                "imports": self.current_module_imports,
+                "items": [],
+                "module_doc": None,
+                "classes": [],
+                "functions": []  # New list specifically for standalone functions
             }
 
-            # Add function signature if it's a function
-            if isinstance(node, ast.FunctionDef):
-                item_info["signature"] = self.get_function_signature(node)
+        # Handle module-level docstring
+        if isinstance(node, ast.Module):
+            docstring = ast.get_docstring(node)
+            if docstring:
+                self.collected_info[module_name]["module_doc"] = docstring
 
-            self.collected_info[module_name]["items"].append(item_info)
+        # Handle classes and functions
+        elif isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+            qualified_name = f"{parent_name}.{node.name}" if parent_name else node.name
+            docstring = ast.get_docstring(node)
+            
+            if docstring:
+                item_info = {
+                    "name": qualified_name,
+                    "type": type(node).__name__,
+                    "docstring": docstring,
+                }
+
+                if isinstance(node, ast.FunctionDef):
+                    item_info["signature"] = self.get_function_signature(node)
+                    
+                    # Add to appropriate list based on context
+                    if not parent_name:  # Standalone function
+                        self.collected_info[module_name]["functions"].append(item_info)
+                    else:  # Method within a class
+                        self.collected_info[module_name]["items"].append(item_info)
+                else:  # Class
+                    self.collected_info[module_name]["classes"].append(item_info)
 
         # Recursively process child nodes
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.ClassDef, ast.FunctionDef)):
-                self.extract_info(child, module_name, qualified_name)
+                self.extract_info(child, module_name, 
+                                qualified_name if isinstance(node, ast.ClassDef) else None)
 
     def process_file(self, file_path: str) -> None:
         """Process a single Python file and extract its documentation info."""
@@ -162,16 +172,14 @@ class DocstringCollector:
             for module_path, module_info in sorted(self.collected_info.items()):
                 f.write(f"## {module_path}\n\n")
 
-                # Write module-level docstring first if it exists
-                module_docs = [d for d in module_info["items"] if d["name"] == "module"]
-                if module_docs:
-                    f.write(f"{module_docs[0]['docstring']}\n\n")
+                # Write module-level docstring if it exists
+                if module_info["module_doc"]:
+                    f.write(f"{module_info['module_doc']}\n\n")
 
                 # Write class documentation
-                classes = [d for d in module_info["items"] if d["type"] == "ClassDef"]
-                if classes:
+                if module_info["classes"]:
                     f.write("### Classes\n\n")
-                    for class_doc in classes:
+                    for class_doc in module_info["classes"]:
                         f.write(
                             f"#### {class_doc['name']}\n\n{class_doc['docstring']}\n\n"
                         )
@@ -190,14 +198,9 @@ class DocstringCollector:
                                 f.write(f"{method['docstring']}\n\n")
 
                 # Write standalone function documentation
-                functions = [
-                    d
-                    for d in module_info["items"]
-                    if d["type"] == "FunctionDef" and "." not in d["name"]
-                ]
-                if functions:
+                if module_info["functions"]:
                     f.write("### Functions\n\n")
-                    for func_doc in functions:
+                    for func_doc in module_info["functions"]:
                         f.write(f"```python\n{func_doc['signature']}\n```\n\n")
                         f.write(f"{func_doc['docstring']}\n\n")
 
