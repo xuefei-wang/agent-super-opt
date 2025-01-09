@@ -17,10 +17,10 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from .data_io import ImageData, standardize_mask
 
 
-def calculate_object_metrics(
+def calculate_metrics(
     true_mask: np.ndarray, pred_mask: np.ndarray, iou_threshold: float = 0.5
 ) -> Dict[str, float]:
-    """Calculate object-level segmentation metrics between ground truth and predicted masks.
+    """Calculate segmentation metrics between ground truth and predicted masks.
 
     Args:
         true_mask: Ground truth segmentation mask with shape (1, H, W) where each

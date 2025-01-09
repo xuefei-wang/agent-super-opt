@@ -37,7 +37,7 @@ class VisConfig:
         label_size: Font size for text labels
     """
 
-    output_dir: Optional[Path] = None
+    output_dir: Optional[str] = None
     dpi: int = 300
     figsize: tuple = (10, 10)
     show_raw: bool = True
@@ -317,7 +317,7 @@ class MatplotlibVisualizer(BaseVisualizer):
 
             if self.config.output_dir:
                 output_path = (
-                    self.config.output_dir
+                    Path(self.config.output_dir)
                     / f"{data.image_id}_channel_{channel_name}.png"
                 )
                 plt.savefig(output_path, dpi=self.config.dpi, bbox_inches="tight")
