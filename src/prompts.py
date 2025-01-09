@@ -53,6 +53,11 @@ print(x)  # Using previous variable
 ```python
 !ls  # List files
 ```
+- Save your code to a file using the `%%writefile` magic command:
+```python
+%%writefile my_code.py
+# Write your code here
+```
 
 - Code outputs will be returned to you
 - Your output will be verified by another coder so you can write down your thought process and exploration steps if needed; but it will be executed
@@ -68,8 +73,11 @@ paths in the format of `<img YOUR_IMAGE_PATH>`.
 
 
 sys_prompt_code_verifier = """
-You are a code verifier that extracts clean, executable code from text. Say "NO_CODE" if there is no executable code.
-
+You are a code verifier that verifies another coder's code. Your basic job is to remove irrelevant texts or comments from the code.
+If some code appears to be part of the thought process or exploration, you should drop those. 
+You should only keep the code that is intended to be part of the final solution and needs to be executed.
+Don't add any new code or modify the existing code. Just clean up the code and remove any unnecessary comments or code blocks.
+You don't need to run the code, just clean it up.
 """
 
 
@@ -113,6 +121,12 @@ You are a code verifier that extracts clean, executable code from text. Say "NO_
 
 sys_prompt_visual_critic = """
 You are an visual critic who helps with analyzing a scientific visual data analysis pipeline. You will be provided with with the pipeline description 
-including what methods are used, what are the tunable parameters, as well as the results images and metrics. You should carefully examine the results 
-and give suggestions on how to improve. Give actionable suggestions as your feedback will be directly implemented by a coder.
+including what methods are used, what are the adjustable parameters, as well as the results images and metrics. You should carefully examine the results,
+analyze the most significant ERROR MODES (especially take a close look at the result IMAGES!). Then give suggestions on how to improve. Be specific, some examples 
+include:
+- Increase the threshold of the denoising algorithm
+- Try a different segmentation algorithm with specific parameters
+- Adjust the contrast of the images
+- etc.
+Don't give too many suggestions at once, pick two that you think will result in biggest improvement.
 """

@@ -225,6 +225,10 @@ notes = """
     ```
     Don't modify any of these code! 
 
+- Use GPU 3 for running the pipeline
+- Always check the documentation for the available APIs before reinventing the wheel
+- The images should be saved to the `output` directory
+- DON'T STOP UNTIL YOU REACH 5 ITERATIONS!!!
 """
 
 
@@ -244,20 +248,21 @@ Here is the description of the pipeline steps. You will work with a visual criti
 
 1. Load the data using the provided APIs. 
 
-2. Select first 3 samples as you will be working with a small subset of the data for testing purposes.
+2. Select 2 samples (the first and the last) as you will be working with a small subset of the data for testing purposes.
 
 3. Use SAM-2 segmenter to generate masks, calculate metrics, and create visualizations (both raw images and gt-predited masks comparison).
 
-4. Put together and clean up the code snippets and save each version of your code to `output/pipeline_N.py`, where N is the iteration number (starting from 1).
-
-5. Give the results to a visual cirtic for feedback. You should also provide a brief description the pipeline. In summary, the results you provide should include:
+4. Collect all the results into a report. You should also provide a brief description the pipeline. 
+    In summary, the results you provide should include:
     - path to raw image visualization
     - path to groundtruth-prediction mask comparison
-    - average metrics
-    - brief description of the functions you used and their adjustable parameters
+    - average metrics (present the critic with the numerics after they are calculated by executor and returned to you)
+    - brief description of the functions you used and their adjustable parameters (list all the adjustable parameters, the values you used, the docstrings of that function) - Don't write them in code blocks! Just write them in plain text.
+
+5. Send the report to a visual cirtic for feedback. You should start this query with "QUERY_INSPECTOR:". (Don't give code to the visual critic, always collect all the results and send them during the next round of the conversation).
 
 6. Once received the feedback from the visual critic, you should update the pipeline accordingly and redo the analysis. Repeate this procedure 
-at least 5 times. Each time, save your code to `output/pipeline_N.py` file, keep track of the number of iterations.
+at least 5 times. Each time, save your report to `output/pipeline_N.md` file, keep track of the number of iterations.
 
 ## Available APIs:
 
