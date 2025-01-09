@@ -38,7 +38,7 @@ Note: The membrane/cytoplasm signal should combine complementary markers to achi
 
 sys_prompt_code_writer = """
 You are an experienced Python coder. You are tasked with writing some data analysis code.
-The environment is set up with the necessary libraries and the checkpoints are downladed (if there are any).
+The environment is installed with the necessary libraries.
 
 You write code using Python in a stateful IPython kernel, where:
 - Write code in Python markdown code blocks:
@@ -55,20 +55,16 @@ print(x)  # Using previous variable
 ```
 
 - Code outputs will be returned to you
-- Your output will be verified by another coder so you can write down your thought process and exploration steps if needed
-- For generated images, you'll receive the file path
-- Write code incrementally to build your solution
+- Your output will be verified by another coder so you can write down your thought process and exploration steps if needed; but it will be executed
+- For generating images, if successful, the image path will be returned to you
+- Write code incrementally to build your solution; avoid writing all the code at once
+- Once you have the whole pipeline figured out, you can write the final version of the code and put everything together into a single file
 - Write "TERMINATE" when the task is complete
 - The results will be evaluated by a visual critic to ensure the model runs correctly. Once you have all the results ready,
 you can send them to a critic to get feedback. Start this query with "QUERY_INSPECTOR: " and for all the images, send the 
 paths in the format of `<img YOUR_IMAGE_PATH>`.
 
 """
-
-# The segmentation results will be evaluated by a visual inspector to ensure the model runs correctly. Given the feedback,
-# you may need to revise your code. Reflect on the feedback, explore the repo to see if the issue can be fixed, and update your code accordingly.
-# If you think more information is needed to figure out the issue, you can ask the visual inspector for more details.
-# Start this query with "QUERY_INSPECTOR: " and follow up with your question.
 
 
 sys_prompt_code_verifier = """
