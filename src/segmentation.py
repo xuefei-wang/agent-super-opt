@@ -17,6 +17,96 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 from .data_io import ImageData, standardize_mask
 
 
+def calculate_object_metrics(
+    true_mask: np.ndarray, pred_mask: np.ndarray, iou_threshold: float = 0.5
+) -> Dict[str, float]:
+    """Calculate object-level segmentation metrics between ground truth and predicted masks.
+
+    Args:
+        true_mask: Ground truth segmentation mask with shape (1, H, W) where each
+                    unique positive integer represents a distinct object
+        pred_mask: Predicted segmentation mask with shape (1, H, W) with same
+                    format as true_mask
+        iou_threshold: Minimum IoU required to consider an object as correctly
+                        detected (range: 0.0 to 1.0)
+
+    Returns:
+        Dictionary with the following metrics:
+            - mean_iou: Mean IoU of correctly matched objects
+            - precision: Fraction of predicted objects that match ground truth
+            - recall: Fraction of ground truth objects that were detected
+            - f1_score: Harmonic mean of precision and recall
+
+    Notes:
+        - Background should be labeled as 0 in both masks
+        - Empty masks (only background) are handled as special cases
+    """
+    # Ensure masks are standardized
+    true_mask = standardize_mask(true_mask)
+    pred_mask = standardize_mask(pred_mask)
+
+    # Use first channel for processing
+    true_mask = true_mask[0]  # Convert (1, H, W) to (H, W)
+    pred_mask = pred_mask[0]  # Convert (1, H, W) to (H, W)
+
+    # Get unique objects by considering connected components
+    from scipy.ndimage import label
+
+    # Label connected components in each mask
+    true_labeled, true_n = label(true_mask > 0)
+    pred_labeled, pred_n = label(pred_mask > 0)
+
+    # Handle special cases
+    if true_n == 0 and pred_n == 0:
+        return {"mean_iou": 1.0, "precision": 1.0, "recall": 1.0, "f1_score": 1.0}
+
+    if true_n == 0:
+        return {"mean_iou": 0.0, "precision": 0.0, "recall": 1.0, "f1_score": 0.0}
+
+    if pred_n == 0:
+        return {"mean_iou": 0.0, "precision": 1.0, "recall": 0.0, "f1_score": 0.0}
+
+    # Compute IoU matrix
+    iou_matrix = np.zeros((true_n, pred_n))
+    for i in range(1, true_n + 1):
+        true_obj = true_labeled == i
+        for j in range(1, pred_n + 1):
+            pred_obj = pred_labeled == j
+            intersection = np.logical_and(true_obj, pred_obj).sum()
+            union = np.logical_or(true_obj, pred_obj).sum()
+            iou_matrix[i - 1, j - 1] = intersection / union if union > 0 else 0
+
+    # Find optimal matching using Hungarian algorithm
+    true_indices, pred_indices = linear_sum_assignment(-iou_matrix)
+
+    # Get IoUs for matched pairs
+    matched_ious = iou_matrix[true_indices, pred_indices]
+
+    # Only count matches that exceed the IoU threshold
+    valid_matches = matched_ious >= iou_threshold
+    true_positives = np.sum(valid_matches)
+
+    # Calculate metrics
+    precision = true_positives / pred_n if pred_n > 0 else 0
+    recall = true_positives / true_n if true_n > 0 else 0
+
+    f1_score = (
+        2 * (precision * recall) / (precision + recall)
+        if (precision + recall) > 0
+        else 0
+    )
+
+    # Calculate mean IoU only for valid matches
+    mean_iou = matched_ious[valid_matches].mean() if true_positives > 0 else 0.0
+
+    return {
+        "mean_iou": float(mean_iou),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1_score": float(f1_score),
+    }
+
+
 class ChannelSpec:
     """
     Specification for channel selection in cell segmentation models.
@@ -115,97 +205,6 @@ class BaseSegmenter(ABC):
             ValueError: If input data format is invalid
         """
         pass
-
-    @staticmethod
-    def calculate_object_metrics(
-        true_mask: np.ndarray, pred_mask: np.ndarray, iou_threshold: float = 0.5
-    ) -> Dict[str, float]:
-        """Calculate object-level segmentation metrics between ground truth and predicted masks.
-
-        Args:
-            true_mask: Ground truth segmentation mask with shape (1, H, W) where each
-                      unique positive integer represents a distinct object
-            pred_mask: Predicted segmentation mask with shape (1, H, W) with same 
-                      format as true_mask
-            iou_threshold: Minimum IoU required to consider an object as correctly 
-                         detected (range: 0.0 to 1.0)
-
-        Returns:
-            Dictionary with the following metrics:
-                - mean_iou: Mean IoU of correctly matched objects
-                - precision: Fraction of predicted objects that match ground truth
-                - recall: Fraction of ground truth objects that were detected
-                - f1_score: Harmonic mean of precision and recall
-
-        Notes:
-            - Background should be labeled as 0 in both masks
-            - Empty masks (only background) are handled as special cases
-        """
-        # Ensure masks are standardized
-        true_mask = standardize_mask(true_mask)
-        pred_mask = standardize_mask(pred_mask)
-
-        # Use first channel for processing
-        true_mask = true_mask[0]  # Convert (1, H, W) to (H, W)
-        pred_mask = pred_mask[0]  # Convert (1, H, W) to (H, W)
-
-        # Get unique objects by considering connected components
-        from scipy.ndimage import label
-
-        # Label connected components in each mask
-        true_labeled, true_n = label(true_mask > 0)
-        pred_labeled, pred_n = label(pred_mask > 0)
-
-        # Handle special cases
-        if true_n == 0 and pred_n == 0:
-            return {"mean_iou": 1.0, "precision": 1.0, "recall": 1.0, "f1_score": 1.0}
-
-        if true_n == 0:
-            return {"mean_iou": 0.0, "precision": 0.0, "recall": 1.0, "f1_score": 0.0}
-
-        if pred_n == 0:
-            return {"mean_iou": 0.0, "precision": 1.0, "recall": 0.0, "f1_score": 0.0}
-
-        # Compute IoU matrix
-        iou_matrix = np.zeros((true_n, pred_n))
-        for i in range(1, true_n + 1):
-            true_obj = true_labeled == i
-            for j in range(1, pred_n + 1):
-                pred_obj = pred_labeled == j
-                intersection = np.logical_and(true_obj, pred_obj).sum()
-                union = np.logical_or(true_obj, pred_obj).sum()
-                iou_matrix[i - 1, j - 1] = intersection / union if union > 0 else 0
-
-        # Find optimal matching using Hungarian algorithm
-        true_indices, pred_indices = linear_sum_assignment(-iou_matrix)
-
-        # Get IoUs for matched pairs
-        matched_ious = iou_matrix[true_indices, pred_indices]
-
-        # Only count matches that exceed the IoU threshold
-        valid_matches = matched_ious >= iou_threshold
-        true_positives = np.sum(valid_matches)
-
-        # Calculate metrics
-        precision = true_positives / pred_n if pred_n > 0 else 0
-        recall = true_positives / true_n if true_n > 0 else 0
-
-        f1_score = (
-            2 * (precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0
-        )
-
-        # Calculate mean IoU only for valid matches
-        mean_iou = matched_ious[valid_matches].mean() if true_positives > 0 else 0.0
-
-        return {
-            "mean_iou": float(mean_iou),
-            "precision": float(precision),
-            "recall": float(recall),
-            "f1_score": float(f1_score),
-        }
-
 
 
 class MesmerSegmenter(BaseSegmenter):
@@ -550,12 +549,12 @@ class SAM2Segmenter(BaseSegmenter):
 
         Returns:
             ImageData: Copy of input with predicted_mask field populated.
-                      The mask has shape (1, H, W) where each unique positive 
+                      The mask has shape (1, H, W) where each unique positive
                       integer represents a distinct cell.
 
         Raises:
             RuntimeError: If SAM2 segmentation fails
-            
+
         Notes:
             - Masks larger than 5000 pixels are filtered out as potential background
             - The output mask uses consecutive integers starting from 1 for labeling
