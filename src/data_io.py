@@ -91,8 +91,61 @@ def standardize_raw_image(
 
 @dataclass
 class ImageData:
-    """Container for biological image data and associated metadata."""
+    """Container for biological image data and associated metadata.
+    
+    This class provides a standardized structure for storing and managing biological
+    image data along with related annotations and predictions. It handles data
+    validation and format standardization automatically.
 
+    The class standardizes array shapes as follows:
+    - Raw images: (C, H, W) format where C is number of channels
+    - Masks: (1, H, W) format for both ground truth and predictions
+
+    Attributes:
+        raw (np.ndarray): Raw image data in (C, H, W) format. For multichannel data,
+            C corresponds to different imaging channels (e.g., fluorescence markers).
+            For single-channel data, C=1.
+        
+        image_id (Union[int, str]): Unique identifier for the image. Can be numeric
+            index or string identifier.
+        
+        channel_names (Optional[List[str]]): Names of imaging channels in order matching
+            raw data channels. For multichannel data, must have length equal to
+            number of channels. For single-channel data, defaults to ["channel_0"].
+        
+        tissue_type (Optional[str]): Type of biological tissue in the image, e.g.,
+            "liver", "kidney", etc.
+        
+        cell_types (Optional[List[str]]): List of cell types expected to be present
+            in the image. Used for reference and verification.
+        
+        image_mpp (Optional[float]): Microns per pixel resolution of the image.
+            Used for size-based analysis and visualization scaling.
+        
+        mask (Optional[np.ndarray]): Ground truth segmentation mask in (1, H, W) format.
+            Integer-valued array where 0 is background and positive integers are
+            unique cell identifiers.
+        
+        cell_type_info (Optional[Dict[int, str]]): Mapping from cell identifiers in
+            the ground truth mask to their corresponding cell type labels.
+        
+        predicted_mask (Optional[np.ndarray]): Model-predicted segmentation mask in
+            (1, H, W) format. Integer-valued array where 0 is background and
+            positive integers are unique cell identifiers.
+        
+        predicted_cell_types (Optional[Dict[int, str]]): Mapping from cell identifiers
+            in the predicted mask to their predicted cell type labels.
+
+    Example:
+        >>> image_data = ImageData(
+        ...     raw=np.array(...),  # Shape (2, 512, 512)
+        ...     image_id="sample_001",
+        ...     channel_names=["DAPI", "CD3"],
+        ...     tissue_type="lymph_node",
+        ...     mask=np.array(...)  # Shape (1, 512, 512)
+        ... )
+        >>> image_data.validate()  # Verifies data consistency
+    """
     raw: np.ndarray
     image_id: Union[int, str]
     channel_names: Optional[List[str]] = None

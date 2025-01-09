@@ -58,12 +58,13 @@ def denoise_image(image_data: ImageData, sigma: float = 1.0) -> ImageData:
     # ImageData already standardizes raw to (C, H, W) format
     raw = image_data.raw
     denoised = np.zeros_like(raw)
-    
+
     # Apply denoising to each channel
     for i in range(raw.shape[0]):
         denoised[i] = gaussian_filter(raw[i], sigma=sigma)
-    
+
     return replace(image_data, raw=denoised)
+
 
 def set_gpu_device(gpu_id: int) -> None:
     """Set global GPU device for both PyTorch and TensorFlow."""
