@@ -214,18 +214,16 @@ notes = """
     import hydra
     from hydra.core.global_hydra import GlobalHydra
 
-    # Initialize Hydra config path to bypass SAM-2's settings
-    if not GlobalHydra().is_initialized():
-        hydra.initialize(config_path="src/sam2/sam2/configs", version_base="1.2")
+    GlobalHydra.instance().clear()
+    hydra.initialize(config_path="src/sam2/sam2/configs", version_base="1.2")
 
     from pathlib import Path
 
     PROJECT_ROOT = Path(os.getcwd())
-    print(PROJECT_ROOT)
-    model_cfg = "sam2.1/sam2.1_hiera_t.yaml"  # Config path has already been set to it parent folder
+    model_cfg = "sam2.1/sam2.1_hiera_t.yaml"
     checkpoint_path = str(PROJECT_ROOT / "src/sam2/checkpoints/sam2.1_hiera_tiny.pt")
     ```
-- Use provided APIs whenever possible.
+    Don't modify any of these code! 
 
 """
 
