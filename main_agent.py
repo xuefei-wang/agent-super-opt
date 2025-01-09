@@ -37,8 +37,8 @@ def set_gpu_device(gpu_id: int) -> None:
     torch.cuda.set_device(gpu_id)
 
 
-# # Set the GPU device to use
-# set_gpu_device(3)
+# Set the GPU device to use
+set_gpu_device(3)
 
 max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
 
