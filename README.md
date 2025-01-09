@@ -29,14 +29,6 @@ python collect_docstrings.py --input_path src --output_file artifacts/docs.md
 python collect_docstrings.py --input_path src --output_file artifacts/docs.md --recursive
 ```
 
-Next, select the most representative samples for later visual critic diagnosis:
-```bash
-python select_visual_sample.py --dataset /data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/val.npz --output artifacts
-
-# optionally, you can visualize the samples
-python visualize_diverse_samples.py --npz_path artifacts/diverse_samples.npz --output_dir output --indices_path artifacts/selected_indices.npy
-```
-
 To run it manually:
 ```bash
 python main_manual.py --data_path /data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/test.npz --output output --gpu 7 --segmenter mesmer
@@ -48,5 +40,6 @@ python main_manual.py --data_path /data/user-data/xwang3/DynamicNuclearNet/Dynam
 
 To run it using an agent:
 ```bash
-python main.py
+python main_agent.py
 ```
+
