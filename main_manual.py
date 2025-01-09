@@ -117,8 +117,8 @@ def run_pipeline(
 
     # Set up SAM2 model config and path
     PROJECT_ROOT = Path(__file__).parent
-    model_cfg = "sam2.1/sam2.1_hiera_l.yaml" # Config path has already been set to it parent folder
-    checkpoint_path= str(PROJECT_ROOT / "src/sam2/checkpoints/sam2.1_hiera_large.pt")
+    model_cfg = "sam2.1/sam2.1_hiera_t.yaml"  # Config path has already been set to it parent folder
+    checkpoint_path = str(PROJECT_ROOT / "src/sam2/checkpoints/sam2.1_hiera_tiny.pt")
 
     # Set random seed for reproducibility
     np.random.seed(seed)

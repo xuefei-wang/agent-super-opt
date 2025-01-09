@@ -209,6 +209,22 @@ five different cell lines (NIH-3T3, HeLa-S3, HEK293, RAW 264.7, and PC-3).
 dataset_path = "/home/julie/Downloads/DynamicNuclearNet-segmentation-v1_0/val.npz"
 
 notes = """
+- For SAM-2, please run the following code snippet to set up the model config and checkpoint path:
+    ```python
+    import hydra
+    from hydra.core.global_hydra import GlobalHydra
+
+    # Initialize Hydra config path to bypass SAM-2's settings
+    if not GlobalHydra().is_initialized():
+        hydra.initialize(config_path="src/sam2/sam2/configs", version_base="1.2")
+
+    from pathlib import Path
+
+    PROJECT_ROOT = Path(__file__).parent
+    model_cfg = "sam2.1/sam2.1_hiera_t.yaml"  # Config path has already been set to it parent folder
+    checkpoint_path = str(PROJECT_ROOT / "src/sam2/checkpoints/sam2.1_hiera_tiny.pt")
+    ```
+
 """
 
 
