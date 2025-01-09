@@ -37,8 +37,8 @@ def set_gpu_device(gpu_id: int) -> None:
     torch.cuda.set_device(gpu_id)
 
 
-# Set the GPU device to use
-set_gpu_device(3)
+# # Set the GPU device to use
+# set_gpu_device(3)
 
 max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
 
@@ -209,7 +209,7 @@ five different cell lines (NIH-3T3, HeLa-S3, HEK293, RAW 264.7, and PC-3).
 dataset_path = "/home/julie/Downloads/DynamicNuclearNet-segmentation-v1_0/val.npz"
 
 notes = """
-- For SAM-2, please run the following code snippet to set up the model config and checkpoint path:
+- For SAM-2, please run the following code snippet to set up the model config and checkpoint path. Let's run this code snippet and instantiate the model before starting the pipeline.
     ```python
     import hydra
     from hydra.core.global_hydra import GlobalHydra
@@ -220,10 +220,12 @@ notes = """
 
     from pathlib import Path
 
-    PROJECT_ROOT = Path(__file__).parent
+    PROJECT_ROOT = Path(os.getcwd())
+    print(PROJECT_ROOT)
     model_cfg = "sam2.1/sam2.1_hiera_t.yaml"  # Config path has already been set to it parent folder
     checkpoint_path = str(PROJECT_ROOT / "src/sam2/checkpoints/sam2.1_hiera_tiny.pt")
     ```
+- Use provided APIs whenever possible.
 
 """
 
@@ -244,22 +246,19 @@ Here is the description of the pipeline steps. You will work with a visual criti
 
 1. Load the data using the provided APIs. 
 
-2. Select 3 diverse visual samples and visualize them using the provided APIs. You will be working with these 3 samples for the rest of the pipeline.
+2. Select first 3 samples as you will be working with a small subset of the data for testing purposes.
 
-3. Implement a custom denoising module to clean the image data. You'll write this module from scratch following these specifications and apply it to the 3 samples:
-    {prompt_denoise}. 
+3. Use SAM-2 segmenter to generate masks, calculate metrics, and create visualizations (both raw images and gt-predited masks comparison).
 
-4. Use SAM-2 segmenter to generate masks, calculate metrics, and create visualizations (both raw images and gt-predited masks comparison).
+4. Put together and clean up the code snippets and save each version of your code to `output/pipeline_N.py`, where N is the iteration number (starting from 1).
 
-5. Put together and clean up the code snippets and save each version of your code to `output/pipeline_N.py`, where N is the iteration number (starting from 1).
-
-6. Give the results to a visual cirtic for feedback. You should also provide a brief description the pipeline. In summary, the results you provide should include:
+5. Give the results to a visual cirtic for feedback. You should also provide a brief description the pipeline. In summary, the results you provide should include:
     - path to raw image visualization
     - path to groundtruth-prediction mask comparison
     - average metrics
     - brief description of the functions you used and their adjustable parameters
 
-7. Once received the feedback from the visual critic, you should update the pipeline accordingly and redo the analysis. Repeate this procedure 
+6. Once received the feedback from the visual critic, you should update the pipeline accordingly and redo the analysis. Repeate this procedure 
 at least 5 times. Each time, save your code to `output/pipeline_N.py` file, keep track of the number of iterations.
 
 ## Available APIs:

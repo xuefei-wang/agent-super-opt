@@ -36,7 +36,6 @@ import pandas as pd
 
 from src.data_io import NpzDataset, ImageData
 from src.segmentation import MesmerSegmenter, SAM2Segmenter
-from src.visualization import visualize, VisConfig
 
 # Set up logging
 logging.basicConfig(
@@ -184,39 +183,6 @@ def run_pipeline(
         if segmented_image.predicted_mask is not None:
             mask_path = output_dir / f"{image.image_id:03d}_predicted_mask.npy"
             np.save(mask_path, segmented_image.predicted_mask)
-
-        # Generate visualization
-        if save_visualization or interactive_viz:
-            try:
-                # Configure visualization settings
-                vis_config = VisConfig(
-                    output_dir=output_dir if save_visualization else None,
-                    dpi=300,
-                    figsize=(10, 10),
-                    show_raw=True,
-                    show_predicted=True,
-                    opacity=0.5,
-                    label_size=8,
-                )
-
-                # Determine visualization mode
-                viz_mode = (
-                    "both"
-                    if (save_visualization and interactive_viz)
-                    else "interactive" if interactive_viz else "static"
-                )
-
-                # Run visualization
-                viewer = visualize(segmented_image, mode=viz_mode, config=vis_config)
-
-                # Clean up viewer if created
-                if viewer is not None:
-                    viewer.clear()
-
-            except Exception as e:
-                logger.error(
-                    f"Visualization failed for image {image.image_id}: {str(e)}"
-                )
 
     # Calculate and save metrics if ground truth is available
     if any(img.mask is not None for img in images):
