@@ -5,7 +5,7 @@ load_dotenv()
 import os
 import torch
 
-from autogen import OpenAIWrapper
+from autogen import OpenAIWrapper, Cache
 from autogen.coding import CodeBlock
 from autogen.coding.jupyter import (
     DockerJupyterServer,
@@ -205,8 +205,8 @@ five different cell lines (NIH-3T3, HeLa-S3, HEK293, RAW 264.7, and PC-3).
 ```
 """
 
-# dataset_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/val.npz"
-dataset_path = "/home/julie/Downloads/DynamicNuclearNet-segmentation-v1_0/val.npz"
+dataset_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/val.npz"
+# dataset_path = "/home/julie/Downloads/DynamicNuclearNet-segmentation-v1_0/val.npz"
 
 notes = """
 - For SAM-2, please run the following code snippet to set up the model config and checkpoint path. Let's run this code snippet and instantiate the model before starting the pipeline.
@@ -280,4 +280,5 @@ at least 5 times. Each time, save your report to `output/pipeline_N.md` file, ke
 
 #######################################################################################################################################################
 
-code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline)
+with Cache.disk(cache_seed=1) as cache:
+    code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline)
