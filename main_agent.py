@@ -250,14 +250,15 @@ Here is the description of the pipeline steps. You will work with a visual criti
 
 2. Select 2 samples (the first and the last) as you will be working with a small subset of the data for testing purposes.
 
-3. Use SAM-2 segmenter to generate masks, calculate metrics, and create visualizations (both raw images and gt-predited masks comparison).
+3. Use SAM-2 segmenter to generate masks, calculate metrics (print them so that you can know the numbers), and create visualizations (both raw images and gt-predited mask comparisons - the paths will be returned to you after the code execution, use that one instead of hallucinate).
 
-4. Collect all the results into a report. You should also provide a brief description the pipeline. 
+4. Collect all the results from the execution output and format into a report. You should also provide a brief description the pipeline. 
     In summary, the results you provide should include:
     - path to raw image visualization
     - path to groundtruth-prediction mask comparison
     - average metrics (present the critic with the numerics after they are calculated by executor and returned to you)
     - brief description of the functions you used and their adjustable parameters (list all the adjustable parameters, the values you used, the docstrings of that function) - Don't write them in code blocks! Just write them in plain text.
+    Every time you generate this report, make sure to include all the components mentioned above.
 
 5. Send the report to a visual cirtic for feedback. You should start this query with "QUERY_INSPECTOR:". (Don't give code to the visual critic, always collect all the results and send them during the next round of the conversation).
 

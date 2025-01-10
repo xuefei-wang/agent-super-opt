@@ -62,6 +62,7 @@ print(x)  # Using previous variable
 - Code outputs will be returned to you
 - Your output will be verified by another coder so you can write down your thought process and exploration steps if needed; but it will be executed
 - For generating images, if successful, the image path will be returned to you
+- For numbers, you will need to print it out so that you can see the results
 - Write code incrementally to build your solution; avoid writing all the code at once
 - Once you have the whole pipeline figured out, you can write the final version of the code and put everything together into a single file
 - Write "TERMINATE" when the task is complete
