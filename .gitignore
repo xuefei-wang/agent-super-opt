@@ -170,3 +170,5 @@ artifacts/
 
 src/sam2/
 src/deepcelltypes/
+
+.vscode/
