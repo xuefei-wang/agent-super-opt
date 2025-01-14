@@ -43,3 +43,5 @@ To run it using an agent:
 python main_agent.py
 ```
 
+## Notes
+Autogen has an issue with sending images to Gemini, the issue ticket (with a quick fix) can be found [here](https://github.com/microsoft/autogen/issues/5033)
