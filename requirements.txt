@@ -8,4 +8,5 @@ pyyaml
 tqdm
 jupyter_kernel_gateway
 PyWavelets
-autogen-agentchat[gemini]~=0.2
+autogen~=0.4
+autogen-agentchat[gemini]~=0.4
