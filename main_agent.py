@@ -15,7 +15,7 @@ from autogen.coding.jupyter import (
 from autogen.agentchat.contrib.multimodal_conversable_agent import (
     MultimodalConversableAgent,
 )
-from autogen import ConversableAgent, GroupChat, GroupChatManager
+from autogen import ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 
 from src.prompts import (
     sys_prompt_code_writer,
@@ -113,7 +113,10 @@ visual_critic_agent = MultimodalConversableAgent(
     "visual_critic",
     system_message=sys_prompt_visual_critic,
     llm_config={
-        "config_list": [{"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}]
+        # "config_list": [{"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}]
+        "config_list": [{"model": "gemini-1.5-flash", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+        # "config_list": [{"model": "gemini-2.0-flash-exp", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+        "cache_seed": None,
     },
 )
 

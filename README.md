@@ -44,4 +44,9 @@ python main_agent.py
 ```
 
 ## Notes
-Autogen has an issue with sending images to Gemini, the issue ticket (with a quick fix) can be found [here](https://github.com/microsoft/autogen/issues/5033)
+Autogen has an issue with sending images to Gemini, the issue ticket (with a quick fix) can be found [here](https://github.com/microsoft/autogen/issues/5033).
+It turns out that `autogen` is not their official package. For `autogen-agentchat==0.2`, you can do `import autogen` and similar func is supported, see [here](https://microsoft.github.io/autogen/0.2/docs/Getting-Started#quickstart). But with the latest version 0.4.1, the APIs have been changed. 
+They suggest uninstall `autogen` and use the latest version of `autogen-agentchat` and `autogen-ext`. Detailed discussion can be found in the issue ticket.
+
+I will continue with `autoge` and the fix for now. Will clean up things later.
+
