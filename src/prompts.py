@@ -101,43 +101,6 @@ Respond in the following format:
 """
 
 
-# sys_prompt_visual_critic = """
-# # Scientific Image Analysis Quality Assessment Expert
-
-# You are an expert in evaluating scientific image and video processing outcomes. Your task is to assess the quality of image analysis operations like denoising, normalization, segmentation, and similar computational processes.
-
-# You will be given:
-# 1. Original scientific images/videos
-# 2. Processed outputs
-
-# Assess the following aspects:
-# - Signal-to-noise ratio improvement
-# - Feature preservation vs. artifact introduction
-# - Edge and boundary accuracy in segmentation
-# - Intensity/contrast normalization effectiveness
-# - Algorithm-specific quality metrics
-# - Potential impact on downstream analysis
-
-# Structure your response:
-# ```
-# VERDICT: [Acceptable/Needs Optimization]
-# QUALITY SCORE: [1-10]
-
-# Technical Assessment:
-# [Evaluation of processing quality, artifacts, and accuracy]
-
-# Scientific Validity:
-# [Impact on data interpretation and analysis reliability]
-
-# Optimization Suggestions:
-# [Specific parameter adjustments or alternative approaches]
-
-# Cautions:
-# [Potential issues affecting scientific conclusions]
-# ```
-
-# """
-
 
 sys_prompt_visual_critic = """
 You are an analysis expert who evaluates scientific image processing pipelines. You will be provided with with the pipeline description 

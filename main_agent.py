@@ -81,34 +81,6 @@ code_verifier_agent = ConversableAgent(
 )
 
 
-# builder_model = OpenAIWrapper(
-#     config_list=[{
-#         "model": "gpt-4o-mini",
-#         "api_key": os.environ["OPENAI_API_KEY"],
-#         "api_type": "openai",
-#     }]
-# )
-
-# sys_prompt_visual_critic = builder_model.create(
-#     messages=[
-#         {
-#             "role": "user",
-#             "content": f"""
-#             Generate a system message for a visual inspector who is evaluating an image analysis task.
-#             The images are already provided to the visual inspector.
-#             You goal is to guide the visual inspector on how to evaluate the results using the following template:
-
-#             # Task Description
-#             ...
-
-#             # Evaluation aspects
-#             ...
-
-#             """,
-#         }
-#     ]
-# ).choices[0].message.content
-
 
 visual_critic_agent = MultimodalConversableAgent(
     "visual_critic",
@@ -120,28 +92,6 @@ visual_critic_agent = MultimodalConversableAgent(
         "cache_seed": None,
     },
 )
-
-# def message_hook(messages):
-#     """Hook that processes messages"""
-#     # Check if the last message contains an image
-#     has_image = False
-#     for m in messages:
-#         if m['type'] == 'image_url':
-#             has_image = True
-#             break
-
-#     if has_image:
-#         messages.append(
-#             {
-#                 "type": "text",
-#                 "text": f"This is a image and it is a visualization from {sometask}. Describe what you see. Does the result look correct?",
-#             }
-#         )
-
-#     return messages
-
-
-# visual_critic_agent.register_hook("process_last_received_message", message_hook)
 
 
 def state_transition(last_speaker, groupchat):
