@@ -38,7 +38,8 @@ def set_gpu_device(gpu_id: int) -> None:
 
 
 # Set the GPU device to use
-set_gpu_device(3)
+my_gpu_id = 7
+set_gpu_device(my_gpu_id)
 
 max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
 
@@ -211,7 +212,7 @@ five different cell lines (NIH-3T3, HeLa-S3, HEK293, RAW 264.7, and PC-3).
 dataset_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/val.npz"
 # dataset_path = "/home/julie/Downloads/DynamicNuclearNet-segmentation-v1_0/val.npz"
 
-notes = """
+notes = f"""
 - For SAM-2, please run the following code snippet to set up the model config and checkpoint path. Let's run this code snippet and instantiate the model before starting the pipeline.
     ```python
     import hydra
@@ -228,7 +229,7 @@ notes = """
     ```
     Don't modify any of these code! 
 
-- Use GPU 3 for running the pipeline
+- Use GPU {my_gpu_id} for running the pipeline
 - Always check the documentation for the available APIs before reinventing the wheel
 - The images should be saved to the `output` directory
 - DON'T STOP UNTIL YOU REACH 5 ITERATIONS!!!
