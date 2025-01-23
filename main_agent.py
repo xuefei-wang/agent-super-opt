@@ -37,7 +37,7 @@ def set_gpu_device(gpu_id: int) -> None:
 
 def set_up_agents(max_round):
     server = LocalJupyterServer()
-    executor = JupyterCodeExecutor(server, output_dir="output", timeout=600)
+    executor = JupyterCodeExecutor(server, output_dir="output", timeout=10000) # very high timeout for long running tasks
 
     code_executor_agent = ConversableAgent(
         "code_executor_agent",
@@ -45,7 +45,8 @@ def set_up_agents(max_round):
         code_execution_config={
             "executor": executor
         },  # Use the docker command line code executor
-        human_input_mode="ALWAYS",  # Always take human input for this agent for safety.
+        # human_input_mode="ALWAYS",  # Always take human input for this agent for safety.
+        human_input_mode="NEVER",  # Never take human input for this agent
         # is_termination_msg=lambda msg: "TERMINATE" in msg["content"] if msg["content"] else False,
     )
 
@@ -282,8 +283,8 @@ def save_report_and_review(chat_history, curr_iter):
 def main():
     # Configuration
     my_gpu_id = 7 # GPU ID to use
-    cache_seed = 1234  # Cache seed for caching the results
-    num_optim_iter = 3 # Number of optimization iterations
+    cache_seed = 4 # Cache seed for caching the results
+    num_optim_iter = 5 # Number of optimization iterations
     max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
 
     # Set GPU device
