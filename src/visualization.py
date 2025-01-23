@@ -10,15 +10,13 @@ supporting both interactive and static visualization modes with specialized feat
 - Side-by-side comparison of ground truth and predicted results
 """
 
-import os
 import napari
 import numpy as np
-from typing import Dict, List, Optional, Union
-from pathlib import Path
+from typing import Dict, List, Optional
+from dataclasses import dataclass
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from scipy import ndimage
-from dataclasses import dataclass, replace
 
 from .data_io import ImageData
 
@@ -28,16 +26,13 @@ class VisConfig:
     """Configuration settings for visualization of biological image data.
     
     Attributes:
-        output_dir: Directory for saving static visualizations
-        dpi: Resolution for saved images
+        dpi: Resolution for display
         figsize: Figure dimensions (width, height) in inches
         show_raw: Whether to display raw channel data
         show_predicted: Whether to display predicted masks/types
         opacity: Opacity value for mask overlays (0.0-1.0)
         label_size: Font size for text labels
     """
-
-    output_dir: Optional[str] = None
     dpi: int = 300
     figsize: tuple = (10, 10)
     show_raw: bool = True
@@ -269,20 +264,14 @@ class NapariViewer(BaseVisualizer):
         self._layers["legend"] = legend_layer
 
     def clear(self) -> None:
-        """Remove all layers from the viewer and reset state.
-        
-        This method:
-        - Removes all image, mask, and text layers
-        - Clears internal layer tracking
-        - Resets cell type colormap
-        """
+        """Remove all layers from the viewer and reset state."""
         self.viewer.layers.clear()
         self._layers.clear()
         self.cell_type_colormap = None
 
 
 class MatplotlibVisualizer(BaseVisualizer):
-    """Static visualization class using matplotlib for saving image outputs."""
+    """Static visualization class using matplotlib."""
 
     def __init__(self, config: VisConfig):
         """Initialize the matplotlib visualizer with configuration.
@@ -292,18 +281,13 @@ class MatplotlibVisualizer(BaseVisualizer):
         """
         self.config = config
         self.cell_type_colormap = None
-        if config.output_dir:
-            os.makedirs(config.output_dir, exist_ok=True)
 
-    def plot_channels(self, data: ImageData, prefix: str = "") -> Optional[Path]:
-        """Plot each channel separately and save to files.
-        
+    def plot_channels(self, data: ImageData) -> None:
+        """Plot each channel separately.
+                
         Args:
             data: ImageData object containing raw image data
             prefix: Prefix for saved file names
-        
-        Returns:
-            Path to saved image if output_dir is specified, None otherwise
         """
         if data.raw is None or not data.channel_names:
             return
@@ -314,16 +298,6 @@ class MatplotlibVisualizer(BaseVisualizer):
             plt.imshow(data.raw[idx], cmap="gray")
             plt.axis("off")
             plt.title(f"Channel: {channel_name}")
-
-            if self.config.output_dir:
-                output_path = (
-                    Path(self.config.output_dir)
-                    / f"{data.image_id}_channel_{channel_name}.png"
-                )
-                plt.savefig(output_path, dpi=self.config.dpi, bbox_inches="tight")
-                return output_path
-            plt.close()
-            return None
 
     def _prepare_mask_visualization(
         self, mask: np.ndarray, cell_type_info: Optional[Dict[int, str]] = None
@@ -365,13 +339,11 @@ class MatplotlibVisualizer(BaseVisualizer):
                 rgb_image[mask == cell_idx] = cmap(i % 20)[:3]
             return rgb_image
 
-    def plot_comparison(self, data: ImageData) -> Optional[Path]:
+    def plot_comparison(self, data: ImageData) -> None:
         """Plot ground truth and predicted masks side by side with combined visualization.
         
         Args:
             data: ImageData object containing mask and predicted mask data
-        Returns:
-            Path to saved image if output_dir is specified, None otherwise
         """
         if data.mask is None:
             return
@@ -419,10 +391,3 @@ class MatplotlibVisualizer(BaseVisualizer):
             )
 
         plt.tight_layout()
-
-        if self.config.output_dir:
-            output_path = Path(self.config.output_dir) / f"{data.image_id:03d}_comparison.png"
-            plt.savefig(output_path, dpi=self.config.dpi, bbox_inches="tight")
-            return output_path
-        plt.close()
-        return None
