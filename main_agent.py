@@ -158,12 +158,7 @@ def prepare_notes_shared(my_gpu_id):
     notes_shared = f"""
     - Always check the documentation for the available APIs before reinventing the wheel
     - Use GPU {my_gpu_id} for running the pipeline, set `cuda: {my_gpu_id}` in the code snippet!
-    """
-    return notes_shared
-
-
-notes_pipeline_development = f"""
-- For SAM-2, please run the following code snippet to set up the model config and checkpoint path. Let's run this code snippet and instantiate the model before starting the pipeline.
+    - For SAM-2, please run the following code snippet to set up the model config and checkpoint path. Use the following code snippet and instantiate the model before starting the pipeline. Don't modify any of the code:
     ```python
     import hydra
     from hydra.core.global_hydra import GlobalHydra
@@ -177,9 +172,12 @@ notes_pipeline_development = f"""
     model_cfg = "sam2.1/sam2.1_hiera_t.yaml"
     checkpoint_path = str(PROJECT_ROOT / "src/sam2/checkpoints/sam2.1_hiera_tiny.pt")
     ```
-    Don't modify any of these code! 
+    - Don't suggest trying larger models as the model size is fixed.
+    """
+    return notes_shared
 
-- Always check the documentation for the available APIs before reinventing the wheel
+
+notes_pipeline_development = f"""
 - You don't need to query the visual critic for feedback in this stage, finish the task once you have the pipeline developed!
 """
 
@@ -239,9 +237,10 @@ def prepare_prompt_pipeline_optimization(notes_shared, script_path):
     You are provided with pipeline code snippets that performs cell segmentation analysis. Your task is to optimize the pipeline by incorporating feedback from the visual critic.
     You can find the file containing the code at {script_path}. 
     
-    1. Load the file, revise the code snippet by adding more comments.
+    1. Load file contents, add minimal clarifying comments, and execute the modified code directly without saving to file.
     2. Run the code, collect the results from execution output, and format into a report with required format. It will be automatically sent to the visual critic for feedback.
     3. Once received the feedback from the visual critic, implement the changes and update the pipeline accordingly.
+    4. End conversation after writing the optimized pipeline, one single iteration is enough for this task; no need to query visual critic again.
 
     ## Available APIs:
     ```markdown
@@ -285,15 +284,17 @@ def main():
 
     # Run pipeline development and optimization
     with Cache.disk(cache_seed=cache_seed) as cache:
-        # Pipeline development
+        
         notes_shared = prepare_notes_shared(my_gpu_id)
+
+        # Pipeline development
         prompt_pipeline_development = prepare_prompt_pipeline_development(notes_shared, notes_pipeline_development)
         chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_development, summary_method="reflection_with_llm",
                                         summary_args={"summary_prompt": "Summarize the pipeline you developed into pure code format."})
         save_pipeline_script(chat_result.summary, 0)
 
         # Pipeline optimization
-        for i in range(1, num_optim_iter):
+        for i in range(1, num_optim_iter+1):
             script_path = f"output/pipeline_script_V{i-1:03d}.py"
             prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared, script_path)
             
