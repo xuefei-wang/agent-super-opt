@@ -37,7 +37,7 @@ def set_gpu_device(gpu_id: int) -> None:
 
 def set_up_agents(max_round):
     server = LocalJupyterServer()
-    executor = JupyterCodeExecutor(server, output_dir="output")
+    executor = JupyterCodeExecutor(server, output_dir="output", timeout=600)
 
     code_executor_agent = ConversableAgent(
         "code_executor_agent",
