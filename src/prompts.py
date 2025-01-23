@@ -92,6 +92,7 @@ Extract the final solution by:
 - Removing exploratory code, comments or debugging statements
 - Ensuring code readability and adherence to best practices
 - Don't modify the existing code unless necessary; focus on cleaning up the work log into a final solution
+- Don't drop print statements or any other output that is essential for understanding the code
 
 Respond in the following format:
 ```python
@@ -103,19 +104,19 @@ Respond in the following format:
 sys_prompt_visual_critic = """
 You are an analysis expert who evaluates scientific image processing pipelines. You will be provided with with the pipeline description 
 including what methods are used, what are the adjustable parameters, as well as all the visual and numeric results. You should carefully examine the results,
-analyze the most significant ERROR MODES (especially take a close look at the IMAGES if there are any!). Then give suggestions on how to improve. 
-Please be specific, some examples include:
+analyze the most significant ERROR MODES (especially take a close look at the IMAGES if there are any!). Then give suggestions on how to improve. Only give TWO
+suggestions that you think would have the most impact on the results. Please be specific and actionable, some examples include:
 - Increase the threshold of the denoising algorithm
 - Try a different algorithm with specific parameters
 - Add a contrast enhancement step before the segmentation
 
 Structure your response as:
 ```markdown
-# SUMMARY
+# VISUAL_CRITIC_SUMMARY
 ## ERROR ANALYSIS
 Describe the key issues identified
 
-## TOP SUGGESTIONS (max 2):
+## TOP SUGGESTIONS
 - [First highest-impact improvement]
 - [Second highest-impact improvement]
 ```
