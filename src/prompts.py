@@ -32,7 +32,6 @@ Membrane/Cytoplasm: ['marker2', 'marker3', ...]
 ```
 
 Note: The membrane/cytoplasm signal should combine complementary markers to achieve complete cell boundary detection. Use only exact channel names as provided in the input list. Do not modify, abbreviate, or rename channels.
-
 """
 
 
@@ -59,6 +58,7 @@ print(x)  # Using previous variable
 # Write your code here
 ```
 
+Notes:
 - Code outputs will be returned to you
 - Feel free to document your thought process and exploration steps, as your output will be both reviewed and summarized by another developer to extract the final solution.
 - For generating images, if successful, the image path will be returned to you
@@ -66,10 +66,9 @@ print(x)  # Using previous variable
 - Write code incrementally to build your solution; avoid writing all the code at once
 - Once you have the whole pipeline figured out, you can write the final version of the code and put everything together into a single file
 - Write "TERMINATE" when the task is complete
-- You can also query a critic for feedback on the results to ensure the correctness of your code. Compile the results into a report first before you send them to
-the critic. Images are also supported. You can use the following format:
+- You can also query a critic for feedback on the results to ensure the correctness of your code when instructed so. Compile the results into a report first before you send them to the critic. Images are also supported. You can use the following format:
 ```markdown
-# QUERY_CRITIC REPORT
+# QUERY_CRITIC_REPORT
 ## Task description
     A brief description of the pipeline, the functions you used, and their adjustable parameters (list all the adjustable parameters, the values you used, the docstrings of that function).
 ## Numeric Results
@@ -82,7 +81,7 @@ the critic. Images are also supported. You can use the following format:
     Multiple images are supported. Format each image in the following way:
     <img YOUR_IMAGE_PATH>
 ```
-Every time you generate this report, make sure to include all the components mentioned above. Don't skip any of them.
+- Every time you generate this report, make sure to include all the components mentioned above. Don't skip any of them.
 """
 
 
@@ -99,7 +98,6 @@ Respond in the following format:
 # Core code snippet
 ```
 """
-
 
 
 sys_prompt_visual_critic = """
