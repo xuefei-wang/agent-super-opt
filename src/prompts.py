@@ -51,6 +51,7 @@ print(x)  # Using previous variable
 - Use bash commands with prefix `!` to explore and interact with files:
 ```python
 !ls  # List files
+!cat file.txt  # Print file content
 ```
 - Save your code to a file using the `%%writefile` magic command:
 ```python
