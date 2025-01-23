@@ -97,6 +97,9 @@ def set_up_agents(max_round):
         if len(messages) <= 1:  # First round
             return code_writer_agent
 
+        if "TERMINATE" in messages[-1]["content"]: # Terminate if the last message contains "TERMINATE"
+            return None
+
         if last_speaker is code_writer_agent:
             if "# QUERY_CRITIC_REPORT" in messages[-1]["content"]:
                 return visual_critic_agent
@@ -106,8 +109,6 @@ def set_up_agents(max_round):
         elif last_speaker is code_executor_agent:
             return code_writer_agent
         elif last_speaker is visual_critic_agent:
-            if "TERMINATE" in messages[-1]["content"]:
-                return None
             return code_writer_agent
 
     # Set up group chat
