@@ -262,10 +262,20 @@ def save_pipeline_script(pipeline_script, curr_iter):
         file.write(code_block)
 
 
-def save_result_report(chat_history, curr_iter):
+def save_report_and_review(chat_history, curr_iter):
+    with open(f"output/chat_history_V{curr_iter:03d}.txt", "w") as file:
+        for message in chat_history:
+            file.write(f"{message['name']}: {message['content']}\n\n")
+
     with open(f"output/optimization_report_V{curr_iter:03d}.txt", "w") as file:
         for message in chat_history:
-            if "```# QUERY_CRITIC_REPORT" in message["content"] and message["name"] == "code_writer":
+            if "# QUERY_CRITIC_REPORT" in message["content"] and message["name"] == "code_writer":
+                file.write(message['content'])
+                file.write("\n\n\n")
+
+    with open(f"output/critic_review_V{curr_iter:03d}.txt", "w") as file:
+        for message in chat_history:
+            if "# VISUAL_CRITIC_SUMMARY" in message["content"] and message["name"] == "visual_critic":
                 file.write(message['content'])
                 file.write("\n\n\n")
 
@@ -301,7 +311,7 @@ def main():
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
                                             summary_args={"summary_prompt": "Summarize the pipeline you optimized into pure code format."},)
             save_pipeline_script(chat_result.summary, i)
-            save_result_report(chat_result.chat_history, i-1)
+            save_report_and_review(chat_result.chat_history, i-1)
 
 if __name__ == "__main__":
     main()
