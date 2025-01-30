@@ -50,3 +50,10 @@ They suggest uninstall `autogen` and use the latest version of `autogen-agentcha
 
 I will continue with `autoge` and the fix for now. Will clean up things later.
 
+### AG2
+There has been some confusion regarding Autogen packages and versioning. There are three packages: 
+- autogen 0.2 (`pip install autogen-agentchat~=0.2`), original Microsoft implementation
+- autogen 0.4 (`pip install autogen-agentchat~=0.4`), updated Microsoft version with significant API changes
+- AG2 (`pip install ag2`, version doesn't matter), open-source continuation of Autogen 0.2
+
+Note: While the latter two packages originated from the same codebase, they now follow different development paths. AG2 continues the original Autogen 0.2 design philosophy, while Autogen 0.4+ introduces a new API structure. For this project, we will use AG2.
