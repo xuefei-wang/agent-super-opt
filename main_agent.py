@@ -255,7 +255,7 @@ def prepare_prompt_pipeline_optimization(notes_shared, script_path):
 
 
 def save_pipeline_script(pipeline_script, curr_iter):
-    code_block = pipeline_script.split("```python")[1]
+    code_block = pipeline_script['content'].split("```python")[1]
     code_block = code_block.split("```")[0]
     with open(f"output/pipeline_script_V{curr_iter:03d}.py", "w") as file:
         file.write(code_block)
