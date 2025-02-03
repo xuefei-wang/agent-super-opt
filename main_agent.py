@@ -54,7 +54,8 @@ def set_up_agents(max_round):
         "code_writer",
         system_message=sys_prompt_code_writer,
         llm_config={
-            "config_list": [{"model": "gemini-1.5-flash", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+            # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+            "config_list": [{"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}],
         },
         code_execution_config=False,
         human_input_mode="NEVER",
@@ -64,7 +65,8 @@ def set_up_agents(max_round):
         "code_verifier",
         system_message=sys_prompt_code_verifier,
         llm_config={
-            "config_list": [{"model": "gemini-1.5-flash", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+            # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+            "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
         },
         code_execution_config=False,
         human_input_mode="NEVER",
@@ -74,7 +76,8 @@ def set_up_agents(max_round):
         "visual_critic",
         system_message=sys_prompt_visual_critic,
         llm_config={
-            "config_list": [{"model": "gemini-1.5-flash", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+            "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+            # "config_list": [{"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}],
             "cache_seed": None,
         },
     )
@@ -126,7 +129,8 @@ def set_up_agents(max_round):
     group_chat_manager = GroupChatManager(
         groupchat=group_chat,
         llm_config={
-            "config_list": [{"model": "gemini-1.5-flash", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+            # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+            "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
         },
         is_termination_msg=lambda msg: (
             "TERMINATE" in msg["content"] if msg["content"] else False
