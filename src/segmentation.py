@@ -263,11 +263,10 @@ class MesmerSegmenter(BaseSegmenter):
 
         Args:
             image_data: ImageData object containing raw image and metadata
-            channel_spec: Optional specification of nuclear and membrane channels
+            channel_spec: Optional specification of nuclear and membrane channels, if known
 
         Returns:
-            np.ndarray: Processed image with shape (2, height, width) containing
-                       [nuclear_channel, membrane_channel]
+            np.ndarray: Processed image with shape (H, W, C)
 
         Raises:
             ValueError: If required channels cannot be found or selected
@@ -275,80 +274,17 @@ class MesmerSegmenter(BaseSegmenter):
         raw = image_data.raw
 
         # Handle single-channel input
-        if raw.ndim == 2 or (raw.ndim == 3 and raw.shape[-1] == 1):
+        if raw.ndim == 2 or (raw.ndim == 3 and raw.shape[0] == 1): # (H, W) or (1, H, W)
             if raw.ndim == 3:
-                raw = raw[..., 0]  # Convert (H, W, 1) to (H, W)
-
-            # Use the same channel for both nuclear and membrane signals
-            nuclear_img = raw
-            membrane_img = raw
+                raw = np.squeeze(raw, axis=0) # Convert (1, H, W) to (H, W)
+            raw = np.stack([raw] * 2, axis=-1) # Duplicate channel for nuclear and membrane
+            
 
         # Handle multichannel input
         elif raw.ndim == 3 and raw.shape[0] > 1:  # (C, H, W) format
-            if channel_spec is None:
-                # Attempt to automatically select channels
-                nuclear_patterns = ["DAPI", "Hoechst", "H3342", "nuclear"]
-                membrane_patterns = ["membrane", "CD44", "Na/K", "WGA"]
-
-                if image_data.channel_names is None:
-                    # If no channel names, use first channel for nuclear and sum of others for membrane
-                    nuclear_idx = 0
-                    membrane_indices = list(range(1, raw.shape[0]))
-                else:
-                    # Find nuclear channel
-                    nuclear_idx = -1
-                    for pattern in nuclear_patterns:
-                        matching = [
-                            i
-                            for i, name in enumerate(image_data.channel_names)
-                            if pattern.lower() in name.lower()
-                        ]
-                        if matching:
-                            nuclear_idx = matching[0]
-                            break
-
-                    if nuclear_idx == -1:
-                        nuclear_idx = 0  # Default to first channel if no match
-
-                    # Find membrane channels
-                    membrane_indices = []
-                    for pattern in membrane_patterns:
-                        matching = [
-                            i
-                            for i, name in enumerate(image_data.channel_names)
-                            if pattern.lower() in name.lower()
-                        ]
-                        membrane_indices.extend(matching)
-
-                    if not membrane_indices:
-                        membrane_indices = list(
-                            range(1, raw.shape[0])
-                        )  # Use all non-nuclear channels
-            else:
-                # Use specified channels
-                try:
-                    nuclear_idx = image_data.channel_names.index(channel_spec.nuclear)
-                    membrane_indices = [
-                        image_data.channel_names.index(ch)
-                        for ch in channel_spec.membrane
-                    ]
-                except ValueError as e:
-                    raise ValueError(f"Channel not found: {str(e)}")
-
-            # Extract channels
-            nuclear_img = raw[nuclear_idx]
-            membrane_img = np.zeros_like(nuclear_img)
-            for idx in membrane_indices:
-                membrane_img += raw[idx]
-
-        else:
-            raise ValueError(f"Unsupported input shape: {raw.shape}")
-
-        # Normalize both channels
-        nuclear_img = self._normalize(nuclear_img)
-        membrane_img = self._normalize(membrane_img)
-
-        return np.stack([nuclear_img, membrane_img])
+            raise NotImplementedError("Multichannel input not yet supported")
+        
+        return raw
 
     def predict(
         self,
@@ -361,16 +297,16 @@ class MesmerSegmenter(BaseSegmenter):
         processed_img = self.preprocess(image_data, channel_spec)
 
         # Convert to Mesmer's expected format (batch, height, width, channels)
-        model_input = np.moveaxis(processed_img, 0, -1)
-        model_input = model_input[np.newaxis, ...]  # Add batch dimension
+        model_input = processed_img[np.newaxis, ...]  # Add batch dimension
 
         # Run prediction
         try:
-            labels = self.model.predict(model_input, **kwargs)
+            labels = self.model.predict(model_input, compartment="nuclear",  **kwargs)
         except Exception as e:
             raise RuntimeError(f"Mesmer segmentation failed: {str(e)}") from e
 
         # Standardize output to (1, H, W) format
+        print(labels.shape)
         labels = standardize_mask(labels)
 
         return replace(image_data, predicted_mask=labels)

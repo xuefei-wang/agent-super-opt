@@ -16,7 +16,7 @@ def standardize_mask(mask: np.ndarray) -> Optional[np.ndarray]:
 
     Args:
         mask: Input mask with shape (height, width), (height, width, 1),
-              (1, height, width) or similar variations
+              (1, height, width), (1, height, width, 1) or similar variations
 
     Returns:
         np.ndarray: Standardized mask with shape (1, height, width)
@@ -43,7 +43,13 @@ def standardize_mask(mask: np.ndarray) -> Optional[np.ndarray]:
             raise ValueError(
                 f"Invalid mask shape {mask.shape}. Cannot standardize to (1, H, W) format."
             )
-
+    elif mask.ndim == 4:
+        if mask.shape[0] == 1 and mask.shape[-1] == 1:
+            return mask[..., 0]
+        else:
+            raise ValueError(
+                f"Invalid mask shape {mask.shape}. Cannot standardize to (1, H, W) format."
+            )
     else:
         raise ValueError(
             f"Invalid mask dimensionality {mask.ndim}. Expected 2 or 3 dimensions."
