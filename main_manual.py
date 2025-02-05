@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from src.data_io import NpzDataset, ImageData
-from src.segmentation import MesmerSegmenter, SAM2Segmenter
+from src.segmentation import MesmerSegmenter, SAM2Segmenter, calculate_metrics
 
 # Set up logging
 logging.basicConfig(
@@ -128,10 +128,9 @@ def run_pipeline(
     try:
         dataset = NpzDataset(data_path)
         # images = dataset.load_all()
-        images = dataset.load(
-            np.random.choice(len(dataset), 3)
-        )  # Load only 3 images for testing
-        logger.info(f"Loaded {len(images)} images")
+        indices = np.random.choice(len(dataset), 10)
+        images = dataset.load(indices)
+        logger.info(f"Loaded {len(images)} images, indices: {indices}")
     except Exception as e:
         logger.error(f"Failed to load dataset: {str(e)}")
         raise
@@ -154,18 +153,14 @@ def run_pipeline(
     for image in images:
         logger.info(f"Processing image {image.image_id}")
 
-        # Denoise
-        logger.info("Applying denoising")
-        denoised_image = denoise_image(image)
-
         # Run segmentation
         logger.info("Running segmentation")
         try:
-            segmented_image = segmenter.predict(denoised_image)
+            segmented_image = segmenter.predict(image)
             processed_images[str(image.image_id)] = segmented_image
             if segmented_image.mask is not None:
                 logger.info("Calculating evaluation metrics")
-                metrics = segmenter.calculate_object_metrics(
+                metrics = calculate_metrics(
                     segmented_image.mask, segmented_image.predicted_mask
                 )
                 logger.info(f"Metrics: {metrics}")
