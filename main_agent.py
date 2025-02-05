@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 import os
 import torch
+import json
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock
@@ -123,6 +124,11 @@ def set_up_agents(max_round):
 with open("artifacts/docs.md", "r") as file:
     documentation = file.read()
 
+# Load function bank
+with open("output/preprocessing_func_bank.json", "r") as file:
+    function_bank = json.load(file)
+
+
 dataset_info = """
 ```markdown
 This is a single-channel nuclear segmentation dataset. It consists of images from different experiments, different settings - a heterogenous dataset covering
@@ -137,126 +143,216 @@ def prepare_notes_shared(my_gpu_id):
     notes_shared = f"""
     - Always check the documentation for the available APIs before reinventing the wheel
     - Use GPU {my_gpu_id} for running the pipeline, set `cuda: {my_gpu_id}` in the code snippet!
-    - For SAM-2, please run the following code snippet to set up the model config and checkpoint path. Use the following code snippet and instantiate the model before starting the pipeline. Don't modify any of the code:
-    ```python
-    import hydra
-    from hydra.core.global_hydra import GlobalHydra
-
-    GlobalHydra.instance().clear()
-    hydra.initialize(config_path="src/sam2/sam2/configs", version_base="1.2")
-
-    from pathlib import Path
-
-    PROJECT_ROOT = Path(os.getcwd())
-    model_cfg = "sam2.1/sam2.1_hiera_t.yaml"
-    checkpoint_path = str(PROJECT_ROOT / "src/sam2/checkpoints/sam2.1_hiera_tiny.pt")
-    ```
     - Don't suggest trying larger models as the model size is fixed.
     """
     return notes_shared
 
 
-notes_pipeline_development = f"""
-- You don't need to query the visual critic for feedback in this stage, finish the task once you have the pipeline developed!
-"""
-
 
 notes_pipeline_optimization = f"""
-- You don't need to explicitly save the images, once plotted, the images will be saved automatically and the paths will be returned 
-to you after the code execution so that you can collect them and send them to the visual critic for feedback
-- Don't query the visual critic until you have everything ready for the feedback, don't leave any incomplete tasks before writing the report
-- Do NOT attempt to execute .py files directly! Use the code executor agent to run the code snippets.
 """
 
 
-
-def prepare_prompt_pipeline_development(notes_shared, notes_pipeline_development):
-    prompt_pipeline_development = f"""
-    # Cell Segmentation Analysis Pipeline Development
-    ## Objective:
-    Develop an end-to-end pipeline for cell segmentation analysis.
-
-    ## About the dataset: 
-    {dataset_info}
-    Location: {dataset_path}
-
-    ## Task Details:
-    Here is the description of the pipeline steps. You will work with a visual critic to optimize the pipeline iteratively.
-
-    1. Load the data using the provided APIs. 
-    2. Select 2 samples (the first and the last) as you will be working with a small subset of the data for testing purposes.
-    3. Use SAM-2 segmenter to generate masks, calculate metrics, and create visualizations (both raw images and gt-predited mask comparisons).
-    4. Reflect on the conversation history, collect the code snippets that were actually useful for developing the pipeline and summarize them into a pure code format.
-
-    ## Available APIs:
-    ```markdown 
-    {documentation}
-    ```
-
-    ## Additional Notes:
-    {notes_shared}
-    {notes_pipeline_development}
-    """
-
-    return prompt_pipeline_development
+summary_prompt = """
+Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
+Follow the format:
+{
+    "mean_iou": ...,
+    "precision": ...,
+    "recall": ...,
+    "f1_score": ...,
+    "preprocessing_function": "
+        ```python
+        YOUR_CODE_HERE
+        ```
+        ",
+}
+"""
 
 
-def prepare_prompt_pipeline_optimization(notes_shared, script_path):
+def prepare_prompt_pipeline_optimization(notes_shared):
 
     prompt_pipeline_optimization = f"""
     # Cell Segmentation Analysis Pipeline Optimization
     ## Objective:
-    Optimize the existing pipeline for cell segmentation analysis by incorporating feedback from the visual critic.
+    Optimize the pipeline for cell segmentation analysis by suggesting new preprocessing functions.
 
     ## About the dataset: 
     {dataset_info}
-    Location: {dataset_path}
 
     ## Task Details:
-    You are provided with pipeline code snippets that performs cell segmentation analysis. Your task is to optimize the pipeline by incorporating feedback from the visual critic.
-    You can find the file containing the code at {script_path}. 
-    
-    1. Load file contents, add minimal clarifying comments, and execute the modified code directly without saving to file.
-    2. Run the code, collect the results from execution output, and format into a report with required format. It will be automatically sent to the visual critic for feedback.
-    3. Once received the feedback from the visual critic, implement the changes and update the pipeline accordingly.
-    4. End conversation after writing the optimized pipeline, one single iteration is enough for this task; no need to query visual critic again.
+    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their performance, suggest a new preprocessing function using OpenCV functions following the API provided.
+    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
+    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
+    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
 
-    ## Available APIs:
-    ```markdown
-    {documentation}
-    ```
+    ## Previous preprocessing functions and their performance (might be empty):
+    {function_bank}
 
     ## Additional Notes:
     {notes_shared}
     {notes_pipeline_optimization}
+
+    ## Preprocessing Function API:
+    ```python
+    from src.data_io import ImageData
+    def preprocess_image(image: ImageData) -> Image:
+        # YOUR CODE HERE
+        return image
+    ```
+
+    ## Documentation on the `ImageData`:
+    ```markdown
+    ImageData
+
+    Container for biological image data and associated metadata.
+
+    This class provides a standardized structure for storing and managing biological
+    image data along with related annotations and predictions. It handles data
+    validation and format standardization automatically.
+
+    The class standardizes array shapes as follows:
+    - Raw images: (C, H, W) format where C is number of channels
+    - Masks: (1, H, W) format for both ground truth and predictions
+
+    Attributes:
+        raw (np.ndarray): Raw image data in (C, H, W) format. For multichannel data,
+            C corresponds to different imaging channels (e.g., fluorescence markers).
+            For single-channel data, C=1.
+        
+        image_id (Union[int, str]): Unique identifier for the image. Can be numeric
+            index or string identifier.
+        
+        channel_names (Optional[List[str]]): Names of imaging channels in order matching
+            raw data channels. For multichannel data, must have length equal to
+            number of channels. For single-channel data, defaults to ["channel_0"].
+        
+        tissue_type (Optional[str]): Type of biological tissue in the image, e.g.,
+            "liver", "kidney", etc.
+        
+        cell_types (Optional[List[str]]): List of cell types expected to be present
+            in the image. Used for reference and verification.
+        
+        image_mpp (Optional[float]): Microns per pixel resolution of the image.
+            Used for size-based analysis and visualization scaling.
+        
+        mask (Optional[np.ndarray]): Ground truth segmentation mask in (1, H, W) format.
+            Integer-valued array where 0 is background and positive integers are
+            unique cell identifiers.
+        
+        cell_type_info (Optional[Dict[int, str]]): Mapping from cell identifiers in
+            the ground truth mask to their corresponding cell type labels.
+        
+        predicted_mask (Optional[np.ndarray]): Model-predicted segmentation mask in
+            (1, H, W) format. Integer-valued array where 0 is background and
+            positive integers are unique cell identifiers.
+        
+        predicted_cell_types (Optional[Dict[int, str]]): Mapping from cell identifiers
+            in the predicted mask to their predicted cell type labels.
+
+    Example:
+        >>> image_data = ImageData(
+        ...     raw=np.array(...),  # Shape (2, 512, 512)
+        ...     image_id="sample_001",
+        ...     channel_names=["DAPI", "CD3"],
+        ...     tissue_type="lymph_node",
+        ...     mask=np.array(...)  # Shape (1, 512, 512)
+        ... )
+
+    ```
+    ## Function for saving the results:
+    ```python
+    import inspect
+    import json
+
+    def write_results(preprocessing_fn, metrics_dict):
+        '''
+        Write the results of evaluation to the function bank JSON.
+        
+        Requires:
+        preprocessing_fn: the function
+        metrics_dict: the metrics dictionary
+        '''
+        
+        with open('output/preprocessing_func_bank.json', 'r') as file:
+            json_array = json.load(file)
+
+        with open('output/preprocessing_func_bank.json', 'w') as file:
+            json_data = metrics_dict
+            json_data["preprocessing_function"] = inspect.getsource(preprocessing_fn)
+            json_array.append(json_data)
+            json.dump(json_array, file)
+    ```
+
+    ## Code for running segmentation and calculating metrics:
+    ```python
+    import numpy as np
+    import tensorflow as tf
+    from src.data_io import NpzDataset
+    from src.segmentation import MesmerSegmenter, calculate_metrics
+    import logging
+    import pandas as pd
+    from pathlib import Path
+
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler("app.log"),
+            logging.StreamHandler()  # This keeps console logging
+        ]
+    )
+    logger = logging.getLogger(__name__)
+
+    # Set random seed for reproducibility
+    seed = 42
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+    # Load data
+    data_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/test.npz"
+    dataset = NpzDataset(data_path)
+    indices = np.random.choice(len(dataset), 10)
+    images = dataset.load(indices)
+
+    # Initialize segmenter
+    segmenter = MesmerSegmenter()
+
+    # Process each image
+    metrics_list = []
+    for image in images:
+        logger.info(f"Processing image",  image.image_id)
+
+        try:
+            # TODO: add your preprocessing function here
+            # image = preprocess_image(image)
+
+            segmented_image = segmenter.predict(image)
+            metrics = calculate_metrics(
+                segmented_image.mask, segmented_image.predicted_mask
+            )
+            logger.info(f"Metrics: ", metrics)
+            metrics_list.append(metrics)
+        
+        except Exception as e:
+            logger.error(f"Segmentation failed for image", image.image_id, str(e))
+            continue
+
+    df = pd.DataFrame(metrics_list)
+    avg_metrics = df.mean().to_dict()
+    logger.info(f"Average Metrics: ", avg_metrics)
+    ```
+
     """
 
     return prompt_pipeline_optimization
 
 
-def save_pipeline_script(pipeline_script, curr_iter):
-    code_block = pipeline_script['content'].split("```python")[1]
-    code_block = code_block.split("```")[0]
-    with open(f"output/pipeline_script_V{curr_iter:03d}.py", "w") as file:
-        file.write(code_block)
-
-
-def save_report_and_review(chat_history, curr_iter):
-    with open(f"output/chat_history_V{curr_iter:03d}.txt", "w") as file:
+def save_chat_history(chat_history, curr_iter):
+    with open(f"output/chat_history_ver{curr_iter:03d}.txt", "w") as file:
         for message in chat_history:
             file.write(f"{message['name']}: {message['content']}\n\n")
-
-    with open(f"output/optimization_report_V{curr_iter:03d}.txt", "w") as file:
-        for message in chat_history:
-            if "# QUERY_CRITIC_REPORT" in message["content"] and message["name"] == "code_writer":
-                file.write(message['content'])
-                file.write("\n\n\n")
-
-    with open(f"output/critic_review_V{curr_iter:03d}.txt", "w") as file:
-        for message in chat_history:
-            if "# VISUAL_CRITIC_SUMMARY" in message["content"] and message["name"] == "visual_critic":
-                file.write(message['content'])
-                file.write("\n\n\n")
 
 def main():
     # Configuration
@@ -276,21 +372,12 @@ def main():
         
         notes_shared = prepare_notes_shared(my_gpu_id)
 
-        # Pipeline development
-        prompt_pipeline_development = prepare_prompt_pipeline_development(notes_shared, notes_pipeline_development)
-        chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_development, summary_method="reflection_with_llm",
-                                        summary_args={"summary_prompt": "Summarize the pipeline you developed into pure code format."})
-        save_pipeline_script(chat_result.summary, 0)
-
-        # Pipeline optimization
-        for i in range(1, num_optim_iter+1):
-            script_path = f"output/pipeline_script_V{i-1:03d}.py"
-            prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared, script_path)
+        for i in range(0, num_optim_iter+1):
+            prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared)
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
-                                            summary_args={"summary_prompt": "Summarize the pipeline you optimized into pure code format."},)
-            save_pipeline_script(chat_result.summary, i)
-            save_report_and_review(chat_result.chat_history, i-1)
+                                            summary_args={"summary_prompt": summary_prompt})
+            save_chat_history(chat_result.chat_history, i)
 
 if __name__ == "__main__":
     main()

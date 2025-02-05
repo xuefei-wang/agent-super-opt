@@ -29,6 +29,12 @@ python collect_docstrings.py --input_path src --output_file artifacts/docs.md
 python collect_docstrings.py --input_path src --output_file artifacts/docs.md --recursive
 ```
 
+Initialize an empty json file as the funtion bank:
+```
+echo "[]" > output/preprocessing_func_bank.json
+```
+
+
 To run it manually:
 ```bash
 python main_manual.py --data_path /data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/test.npz --output output --gpu 7 --segmenter mesmer
