@@ -9,16 +9,10 @@ from autogen.coding.jupyter import (
     JupyterCodeExecutor,
     LocalJupyterServer,
 )
-from autogen.agentchat.contrib.multimodal_conversable_agent import (
-    MultimodalConversableAgent,
-)
 
 from src.prompts import (
     sys_prompt_code_writer,
     sys_prompt_code_verifier,
-    sys_prompt_visual_critic,
-    prompt_denoise,
-    prompt_find_whole_cell_channels,
 )
 
 # Load environment variables
@@ -72,15 +66,6 @@ def set_up_agents(max_round):
         human_input_mode="NEVER",
     )
 
-    visual_critic_agent = MultimodalConversableAgent(
-        "visual_critic",
-        system_message=sys_prompt_visual_critic,
-        llm_config={
-            "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
-            # "config_list": [{"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}],
-            "cache_seed": None,
-        },
-    )
 
     def state_transition(last_speaker, groupchat):
         """Determine the next speaker in the group chat.
@@ -101,23 +86,18 @@ def set_up_agents(max_round):
             return None
 
         if last_speaker is code_writer_agent:
-            if "# QUERY_CRITIC_REPORT" in messages[-1]["content"]:
-                return visual_critic_agent
             return code_verifier_agent
         elif last_speaker is code_verifier_agent:
             return code_executor_agent
         elif last_speaker is code_executor_agent:
             return code_writer_agent
-        elif last_speaker is visual_critic_agent:
-            return code_writer_agent
-
+        
     # Set up group chat
     group_chat = GroupChat(
         agents=[
             code_executor_agent,
             code_writer_agent,
             code_verifier_agent,
-            visual_critic_agent,
         ],
         messages=[],
         max_round=max_round,
