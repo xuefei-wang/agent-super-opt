@@ -128,6 +128,10 @@ with open("artifacts/docs.md", "r") as file:
 with open("output/preprocessing_func_bank.json", "r") as file:
     function_bank = json.load(file)
 
+# Load openCV function APIs
+with open("assets/opencv_APIs.md", "r") as file:
+    opencv_APIs = file.read()
+
 
 dataset_info = """
 ```markdown
@@ -137,7 +141,6 @@ five different cell lines (NIH-3T3, HeLa-S3, HEK293, RAW 264.7, and PC-3).
 """
 
 dataset_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/val.npz"
-# dataset_path = "/home/julie/Downloads/DynamicNuclearNet-segmentation-v1_0/val.npz"
 
 def prepare_notes_shared(my_gpu_id):
     notes_shared = f"""
@@ -182,13 +185,16 @@ def prepare_prompt_pipeline_optimization(notes_shared):
 
     ## Task Details:
     All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
-    1. Based on previous preprocessing functions and their performance, suggest a new preprocessing function using OpenCV functions following the API provided.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
     2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
     3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
     4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
 
     ## Previous preprocessing functions and their performance (might be empty):
     {function_bank}
+
+    ## OpenCV Function APIs:
+    {opencv_APIs}
 
     ## Additional Notes:
     {notes_shared}
