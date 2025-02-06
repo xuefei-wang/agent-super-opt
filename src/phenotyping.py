@@ -230,14 +230,7 @@ class BasePhenotyper(ABC):
 
         Returns:
             List of ImageData objects with updated predictions
-
-        Note:
-            Each ImageData object is validated before processing.
         """
-        # Validate all images
-        for image in images:
-            image.validate()
-
         preprocessed_data = self.preprocess(images, **kwargs)
         return self.predict(preprocessed_data, images, **kwargs)
 
