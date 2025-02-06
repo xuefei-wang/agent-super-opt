@@ -11,6 +11,7 @@ from autogen.coding.jupyter import (
     LocalJupyterServer,
 )
 
+from src.utils import set_gpu_device
 from src.prompts import (
     sys_prompt_code_writer,
     sys_prompt_code_verifier,
@@ -18,16 +19,6 @@ from src.prompts import (
 
 # Load environment variables
 load_dotenv()
-
-def set_gpu_device(gpu_id: int) -> None:
-    """Set global GPU device for both PyTorch and TensorFlow."""
-    # Set CUDA visible devices
-    # os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-
-    # Tensorflow (used by Mesmer) specific
-    os.environ["TF_CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    # Set PyTorch default device
-    torch.cuda.set_device(gpu_id)
 
 
 def set_up_agents(max_round):

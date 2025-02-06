@@ -12,25 +12,13 @@ import torch
 import tensorflow as tf
 import pandas as pd
 
+from src.utils import set_gpu_device
 from src.data_io import NpzDataset, ZarrDataset
 from src.segmentation import MesmerSegmenter, SAM2Segmenter, calculate_metrics
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def set_gpu_device(gpu_id: int) -> None:
-    """Set global GPU device for both PyTorch and TensorFlow."""
-    if torch.cuda.is_available():
-        # Set CUDA device for PyTorch
-        torch.cuda.set_device(gpu_id)
-        # Set environment variable for TensorFlow
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-        logger.info(f"Using GPU device {gpu_id}")
-    else:
-        logger.warning("No GPU available, using CPU")
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 
 def run_pipeline(
