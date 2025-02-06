@@ -164,7 +164,7 @@ Follow the format:
 """
 
 
-def prepare_prompt_pipeline_optimization(notes_shared):
+def prepare_prompt_pipeline_optimization(notes_shared, gpu_id, seed):
 
     prompt_pipeline_optimization = f"""
     # Cell Segmentation Analysis Pipeline Optimization
@@ -194,68 +194,58 @@ def prepare_prompt_pipeline_optimization(notes_shared):
     ## Preprocessing Function API:
     ```python
     from src.data_io import ImageData
-    def preprocess_image(image: ImageData) -> Image:
+    def preprocess_images(images: ImageData) -> ImageData:
         # YOUR CODE HERE
-        return image
+        return preprocessed_images
     ```
 
     ## Documentation on the `ImageData`:
     ```markdown
     ImageData
 
-    Container for biological image data and associated metadata.
+    Framework-agnostic container for batched biological image data.
+    
+    This class provides a standardized structure for storing and managing batched 
+    biological image data along with related annotations and predictions.
+    All data is stored as numpy arrays for framework independence.
 
-    This class provides a standardized structure for storing and managing biological
-    image data along with related annotations and predictions. It handles data
-    validation and format standardization automatically.
-
-    The class standardizes array shapes as follows:
-    - Raw images: (C, H, W) format where C is number of channels
-    - Masks: (1, H, W) format for both ground truth and predictions
+    Arrays are standardized to the following formats:
+    - Raw images: (B, C, H, W) where:
+        B: batch size
+        C: number of channels
+        H, W: height and width
+    - Masks: (B, 1, H, W) for both ground truth and predictions
 
     Attributes:
-        raw (np.ndarray): Raw image data in (C, H, W) format. For multichannel data,
-            C corresponds to different imaging channels (e.g., fluorescence markers).
-            For single-channel data, C=1.
+        raw (np.ndarray): Raw image data in (B, C, H, W) format.
         
-        image_id (Union[int, str]): Unique identifier for the image. Can be numeric
-            index or string identifier.
+        batch_size (int): Number of images in the batch.
+        
+        image_ids (Union[int, str, List[Union[int, str]]]): Unique identifier(s) for images
+            in the batch. Can be a single value for batch size 1, or a list matching 
+            batch size.
         
         channel_names (Optional[List[str]]): Names of imaging channels in order matching
-            raw data channels. For multichannel data, must have length equal to
-            number of channels. For single-channel data, defaults to ["channel_0"].
+            raw data channels. Length must equal number of channels.
         
-        tissue_type (Optional[str]): Type of biological tissue in the image, e.g.,
-            "liver", "kidney", etc.
+        tissue_types (Optional[Union[str, List[str]]]): Type of biological tissue for each image,
+            e.g., ["liver", "kidney"]. Length must equal batch size.
         
-        cell_types (Optional[List[str]]): List of cell types expected to be present
-            in the image. Used for reference and verification.
+        image_mpps (Optional[Union[float, List[float]]]): Microns per pixel resolution for each
+            image. Length must equal batch size.
         
-        image_mpp (Optional[float]): Microns per pixel resolution of the image.
-            Used for size-based analysis and visualization scaling.
+        masks (Optional[np.ndarray]): Ground truth segmentation masks in (B, 1, H, W) 
+            format. Integer-valued array where 0 is background and positive integers 
+            are unique cell identifiers.
         
-        mask (Optional[np.ndarray]): Ground truth segmentation mask in (1, H, W) format.
-            Integer-valued array where 0 is background and positive integers are
-            unique cell identifiers.
+        cell_types (Optional[List[Dict[int, str]]]): List of mappings from cell 
+            identifiers to cell type labels for each image. Length must equal batch size.
         
-        cell_type_info (Optional[Dict[int, str]]): Mapping from cell identifiers in
-            the ground truth mask to their corresponding cell type labels.
+        predicted_masks (Optional[np.ndarray]): Model-predicted segmentation masks in
+            (B, 1, H, W) format.
         
-        predicted_mask (Optional[np.ndarray]): Model-predicted segmentation mask in
-            (1, H, W) format. Integer-valued array where 0 is background and
-            positive integers are unique cell identifiers.
-        
-        predicted_cell_types (Optional[Dict[int, str]]): Mapping from cell identifiers
-            in the predicted mask to their predicted cell type labels.
-
-    Example:
-        >>> image_data = ImageData(
-        ...     raw=np.array(...),  # Shape (2, 512, 512)
-        ...     image_id="sample_001",
-        ...     channel_names=["DAPI", "CD3"],
-        ...     tissue_type="lymph_node",
-        ...     mask=np.array(...)  # Shape (1, 512, 512)
-        ... )
+        predicted_cell_types (Optional[List[Dict[int, str]]]): List of mappings from
+            cell identifiers to predicted cell types for each image.
 
     ```
     ## Function for saving the results:
@@ -285,12 +275,22 @@ def prepare_prompt_pipeline_optimization(notes_shared):
     ## Code for running segmentation and calculating metrics:
     ```python
     import numpy as np
-    import tensorflow as tf
-    from src.data_io import NpzDataset
-    from src.segmentation import MesmerSegmenter, calculate_metrics
     import logging
     import pandas as pd
     from pathlib import Path
+
+    import torch
+    import tensorflow as tf
+
+    from src.utils import set_gpu_device
+    from src.data_io import NpzDataset
+    from src.segmentation import MesmerSegmenter, calculate_metrics
+
+    gpu_id = {gpu_id}
+    seed = {seed}
+
+    # Set up output directory
+    output_dir = Path("output")
 
     # Set up logging
     logging.basicConfig(
@@ -302,45 +302,36 @@ def prepare_prompt_pipeline_optimization(notes_shared):
     )
     logger = logging.getLogger(__name__)
 
-    # Set random seed for reproducibility
-    seed = 42
+    # Set GPU device
+    set_gpu_device(gpu_id)
+
+    # Set random seeds
     np.random.seed(seed)
+    torch.manual_seed(seed)
     tf.random.set_seed(seed)
 
     # Load data
     data_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/test.npz"
     dataset = NpzDataset(data_path)
-    indices = np.random.choice(len(dataset), 10)
+    indices = np.random.choice(len(dataset), size=5, replace=False)
     images = dataset.load(indices)
+
+    # TODO: add your preprocessing function here
+    images = preprocess_images(images)
 
     # Initialize segmenter
     segmenter = MesmerSegmenter()
 
-    # Process each image
-    metrics_list = []
-    for image in images:
-        logger.info(f"Processing image",  image.image_id)
+    # Run segmenter
+    results = segmenter.predict(images)
 
-        try:
-            # TODO: add your preprocessing function here
-            # image = preprocess_image(image)
+    # Calculate metrics
+    metrics = calculate_metrics(results.masks, results.predicted_masks)
+    df = pd.DataFrame(metrics)
+    overall_metrics = df.mean().to_dict()
+    logger.info("Overall metrics: ", overall_metrics)
 
-            segmented_image = segmenter.predict(image)
-            metrics = calculate_metrics(
-                segmented_image.mask, segmented_image.predicted_mask
-            )
-            logger.info(f"Metrics: ", metrics)
-            metrics_list.append(metrics)
-        
-        except Exception as e:
-            logger.error(f"Segmentation failed for image", image.image_id, str(e))
-            continue
-
-    df = pd.DataFrame(metrics_list)
-    avg_metrics = df.mean().to_dict()
-    logger.info(f"Average Metrics: ", avg_metrics)
     ```
-
     """
 
     return prompt_pipeline_optimization
@@ -355,6 +346,7 @@ def main():
     # Configuration
     my_gpu_id = 7 # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
+    random_seed = 42 # Random seed for reproducibility
     num_optim_iter = 5 # Number of optimization iterations
     max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
 
@@ -370,7 +362,7 @@ def main():
         notes_shared = prepare_notes_shared(my_gpu_id)
 
         for i in range(0, num_optim_iter+1):
-            prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared)
+            prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared, my_gpu_id, random_seed)
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
                                             summary_args={"summary_prompt": summary_prompt})
