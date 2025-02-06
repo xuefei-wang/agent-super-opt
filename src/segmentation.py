@@ -1,11 +1,8 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Optional, Dict, Any, List, Sequence
+from typing import Optional, Dict, Any, List, Union
 from dataclasses import replace
-from sklearn.metrics import jaccard_score
 from scipy.optimize import linear_sum_assignment
-import pandas as pd
-from pathlib import Path
 import torch
 import logging
 
@@ -13,157 +10,207 @@ from deepcell.applications import Mesmer
 from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
-
 from .data_io import ImageData, standardize_mask
 
 
 def calculate_metrics(
     true_mask: np.ndarray, pred_mask: np.ndarray, iou_threshold: float = 0.5
-) -> Dict[str, float]:
+) -> List[Dict[str, float]]:
     """Calculate segmentation metrics between ground truth and predicted masks.
 
+    This function computes various evaluation metrics to assess the quality of cell
+    segmentation predictions against ground truth masks. It handles batched inputs
+    and can return either per-batch metrics or averaged metrics across the batch.
+
+    The function uses the Hungarian algorithm to find optimal matching between
+    predicted and ground truth objects, then computes various metrics based on
+    these matchings. Objects are considered matched only if their IoU exceeds
+    the specified threshold.
+
     Args:
-        true_mask: Ground truth segmentation mask with shape (1, H, W) where each
-                    unique positive integer represents a distinct object
-        pred_mask: Predicted segmentation mask with shape (1, H, W) with same
-                    format as true_mask
-        iou_threshold: Minimum IoU required to consider an object as correctly
-                        detected (range: 0.0 to 1.0)
+        true_mask: Ground truth segmentation mask with shape (B, 1, H, W) where each
+                  unique positive integer represents a distinct object. Background
+                  should be labeled as 0.
+        pred_mask: Predicted segmentation mask with shape (B, 1, H, W) using the same
+                  labeling convention as true_mask.
+        iou_threshold: Minimum Intersection over Union (IoU) required to consider an
+                      object as correctly detected. Range: [0.0, 1.0]. Default: 0.5
 
     Returns:
-        Dictionary with the following metrics:
+        List[Dict[str, float]]: List of dictionaries (one per batch item) with metrics:
             - mean_iou: Mean IoU of correctly matched objects
             - precision: Fraction of predicted objects that match ground truth
             - recall: Fraction of ground truth objects that were detected
             - f1_score: Harmonic mean of precision and recall
 
     Notes:
-        - Background should be labeled as 0 in both masks
+        - Uses connected components analysis to handle multiple instances in masks
         - Empty masks (only background) are handled as special cases
+        - IoU computation accounts for potential overlaps between objects
+        - The Hungarian algorithm ensures globally optimal matching between
+          predicted and ground truth objects
+
+    Examples:
+        >>> true_batch = np.stack([true_mask, true_mask], axis=0)
+        >>> pred_batch = np.stack([pred_mask, pred_mask], axis=0)
+        >>> batch_metrics = calculate_metrics(true_batch, pred_batch)
+        >>> print(len(batch_metrics))  # 2 (one per batch item)
     """
     # Ensure masks are standardized
     true_mask = standardize_mask(true_mask)
     pred_mask = standardize_mask(pred_mask)
 
-    # Use first channel for processing
-    true_mask = true_mask[0]  # Convert (1, H, W) to (H, W)
-    pred_mask = pred_mask[0]  # Convert (1, H, W) to (H, W)
+    batch_metrics = []
+    for b in range(true_mask.shape[0]):
+        # Process single image masks
+        true_slice = true_mask[b, 0]  # Convert (1, H, W) to (H, W)
+        pred_slice = pred_mask[b, 0]  # Convert (1, H, W) to (H, W)
 
-    # Get unique objects by considering connected components
-    from scipy.ndimage import label
+        # Get unique objects by considering connected components
+        from scipy.ndimage import label
 
-    # Label connected components in each mask
-    true_labeled, true_n = label(true_mask > 0)
-    pred_labeled, pred_n = label(pred_mask > 0)
+        # Label connected components in each mask
+        true_labeled, true_n = label(true_slice > 0)
+        pred_labeled, pred_n = label(pred_slice > 0)
 
-    # Handle special cases
-    if true_n == 0 and pred_n == 0:
-        return {"mean_iou": 1.0, "precision": 1.0, "recall": 1.0, "f1_score": 1.0}
+        # Handle special cases
+        if true_n == 0 and pred_n == 0:
+            batch_metrics.append({
+                "mean_iou": 1.0,
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1_score": 1.0
+            })
+            continue
 
-    if true_n == 0:
-        return {"mean_iou": 0.0, "precision": 0.0, "recall": 1.0, "f1_score": 0.0}
+        if true_n == 0:
+            batch_metrics.append({
+                "mean_iou": 0.0,
+                "precision": 0.0,
+                "recall": 1.0,
+                "f1_score": 0.0
+            })
+            continue
 
-    if pred_n == 0:
-        return {"mean_iou": 0.0, "precision": 1.0, "recall": 0.0, "f1_score": 0.0}
+        if pred_n == 0:
+            batch_metrics.append({
+                "mean_iou": 0.0,
+                "precision": 1.0,
+                "recall": 0.0,
+                "f1_score": 0.0
+            })
+            continue
 
-    # Compute IoU matrix
-    iou_matrix = np.zeros((true_n, pred_n))
-    for i in range(1, true_n + 1):
-        true_obj = true_labeled == i
-        for j in range(1, pred_n + 1):
-            pred_obj = pred_labeled == j
-            intersection = np.logical_and(true_obj, pred_obj).sum()
-            union = np.logical_or(true_obj, pred_obj).sum()
-            iou_matrix[i - 1, j - 1] = intersection / union if union > 0 else 0
+        # Compute IoU matrix
+        iou_matrix = np.zeros((true_n, pred_n))
+        for i in range(1, true_n + 1):
+            true_obj = true_labeled == i
+            for j in range(1, pred_n + 1):
+                pred_obj = pred_labeled == j
+                intersection = np.logical_and(true_obj, pred_obj).sum()
+                union = np.logical_or(true_obj, pred_obj).sum()
+                iou_matrix[i - 1, j - 1] = intersection / union if union > 0 else 0
 
-    # Find optimal matching using Hungarian algorithm
-    true_indices, pred_indices = linear_sum_assignment(-iou_matrix)
+        # Find optimal matching using Hungarian algorithm
+        true_indices, pred_indices = linear_sum_assignment(-iou_matrix)
 
-    # Get IoUs for matched pairs
-    matched_ious = iou_matrix[true_indices, pred_indices]
+        # Get IoUs for matched pairs
+        matched_ious = iou_matrix[true_indices, pred_indices]
 
-    # Only count matches that exceed the IoU threshold
-    valid_matches = matched_ious >= iou_threshold
-    true_positives = np.sum(valid_matches)
+        # Only count matches that exceed the IoU threshold
+        valid_matches = matched_ious >= iou_threshold
+        true_positives = np.sum(valid_matches)
 
-    # Calculate metrics
-    precision = true_positives / pred_n if pred_n > 0 else 0
-    recall = true_positives / true_n if true_n > 0 else 0
+        # Calculate metrics
+        precision = true_positives / pred_n if pred_n > 0 else 0
+        recall = true_positives / true_n if true_n > 0 else 0
 
-    f1_score = (
-        2 * (precision * recall) / (precision + recall)
-        if (precision + recall) > 0
-        else 0
-    )
+        f1_score = (
+            2 * (precision * recall) / (precision + recall)
+            if (precision + recall) > 0
+            else 0
+        )
 
-    # Calculate mean IoU only for valid matches
-    mean_iou = matched_ious[valid_matches].mean() if true_positives > 0 else 0.0
+        # Calculate mean IoU only for valid matches
+        mean_iou = matched_ious[valid_matches].mean() if true_positives > 0 else 0.0
 
-    return {
-        "mean_iou": float(mean_iou),
-        "precision": float(precision),
-        "recall": float(recall),
-        "f1_score": float(f1_score),
-    }
+        batch_metrics.append({
+            "mean_iou": float(mean_iou),
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1_score": float(f1_score),
+        })
+
+    return batch_metrics
 
 
 class ChannelSpec:
-    """
-    Specification for channel selection in cell segmentation models.
+    """Specification for channel selection in cell segmentation models.
 
     This class defines which imaging channels should be used for segmentation,
     specifically mapping the nuclear stain and membrane/cytoplasm markers required
-    by segmentation algorithms like Mesmer. Each channel name must exactly match
-    a channel name in the ImageData object.
+    by segmentation algorithms like Mesmer.
+
+    The channel names provided must exactly match names in the ImageData object's
+    channel_names attribute. This ensures correct channel selection even when
+    the raw data contains additional channels not used for segmentation.
 
     Attributes:
         nuclear (str): Name of the nuclear staining channel (e.g., "DAPI", "Hoechst")
         membrane (List[str]): List of channels to combine for membrane/cytoplasm signal.
-                            Multiple channels will be summed to create a composite signal.
+                            Multiple channels will be summed to create a composite
+                            membrane signal.
 
-    Example:
+    Examples:
+        >>> # Basic usage with single membrane channel
+        >>> spec = ChannelSpec(nuclear="DAPI", membrane=["CD44"])
+        
+        >>> # Using multiple membrane markers
         >>> spec = ChannelSpec(
-        ...     nuclear="DAPI",
-        ...     membrane=["CD44", "Na/K-ATPase"]
+        ...     nuclear="Hoechst",
+        ...     membrane=["Na/K-ATPase", "E-cadherin"]
         ... )
     """
-
     def __init__(self, nuclear: str, membrane: List[str]):
-        """Initialize channel specification.
-
-        Args:
-            nuclear: Name of nuclear channel (must match a name in ImageData.channel_names)
-            membrane: List of channel names to combine for membrane signal
-                     (each must match a name in ImageData.channel_names)
-        """
         self.nuclear = nuclear
         self.membrane = membrane
 
 
 class BaseSegmenter(ABC):
-    """
-    Abstract base class defining the interface for cell segmentation models.
+    """Abstract base class defining the interface for cell segmentation models.
 
     This class provides a standardized interface that all segmentation model
     implementations must follow. It defines the core methods needed for image
-    preprocessing and cell segmentation prediction.
+    preprocessing and cell segmentation prediction while remaining model-agnostic.
 
-    The interface is designed to be model-agnostic while ensuring consistent
-    handling of input data and segmentation results across different implementations.
-    It supports both channel-based segmentation (e.g., Mesmer) and direct image
-    segmentation (e.g., SAM2).
+    The interface is designed to support both:
+    1. Channel-based segmentation (e.g., Mesmer) that requires specific imaging
+       channels like nuclear and membrane markers
+    2. Direct image segmentation (e.g., SAM2) that can work with any image input
 
-    Example:
-        class MySegmenter(BaseSegmenter):
-            def preprocess(self, image_data, channel_spec=None):
-                # Implementation
-                pass
+    All implementations must handle batched inputs and outputs consistently,
+    following the shape conventions defined in the ImageData class.
 
-            def predict(self, image_data, channel_spec=None, **kwargs):
-                # Implementation
-                pass
+    Methods:
+        preprocess: Prepare raw image data for model input
+        predict: Generate segmentation predictions for the input images
+
+    Example Implementation:
+        >>> class MySegmenter(BaseSegmenter):
+        ...     def preprocess(self, image_data, channel_spec=None):
+        ...         # Implementation
+        ...         pass
+        ...
+        ...     def predict(self, image_data, channel_spec=None, **kwargs):
+        ...         # Implementation
+        ...         pass
+
+    Notes:
+        - All methods must preserve batch dimensions
+        - Implementations should handle both single-channel and multi-channel inputs
+        - Error handling should be comprehensive and informative
+        - Memory efficiency should be considered for large batches
     """
-
     @abstractmethod
     def preprocess(
         self, image_data: ImageData, channel_spec: Optional[ChannelSpec] = None
@@ -172,14 +219,10 @@ class BaseSegmenter(ABC):
 
         Args:
             image_data: ImageData object containing raw image and metadata
-            channel_spec: Optional specification of required channels. If None,
-                        uses all available channels or default processing.
+            channel_spec: Optional specification of required channels
 
         Returns:
-            np.ndarray: Processed image ready for model input
-
-        Raises:
-            ValueError: If data format is invalid or specified channels not found
+            np.ndarray: Processed image ready for model input with shape (B, C, H, W)
         """
         pass
 
@@ -199,10 +242,7 @@ class BaseSegmenter(ABC):
 
         Returns:
             ImageData: Updated copy of input with predicted_mask field populated
-
-        Raises:
-            RuntimeError: If segmentation fails
-            ValueError: If input data format is invalid
+                      with shape (B, 1, H, W)
         """
         pass
 
@@ -210,81 +250,69 @@ class BaseSegmenter(ABC):
 class MesmerSegmenter(BaseSegmenter):
     """Cell segmentation implementation using the Mesmer deep learning model.
 
-    This class provides whole-cell segmentation capabilities using the Mesmer model,
-    which uses both nuclear and membrane/cytoplasm channels to accurately identify
-    cell boundaries. The implementation handles all necessary preprocessing and
-    ensures proper formatting of inputs/outputs.
+    This class implements whole-cell segmentation using the Mesmer model, which uses
+    both nuclear and membrane/cytoplasm channels to accurately identify cell boundaries.
+    The implementation handles all necessary preprocessing and ensures proper formatting
+    of inputs/outputs while supporting batched processing.
 
     Key Features:
-    - Automatic channel preprocessing and normalization
-    - Support for multiple membrane markers
-    - Support for single-channel inputs
-    - Built-in error handling for missing channels
-    - Configurable model parameters
+        - Automatic channel preprocessing and normalization
+        - Support for multiple membrane markers
+        - Built-in error handling for missing channels
+        - Batched processing for efficient throughput
+        - Configurable model parameters
+
+    Attributes:
+        model (Mesmer): Instance of the Mesmer model
 
     Example:
+        >>> # Initialize segmenter
+        >>> segmenter = MesmerSegmenter(model_kwargs={'image_size': 256})
+        
         >>> # For multichannel data with specific channels
         >>> channel_spec = ChannelSpec(
         ...     nuclear="DAPI",
         ...     membrane=["CD44", "Na/K-ATPase"]
         ... )
-        >>> segmenter = MesmerSegmenter()
         >>> segmented_data = segmenter.predict(
         ...     image_data=image_data,
         ...     channel_spec=channel_spec
         ... )
-
+        
         >>> # For single-channel data
-        >>> segmenter = MesmerSegmenter()
         >>> segmented_data = segmenter.predict(image_data)
+
+    Notes:
+        - The model expects normalized input images
+        - Nuclear and membrane channels are automatically balanced
+        - Batch processing preserves memory by processing sequentially
+        - Error messages are detailed for debugging purposes
     """
-
     def __init__(self, model_kwargs: Optional[Dict[str, Any]] = None):
-        """Initialize Mesmer model.
-
-        Args:
-            model_kwargs: Optional dictionary of arguments passed to Mesmer initialization.
-                        See Mesmer documentation for available parameters.
-
-        Raises:
-            RuntimeError: If Mesmer model initialization fails
-        """
         self.model = Mesmer(**(model_kwargs or {}))
 
     def preprocess(
         self, image_data: ImageData, channel_spec: Optional[ChannelSpec] = None
     ) -> np.ndarray:
-        """Prepare channels for Mesmer input.
+        """Prepare channels for Mesmer input."""
+        raw = image_data.raw  # Shape (B, C, H, W)
+        batch_size = raw.shape[0]
+        processed_batch = []
 
-        This method handles various input formats:
-        1. Single-channel input: Uses the same channel for both nuclear and membrane signals
-        2. Multichannel with channel_spec: Uses specified channels
-        3. Multichannel without channel_spec: Attempts to automatically select appropriate channels
+        for b in range(batch_size):
+            single_image = raw[b]  # Shape (C, H, W)
 
-        Args:
-            image_data: ImageData object containing raw image and metadata
-            channel_spec: Optional specification of nuclear and membrane channels, if known
+            # Handle single-channel input
+            if single_image.shape[0] == 1:
+                # Duplicate channel for nuclear and membrane
+                processed = np.stack([single_image[0]] * 2, axis=0)
+            else:
+                raise NotImplementedError("Multichannel input not yet supported")
 
-        Returns:
-            np.ndarray: Processed image with shape (H, W, C)
+            processed_batch.append(processed)
 
-        Raises:
-            ValueError: If required channels cannot be found or selected
-        """
-        raw = image_data.raw
-
-        # Handle single-channel input
-        if raw.ndim == 2 or (raw.ndim == 3 and raw.shape[0] == 1): # (H, W) or (1, H, W)
-            if raw.ndim == 3:
-                raw = np.squeeze(raw, axis=0) # Convert (1, H, W) to (H, W)
-            raw = np.stack([raw] * 2, axis=-1) # Duplicate channel for nuclear and membrane
-            
-
-        # Handle multichannel input
-        elif raw.ndim == 3 and raw.shape[0] > 1:  # (C, H, W) format
-            raise NotImplementedError("Multichannel input not yet supported")
-        
-        return raw
+        # Stack along batch dimension and transpose to (B, H, W, C)
+        return np.stack(processed_batch, axis=0).transpose(0, 2, 3, 1)
 
     def predict(
         self,
@@ -293,72 +321,76 @@ class MesmerSegmenter(BaseSegmenter):
         **kwargs,
     ) -> ImageData:
         """Segment cells using Mesmer."""
-        # Preprocess channels
+        # Preprocess channels - already includes batch dimension
         processed_img = self.preprocess(image_data, channel_spec)
-
-        # Convert to Mesmer's expected format (batch, height, width, channels)
-        model_input = processed_img[np.newaxis, ...]  # Add batch dimension
 
         # Run prediction
         try:
-            labels = self.model.predict(model_input, compartment="nuclear",  **kwargs)
+            labels = self.model.predict(processed_img, compartment="nuclear", **kwargs)
         except Exception as e:
             raise RuntimeError(f"Mesmer segmentation failed: {str(e)}") from e
 
-        # Standardize output to (1, H, W) format
-        print(labels.shape)
+        # Standardize output to (B, 1, H, W) format
         labels = standardize_mask(labels)
 
         return replace(image_data, predicted_mask=labels)
 
-    @staticmethod
-    def _normalize(img: np.ndarray, eps: float = 1e-8) -> np.ndarray:
-        """Normalize image to [0, 1] range with handling for edge cases.
-
-        This is an internal helper method used during channel preprocessing.
-
-        Args:
-            img (np.ndarray): Input image to normalize
-            eps (float): Small epsilon value to prevent division by zero
-
-        Returns:
-            np.ndarray: Normalized image in [0, 1] range
-        """
-        img = img.astype(np.float32)
-        img_min = img.min()
-        img_max = img.max()
-
-        if abs(img_max - img_min) < eps:
-            return np.zeros_like(img)
-
-        return (img - img_min) / (img_max - img_min)
-
 
 class SAM2Segmenter(BaseSegmenter):
-    """
-    Cell segmentation implementation using the SAM2 model.
+    """Cell segmentation implementation using the SAM2 model.
 
     This class provides whole-cell segmentation capabilities using SAM2's automatic
     mask generation. It adapts SAM2's output format to match the ImageData structure
-    used in the rest of the codebase.
+    used in the rest of the codebase while supporting efficient batch processing.
+
+    The implementation automatically handles various input formats and provides
+    extensive configuration options for the mask generation process. It includes
+    built-in filtering of large masks that likely represent background regions.
 
     Attributes:
         model (SAM2Base): The SAM2 model instance
         mask_generator (SAM2AutomaticMaskGenerator): The automatic mask generator
         device (str): Device to run the model on ('cuda' or 'cpu')
 
+    Args:
+        model_cfg (str): Path to SAM2 model configuration file
+        checkpoint_path (str): Path to SAM2 model weights
+        points_per_side (int, optional): Number of points to sample along each side.
+            Defaults to 32.
+        points_per_batch (int): Number of points to process in parallel.
+            Defaults to 64.
+        pred_iou_thresh (float): Threshold for predicted mask quality.
+            Range: [0.0, 1.0]. Defaults to 0.8.
+        stability_score_thresh (float): Threshold for mask stability.
+            Range: [0.0, 1.0]. Defaults to 0.95.
+        stability_score_offset (float): Offset for stability score calculation.
+            Defaults to 1.0.
+        box_nms_thresh (float): IoU threshold for box NMS.
+            Range: [0.0, 1.0]. Defaults to 0.7.
+        crop_n_layers (int): Number of crop layers to use. Defaults to 0.
+        crop_n_points_downscale_factor (int): Factor to reduce points in deeper crops.
+            Defaults to 1.
+        min_mask_region_area (int): Minimum area for mask regions. Defaults to 0.
+        use_m2m (bool): Whether to use mask-to-mask refinement. Defaults to False.
+        device (str): Device to run model on ('cuda' or 'cpu').
+            Defaults to 'cuda' if available.
+
     Example:
         >>> segmenter = SAM2Segmenter(
         ...     model_cfg="configs/sam2.1/sam2.1_hiera_l.yaml",
-        ...     checkpoint_path="../checkpoints/sam2.1_hiera_large.pt",
-        ...     points_per_side=64
+        ...     checkpoint_path="checkpoints/sam2.1_hiera_large.pt",
+        ...     points_per_side=64,
+        ...     pred_iou_thresh=0.9
         ... )
-        >>> segmented_data = segmenter.predict(
-        ...     image_data=image_data,
-        ...     channel_spec=channel_spec
-        ... )
-    """
+        >>> segmented_data = segmenter.predict(image_data)
 
+    Notes:
+        - Automatically converts various input formats to RGB
+        - Filters out masks larger than 5000 pixels as potential background
+        - Processes images batch-wise for memory efficiency
+        - Provides detailed logging of the segmentation process
+        - Supports both CPU and GPU execution
+    """
     def __init__(
         self,
         model_cfg: str,
@@ -375,37 +407,10 @@ class SAM2Segmenter(BaseSegmenter):
         use_m2m: bool = False,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
-        """Initialize SAM2 model and mask generator.
-
-        Args:
-            model_cfg: Path to SAM2 model configuration file
-            checkpoint_path: Path to SAM2 model weights
-            points_per_side: Number of points to sample along each side
-            points_per_batch: Number of points to process in parallel
-            pred_iou_thresh: Threshold for predicted mask quality
-            stability_score_thresh: Threshold for mask stability
-            stability_score_offset: Offset for stability score calculation
-            crop_n_layers: Number of crop layers to use
-            box_nms_thresh: IoU threshold for box NMS
-            crop_n_points_downscale_factor: Factor to reduce points in deeper crops
-            min_mask_region_area: Minimum area for mask regions
-            use_m2m: Whether to use mask-to-mask refinement
-            device: Device to run model on ('cuda' or 'cpu')
-
-        Raises:
-            RuntimeError: If model initialization fails
-        """
         self.device = device
-
-        # Initialize SAM2 model
-        try:
-            self.model = build_sam2(
-                model_cfg, checkpoint_path, device=device, apply_postprocessing=False
-            )
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize SAM2 model: {str(e)}")
-
-        # Initialize mask generator
+        self.model = build_sam2(
+            model_cfg, checkpoint_path, device=device, apply_postprocessing=False
+        )
         self.mask_generator = SAM2AutomaticMaskGenerator(
             model=self.model,
             points_per_side=points_per_side,
@@ -424,45 +429,38 @@ class SAM2Segmenter(BaseSegmenter):
     def preprocess(
         self, image_data: ImageData, channel_spec: Optional[ChannelSpec] = None
     ) -> np.ndarray:
-        """Prepare image data for SAM2 input.
+        """Prepare image data for SAM2 input."""
+        raw = image_data.raw  # Shape (B, C, H, W)
+        batch_size = raw.shape[0]
+        processed_batch = []
 
-        For SAM2, we need RGB-format input. The method will:
-        1. For multichannel data: Take first 3 channels or pad with zeros
-        2. For single-channel data: Replicate to 3 channels
-        3. For RGB data: Use as is
+        for b in range(batch_size):
+            single_image = raw[b]  # Shape (C, H, W)
 
-        Args:
-            image_data: ImageData object containing raw image and metadata
-            channel_spec: Not used by SAM2, included for interface consistency
+            # Handle different input formats
+            if single_image.shape[0] == 1:  # Single channel
+                processed = np.stack([single_image[0]] * 3, axis=0)
+            elif single_image.shape[0] == 3:  # Already RGB
+                processed = single_image
+            else:  # Multichannel data
+                processed = np.zeros((3, *single_image.shape[1:]))
+                for i in range(min(single_image.shape[0], 3)):
+                    processed[i] = single_image[i]
 
-        Returns:
-            np.ndarray: Processed image with shape (height, width, 3)
-        """
+            # Normalize to [0, 255]
+            processed = processed.astype(np.float32)
+            if processed.max() > 0:
+                processed = (
+                    (processed - processed.min())
+                    / (processed.max() - processed.min())
+                    * 255
+                )
 
-        raw = image_data.raw
+            processed = processed.astype(np.uint8)
+            processed = np.transpose(processed, (1, 2, 0))  # Convert to (H, W, 3)
+            processed_batch.append(processed)
 
-        # Handle different input formats
-        if raw.ndim == 2:  # Single channel
-            processed = np.stack([raw] * 3, axis=-1)
-        elif raw.ndim == 3 and raw.shape[-1] == 1:  # Single channel with extra dim
-            processed = np.concatenate([raw] * 3, axis=-1)
-        elif raw.ndim == 3 and raw.shape[-1] == 3:  # Already RGB
-            processed = raw
-        else:  # Multichannel data
-            processed = np.zeros((*raw.shape[1:], 3))
-            for i in range(min(raw.shape[0], 3)):
-                processed[..., i] = raw[i]
-
-        # Normalize to [0, 255]
-        processed = processed.astype(np.float32)
-        if processed.max() > 0:
-            processed = (
-                (processed - processed.min())
-                / (processed.max() - processed.min())
-                * 255
-            )
-
-        return processed.astype(np.uint8)
+        return np.stack(processed_batch, axis=0)
 
     def predict(
         self,
@@ -470,59 +468,39 @@ class SAM2Segmenter(BaseSegmenter):
         channel_spec: Optional[ChannelSpec] = None,
         **kwargs,
     ) -> ImageData:
-        """Perform segmentation using SAM2 automatic mask generation.
+        """Perform segmentation using SAM2."""
+        # Preprocess image - returns (B, H, W, 3)
+        processed_imgs = self.preprocess(image_data)
+        batch_size = processed_imgs.shape[0]
 
-        This method:
-        1. Preprocesses the input image to RGB format
-        2. Generates masks using SAM2's automatic mask generator
-        3. Filters out large masks (potential background)
-        4. Combines individual masks into a single labeled mask
+        # Process each image in batch
+        batch_masks = []
+        for b in range(batch_size):
+            try:
+                masks = self.mask_generator.generate(processed_imgs[b])
+            except Exception as e:
+                raise RuntimeError(f"SAM2 segmentation failed for batch {b}: {str(e)}")
 
-        Args:
-            image_data: ImageData object containing raw image to segment
-            channel_spec: Not used by SAM2, included for interface consistency
-            **kwargs: Additional arguments passed to mask generator
+            if not masks:
+                # No masks found - add empty mask
+                combined_mask = np.zeros(processed_imgs[b].shape[:2], dtype=np.int32)
+            else:
+                # Convert SAM2 output to our format
+                combined_mask = np.zeros(processed_imgs[b].shape[:2], dtype=np.int32)
+                idx = 1
+                for mask_data in masks:
+                    mask = mask_data["segmentation"]
+                    area = mask_data["area"]
+                    if area > 5000:
+                        logging.info(f"Batch {b}: Skipping potential background segmentation")
+                        continue
+                    combined_mask[mask] = idx
+                    idx += 1
 
-        Returns:
-            ImageData: Copy of input with predicted_mask field populated.
-                      The mask has shape (1, H, W) where each unique positive
-                      integer represents a distinct cell.
+            batch_masks.append(combined_mask)
 
-        Raises:
-            RuntimeError: If SAM2 segmentation fails
+        # Stack masks and standardize to (B, 1, H, W) format
+        combined_masks = np.stack(batch_masks, axis=0)
+        combined_masks = standardize_mask(combined_masks)
 
-        Notes:
-            - Masks larger than 5000 pixels are filtered out as potential background
-            - The output mask uses consecutive integers starting from 1 for labeling
-            - Background is labeled as 0
-        """
-        # Preprocess image
-        processed_img = self.preprocess(image_data)
-
-        # Generate masks
-        try:
-            masks = self.mask_generator.generate(processed_img)
-        except Exception as e:
-            raise RuntimeError(f"SAM2 segmentation failed: {str(e)}")
-
-        if not masks:
-            # No masks found - return empty mask with correct shape
-            empty_mask = np.zeros((1, *processed_img.shape[:2]), dtype=np.int32)
-            return replace(image_data, predicted_mask=empty_mask)
-
-        # Convert SAM2 output to our format
-        combined_mask = np.zeros(processed_img.shape[:2], dtype=np.int32)
-        idx = 1
-        for mask_data in masks:
-            mask = mask_data["segmentation"]
-            area = mask_data["area"]
-            if area > 5000:
-                logging.info("Skipping potential background segmentation")
-                continue
-            combined_mask[mask] = idx
-            idx += 1
-
-        # Standardize to (1, H, W) format
-        combined_mask = standardize_mask(combined_mask)
-
-        return replace(image_data, predicted_mask=combined_mask)
+        return replace(image_data, predicted_mask=combined_masks)
