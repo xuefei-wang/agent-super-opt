@@ -348,12 +348,11 @@ class MesmerSegmenter(BaseSegmenter):
         
         # Run prediction
         try:
-            tf_output = self.model.predict(
+            labels = self.model.predict(
                 tf_input,
                 compartment="nuclear",
                 **kwargs
             )
-            labels = self._from_tensorflow(tf_output)
         except Exception as e:
             raise RuntimeError(f"Mesmer segmentation failed: {str(e)}") from e
 

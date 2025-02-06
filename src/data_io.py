@@ -52,7 +52,7 @@ def standardize_raw_image(raw: np.ndarray) -> np.ndarray:
     if raw.ndim == 3:  # (B, H, W)
         return raw[:, np.newaxis, ...]
     elif raw.ndim == 4:
-        if raw.shape[-1] != min(raw.shape[1:]):  # (B, H, W, C)
+        if raw.shape[-1] == min(raw.shape[1:]):  # (B, H, W, C)
             raw = np.transpose(raw, (0, 3, 1, 2))
         return raw
     else:
@@ -117,12 +117,9 @@ class ImageData:
 
     def __post_init__(self):
         """Validate and standardize data after initialization."""
-        # Standardize array formats
-        self.raw = standardize_raw_image(self.raw)
         self.batch_size = self.raw.shape[0]
         
         if self.masks is not None:
-            self.masks = standardize_mask(self.masks)
             if self.masks.shape[0] != self.batch_size or \
                self.masks.shape[2:] != self.raw.shape[2:]:
                 raise ValueError(
@@ -131,7 +128,6 @@ class ImageData:
                 )
         
         if self.predicted_masks is not None:
-            self.predicted_masks = standardize_mask(self.predicted_masks)
             if self.predicted_masks.shape[0] != self.batch_size or \
                self.predicted_masks.shape[2:] != self.raw.shape[2:]:
                 raise ValueError(
@@ -235,7 +231,10 @@ class BaseDataset(ABC):
     def get_image_ids(self) -> List[Union[int, str]]:
         """Get list of all image IDs in dataset."""
         pass
-
+    
+    def __len__(self) -> int:
+        """Get number of images in dataset."""
+        return len(self.get_image_ids())
 
 
 class ZarrDataset(BaseDataset):
@@ -401,15 +400,15 @@ class ZarrDataset(BaseDataset):
         pred_masks_batch = np.stack(pred_mask_list, axis=0) if pred_mask_list else None
         
         return ImageData(
-            raw=raw_batch,
+            raw=standardize_raw_image(raw_batch),
             batch_size=len(file_names),
             image_ids=file_names,
             channel_names=self.channel_names,
             tissue_types=tissue_types if any(t is not None for t in tissue_types) else None,
             image_mpps=image_mpps if any(m is not None for m in image_mpps) else None,
-            masks=masks_batch,
+            masks=standardize_mask(masks_batch),
             cell_types=cell_types_list if cell_types_list else None,
-            predicted_masks=pred_masks_batch,
+            predicted_masks=standardize_mask(pred_masks_batch),
             predicted_cell_types=pred_cell_types_list if pred_cell_types_list else None
         )
     
