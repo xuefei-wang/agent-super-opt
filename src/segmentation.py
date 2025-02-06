@@ -1,10 +1,18 @@
+"""
+Module for cell segmentation model implementations.
+Supports both PyTorch and TensorFlow based models through framework-agnostic interfaces.
+"""
+
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Union, Tuple
 from dataclasses import replace
-from scipy.optimize import linear_sum_assignment
-import torch
 import logging
+
+import torch
+import tensorflow as tf
+from scipy.optimize import linear_sum_assignment
+from scipy.ndimage import label
 
 from deepcell.applications import Mesmer
 from sam2.build_sam import build_sam2
@@ -14,7 +22,9 @@ from .data_io import ImageData, standardize_mask
 
 
 def calculate_metrics(
-    true_mask: np.ndarray, pred_mask: np.ndarray, iou_threshold: float = 0.5
+    true_mask: np.ndarray,
+    pred_mask: np.ndarray,
+    iou_threshold: float = 0.5
 ) -> List[Dict[str, float]]:
     """Calculate segmentation metrics between ground truth and predicted masks.
 
@@ -43,33 +53,16 @@ def calculate_metrics(
             - recall: Fraction of ground truth objects that were detected
             - f1_score: Harmonic mean of precision and recall
 
-    Notes:
-        - Uses connected components analysis to handle multiple instances in masks
-        - Empty masks (only background) are handled as special cases
-        - IoU computation accounts for potential overlaps between objects
-        - The Hungarian algorithm ensures globally optimal matching between
-          predicted and ground truth objects
-
-    Examples:
-        >>> true_batch = np.stack([true_mask, true_mask], axis=0)
-        >>> pred_batch = np.stack([pred_mask, pred_mask], axis=0)
-        >>> batch_metrics = calculate_metrics(true_batch, pred_batch)
-        >>> print(len(batch_metrics))  # 2 (one per batch item)
     """
-    # Ensure masks are standardized
     true_mask = standardize_mask(true_mask)
     pred_mask = standardize_mask(pred_mask)
 
     batch_metrics = []
     for b in range(true_mask.shape[0]):
-        # Process single image masks
-        true_slice = true_mask[b, 0]  # Convert (1, H, W) to (H, W)
-        pred_slice = pred_mask[b, 0]  # Convert (1, H, W) to (H, W)
+        true_slice = true_mask[b, 0]
+        pred_slice = pred_mask[b, 0]
 
-        # Get unique objects by considering connected components
-        from scipy.ndimage import label
-
-        # Label connected components in each mask
+        # Get connected components
         true_labeled, true_n = label(true_slice > 0)
         pred_labeled, pred_n = label(pred_slice > 0)
 
@@ -111,27 +104,20 @@ def calculate_metrics(
                 union = np.logical_or(true_obj, pred_obj).sum()
                 iou_matrix[i - 1, j - 1] = intersection / union if union > 0 else 0
 
-        # Find optimal matching using Hungarian algorithm
+        # Find optimal matching
         true_indices, pred_indices = linear_sum_assignment(-iou_matrix)
-
-        # Get IoUs for matched pairs
         matched_ious = iou_matrix[true_indices, pred_indices]
-
-        # Only count matches that exceed the IoU threshold
         valid_matches = matched_ious >= iou_threshold
         true_positives = np.sum(valid_matches)
 
         # Calculate metrics
         precision = true_positives / pred_n if pred_n > 0 else 0
         recall = true_positives / true_n if true_n > 0 else 0
-
         f1_score = (
             2 * (precision * recall) / (precision + recall)
             if (precision + recall) > 0
             else 0
         )
-
-        # Calculate mean IoU only for valid matches
         mean_iou = matched_ious[valid_matches].mean() if true_positives > 0 else 0.0
 
         batch_metrics.append({
@@ -213,16 +199,20 @@ class BaseSegmenter(ABC):
     """
     @abstractmethod
     def preprocess(
-        self, image_data: ImageData, channel_spec: Optional[ChannelSpec] = None
+        self,
+        image_data: ImageData,
+        channel_spec: Optional[ChannelSpec] = None
     ) -> np.ndarray:
-        """Prepare image data for model input.
-
+        """Prepare images for model input.
+        
+        Returns preprocessed numpy array regardless of underlying framework.
+        
         Args:
-            image_data: ImageData object containing raw image and metadata
-            channel_spec: Optional specification of required channels
-
+            image_data: Input images and metadata
+            channel_spec: Optional channel specification
+            
         Returns:
-            np.ndarray: Processed image ready for model input with shape (B, C, H, W)
+            Preprocessed array in model's expected format
         """
         pass
 
@@ -231,18 +221,19 @@ class BaseSegmenter(ABC):
         self,
         image_data: ImageData,
         channel_spec: Optional[ChannelSpec] = None,
-        **kwargs,
+        **kwargs
     ) -> ImageData:
-        """Perform segmentation prediction.
-
+        """Generate segmentation predictions.
+        
+        Takes framework-agnostic input and returns framework-agnostic output.
+        
         Args:
-            image_data: ImageData object containing raw image and metadata
-            channel_spec: Optional specification of required channels
-            **kwargs: Additional model-specific parameters
-
+            image_data: Input images and metadata
+            channel_spec: Optional channel specification
+            **kwargs: Additional model parameters
+            
         Returns:
-            ImageData: Updated copy of input with predicted_mask field populated
-                      with shape (B, 1, H, W)
+            ImageData with predictions populated
         """
         pass
 
@@ -289,51 +280,87 @@ class MesmerSegmenter(BaseSegmenter):
         - Error messages are detailed for debugging purposes
     """
     def __init__(self, model_kwargs: Optional[Dict[str, Any]] = None):
+        """Initialize Mesmer model.
+        
+        Args:
+            model_kwargs: Optional model configuration
+        """
         self.model = Mesmer(**(model_kwargs or {}))
 
+    def _to_tensorflow(self, array: np.ndarray) -> tf.Tensor:
+        """Convert numpy array to TensorFlow tensor."""
+        return tf.convert_to_tensor(array)
+
+    def _from_tensorflow(self, tensor: tf.Tensor) -> np.ndarray:
+        """Convert TensorFlow tensor to numpy array."""
+        return tensor.numpy()
+
     def preprocess(
-        self, image_data: ImageData, channel_spec: Optional[ChannelSpec] = None
+        self,
+        image_data: ImageData,
+        channel_spec: Optional[ChannelSpec] = None
     ) -> np.ndarray:
-        """Prepare channels for Mesmer input."""
-        raw = image_data.raw  # Shape (B, C, H, W)
+        """Prepare images for Mesmer input."""
+        raw = image_data.raw  # (B, C, H, W)
         batch_size = raw.shape[0]
         processed_batch = []
 
         for b in range(batch_size):
-            single_image = raw[b]  # Shape (C, H, W)
+            single_image = raw[b]  # (C, H, W)
 
-            # Handle single-channel input
+            # Handle single/multi-channel
             if single_image.shape[0] == 1:
-                # Duplicate channel for nuclear and membrane
                 processed = np.stack([single_image[0]] * 2, axis=0)
             else:
-                raise NotImplementedError("Multichannel input not yet supported")
+                if channel_spec is None:
+                    raise ValueError("Channel specification required for multi-channel input")
+                
+                # Get nuclear and membrane channels
+                try:
+                    nuclear_idx = image_data.channel_names.index(channel_spec.nuclear)
+                    membrane_indices = [
+                        image_data.channel_names.index(ch) for ch in channel_spec.membrane
+                    ]
+                except ValueError as e:
+                    raise ValueError(f"Channel not found: {str(e)}")
+                
+                nuclear = single_image[nuclear_idx]
+                membrane = np.sum([single_image[idx] for idx in membrane_indices], axis=0)
+                processed = np.stack([nuclear, membrane], axis=0)
 
             processed_batch.append(processed)
 
-        # Stack along batch dimension and transpose to (B, H, W, C)
+        # Stack and transpose to (B, H, W, C)
         return np.stack(processed_batch, axis=0).transpose(0, 2, 3, 1)
 
     def predict(
         self,
         image_data: ImageData,
         channel_spec: Optional[ChannelSpec] = None,
-        **kwargs,
+        **kwargs
     ) -> ImageData:
-        """Segment cells using Mesmer."""
-        # Preprocess channels - already includes batch dimension
+        """Generate Mesmer segmentation predictions."""
+        # Preprocess to numpy
         processed_img = self.preprocess(image_data, channel_spec)
-
+        
+        # Convert to TensorFlow
+        tf_input = self._to_tensorflow(processed_img)
+        
         # Run prediction
         try:
-            labels = self.model.predict(processed_img, compartment="nuclear", **kwargs)
+            tf_output = self.model.predict(
+                tf_input,
+                compartment="nuclear",
+                **kwargs
+            )
+            labels = self._from_tensorflow(tf_output)
         except Exception as e:
             raise RuntimeError(f"Mesmer segmentation failed: {str(e)}") from e
 
-        # Standardize output to (B, 1, H, W) format
+        # Standardize output
         labels = standardize_mask(labels)
 
-        return replace(image_data, predicted_mask=labels)
+        return replace(image_data, predicted_masks=labels)
 
 
 class SAM2Segmenter(BaseSegmenter):
@@ -407,9 +434,13 @@ class SAM2Segmenter(BaseSegmenter):
         use_m2m: bool = False,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
+        """Initialize SAM2 model and mask generator."""
         self.device = device
         self.model = build_sam2(
-            model_cfg, checkpoint_path, device=device, apply_postprocessing=False
+            model_cfg,
+            checkpoint_path,
+            device=device,
+            apply_postprocessing=False
         )
         self.mask_generator = SAM2AutomaticMaskGenerator(
             model=self.model,
@@ -426,23 +457,33 @@ class SAM2Segmenter(BaseSegmenter):
             output_mode="binary_mask",
         )
 
+    def _to_torch(self, array: np.ndarray) -> torch.Tensor:
+        """Convert numpy array to PyTorch tensor."""
+        return torch.from_numpy(array).to(self.device)
+
+    def _from_torch(self, tensor: torch.Tensor) -> np.ndarray:
+        """Convert PyTorch tensor to numpy array."""
+        return tensor.cpu().numpy()
+
     def preprocess(
-        self, image_data: ImageData, channel_spec: Optional[ChannelSpec] = None
+        self,
+        image_data: ImageData,
+        channel_spec: Optional[ChannelSpec] = None
     ) -> np.ndarray:
-        """Prepare image data for SAM2 input."""
-        raw = image_data.raw  # Shape (B, C, H, W)
+        """Prepare images for SAM2 input."""
+        raw = image_data.raw  # (B, C, H, W)
         batch_size = raw.shape[0]
         processed_batch = []
 
         for b in range(batch_size):
-            single_image = raw[b]  # Shape (C, H, W)
+            single_image = raw[b]  # (C, H, W)
 
-            # Handle different input formats
-            if single_image.shape[0] == 1:  # Single channel
+            # Convert to RGB format
+            if single_image.shape[0] == 1:
                 processed = np.stack([single_image[0]] * 3, axis=0)
-            elif single_image.shape[0] == 3:  # Already RGB
+            elif single_image.shape[0] == 3:
                 processed = single_image
-            else:  # Multichannel data
+            else:
                 processed = np.zeros((3, *single_image.shape[1:]))
                 for i in range(min(single_image.shape[0], 3)):
                     processed[i] = single_image[i]
@@ -455,9 +496,10 @@ class SAM2Segmenter(BaseSegmenter):
                     / (processed.max() - processed.min())
                     * 255
                 )
-
             processed = processed.astype(np.uint8)
-            processed = np.transpose(processed, (1, 2, 0))  # Convert to (H, W, 3)
+            
+            # Convert to (H, W, 3)
+            processed = np.transpose(processed, (1, 2, 0))
             processed_batch.append(processed)
 
         return np.stack(processed_batch, axis=0)
@@ -466,15 +508,13 @@ class SAM2Segmenter(BaseSegmenter):
         self,
         image_data: ImageData,
         channel_spec: Optional[ChannelSpec] = None,
-        **kwargs,
+        **kwargs
     ) -> ImageData:
-        """Perform segmentation using SAM2."""
-        # Preprocess image - returns (B, H, W, 3)
-        processed_imgs = self.preprocess(image_data)
+        """Generate SAM2 segmentation predictions."""
+        processed_imgs = self.preprocess(image_data, channel_spec)
         batch_size = processed_imgs.shape[0]
-
-        # Process each image in batch
         batch_masks = []
+
         for b in range(batch_size):
             try:
                 masks = self.mask_generator.generate(processed_imgs[b])
@@ -482,25 +522,23 @@ class SAM2Segmenter(BaseSegmenter):
                 raise RuntimeError(f"SAM2 segmentation failed for batch {b}: {str(e)}")
 
             if not masks:
-                # No masks found - add empty mask
                 combined_mask = np.zeros(processed_imgs[b].shape[:2], dtype=np.int32)
             else:
-                # Convert SAM2 output to our format
                 combined_mask = np.zeros(processed_imgs[b].shape[:2], dtype=np.int32)
                 idx = 1
                 for mask_data in masks:
                     mask = mask_data["segmentation"]
                     area = mask_data["area"]
-                    if area > 5000:
-                        logging.info(f"Batch {b}: Skipping potential background segmentation")
+                    if area > 5000:  # Skip potential background
+                        logging.info(f"Batch {b}: Skipping large mask")
                         continue
                     combined_mask[mask] = idx
                     idx += 1
 
             batch_masks.append(combined_mask)
 
-        # Stack masks and standardize to (B, 1, H, W) format
+        # Stack and standardize
         combined_masks = np.stack(batch_masks, axis=0)
         combined_masks = standardize_mask(combined_masks)
 
-        return replace(image_data, predicted_mask=combined_masks)
+        return replace(image_data, predicted_masks=combined_masks)
