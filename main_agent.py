@@ -11,6 +11,8 @@ from autogen.coding.jupyter import (
     LocalJupyterServer,
 )
 
+from task_prompts.task_prompt import TaskPrompts
+
 from src.utils import set_gpu_device
 from src.prompts import (
     sys_prompt_code_writer,
@@ -112,26 +114,15 @@ def set_up_agents(max_round):
     return code_executor_agent, group_chat_manager
 
 # Load documentation and dataset information
-with open("artifacts/docs.md", "r") as file:
-    documentation = file.read()
+# with open("artifacts/docs.md", "r") as file:
+#     documentation = file.read()
 
-# Load function bank
-with open("output/preprocessing_func_bank.json", "r") as file:
-    function_bank = json.load(file)
 
 # Load openCV function APIs
-with open("assets/opencv_APIs.md", "r") as file:
+with open("assets/opencv_APIs.txt", "r") as file:
     opencv_APIs = file.read()
 
 
-dataset_info = """
-```markdown
-This is a single-channel nuclear segmentation dataset. It consists of images from different experiments, different settings - a heterogenous dataset covering
-five different cell lines (NIH-3T3, HeLa-S3, HEK293, RAW 264.7, and PC-3).
-```
-"""
-
-dataset_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/val.npz"
 
 def prepare_notes_shared(my_gpu_id):
     notes_shared = f"""
@@ -147,39 +138,15 @@ notes_pipeline_optimization = f"""
 """
 
 
-summary_prompt = """
-Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
-Follow the format:
-{
-    "mean_iou": ...,
-    "precision": ...,
-    "recall": ...,
-    "f1_score": ...,
-    "preprocessing_function": "
-        ```python
-        YOUR_CODE_HERE
-        ```
-        ",
-}
-"""
-
-
-def prepare_prompt_pipeline_optimization(notes_shared, gpu_id, seed):
+def prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts : TaskPrompts):
 
     prompt_pipeline_optimization = f"""
-    # Cell Segmentation Analysis Pipeline Optimization
-    ## Objective:
-    Optimize the pipeline for cell segmentation analysis by suggesting new preprocessing functions.
 
     ## About the dataset: 
-    {dataset_info}
+    {prompts.dataset_info}
 
     ## Task Details:
-    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
-    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
-    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
-    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
+    {prompts.task_details}
 
     ## Previous preprocessing functions and their performance (might be empty):
     {function_bank}
@@ -249,88 +216,25 @@ def prepare_prompt_pipeline_optimization(notes_shared, gpu_id, seed):
 
     ```
     ## Function for saving the results:
-    ```python
-    import inspect
-    import json
-
-    def write_results(preprocessing_fn, metrics_dict):
-        '''
-        Write the results of evaluation to the function bank JSON.
-        
-        Requires:
-        preprocessing_fn: the function
-        metrics_dict: the metrics dictionary
-        '''
-        
-        with open('output/preprocessing_func_bank.json', 'r') as file:
-            json_array = json.load(file)
-
-        with open('output/preprocessing_func_bank.json', 'w') as file:
-            json_data = metrics_dict
-            json_data["preprocessing_function"] = inspect.getsource(preprocessing_fn)
-            json_array.append(json_data)
-            json.dump(json_array, file)
-    ```
+    {prompts.save_to_function_bank_prompt}
 
     ## Code for running segmentation and calculating metrics:
+    {prompts.run_pipeline_prompt()}
+
+    
+    ## Use this helper function to get the 10 best previous function executions:
     ```python
-    import numpy as np
-    import logging
-    import pandas as pd
-    from pathlib import Path
+        import json
 
-    import torch
-    import tensorflow as tf
+        with open("output/preprocessing_func_bank.json", "r") as file:
+            function_bank = json.load(file)
 
-    from src.utils import set_gpu_device
-    from src.data_io import NpzDataset
-    from src.segmentation import MesmerSegmenter, calculate_metrics
-
-    gpu_id = {gpu_id}
-    seed = {seed}
-
-    # Set up output directory
-    output_dir = Path("output")
-
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler("app.log"),
-            logging.StreamHandler()  # This keeps console logging
-        ]
-    )
-    logger = logging.getLogger(__name__)
-
-    # Set GPU device
-    set_gpu_device(gpu_id)
-
-    # Set random seeds
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    tf.random.set_seed(seed)
-
-    # Load data
-    data_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/test.npz"
-    dataset = NpzDataset(data_path)
-    indices = np.random.choice(len(dataset), size=5, replace=False)
-    images = dataset.load(indices)
-
-    # TODO: add your preprocessing function here
-    images = preprocess_images(images)
-
-    # Initialize segmenter
-    segmenter = MesmerSegmenter()
-
-    # Run segmenter
-    results = segmenter.predict(images)
-
-    # Calculate metrics
-    metrics = calculate_metrics(results.masks, results.predicted_masks)
-    df = pd.DataFrame(metrics)
-    overall_metrics = df.mean().to_dict()
-    logger.info("Overall metrics: ", overall_metrics)
-
+            # Find the 10 functions with the lowest class loss
+            function_bank.sort(key=lambda x: x["class_loss"])
+            best_functions = function_bank[:10]
+            print("Best functions based on class loss:")
+            for func in best_functions:
+                print("Class Loss:" + str(func['class_loss']) + ", Function: " + str(func['preprocessing_function']))
     ```
     """
 
@@ -343,18 +247,20 @@ def save_chat_history(chat_history, curr_iter):
             file.write(f"{message['name']}: {message['content']}\n\n")
 
 def main():
+
+    # Load task prompts
+    from task_prompts.spot_detection_prompts import SpotDetectionPrompts
+    prompts = SpotDetectionPrompts(gpu_id=7, seed=42)
+
     # Configuration
     my_gpu_id = 7 # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = 42 # Random seed for reproducibility
-    num_optim_iter = 5 # Number of optimization iterations
-    max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
+    num_optim_iter = 50 # Number of optimization iterations
+    max_round = 10000  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
 
     # Set GPU device
     set_gpu_device(my_gpu_id)
-
-    # Set up agents
-    code_executor_agent, group_chat_manager = set_up_agents(max_round=max_round)
 
     # Run pipeline development and optimization
     with Cache.disk(cache_seed=cache_seed) as cache:
@@ -362,10 +268,18 @@ def main():
         notes_shared = prepare_notes_shared(my_gpu_id)
 
         for i in range(0, num_optim_iter+1):
-            prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared, my_gpu_id, random_seed)
+
+            # Set up agents
+            code_executor_agent, group_chat_manager = set_up_agents(max_round=max_round)
+
+
+            with open("output/preprocessing_func_bank.json", "r") as file:
+                function_bank = json.load(file)
+
+            prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts)
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
-                                            summary_args={"summary_prompt": summary_prompt})
+                                            summary_args={"summary_prompt": prompts.summary_prompt})
             save_chat_history(chat_result.chat_history, i)
 
 if __name__ == "__main__":
