@@ -44,7 +44,7 @@ def set_up_agents(max_round):
             "config_list": [{"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}],
         },
         code_execution_config=False,
-        human_input_mode="NEVER",
+        human_input_mode="SOMETIMES",
     )
 
     code_verifier_agent = ConversableAgent(
