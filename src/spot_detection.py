@@ -18,9 +18,15 @@ class DeepcellSpotsDetector:
         - image: numpy array of shape (H, W, C) representing the input image.
 
         Returns:
-        - detections: numpy array of detected spots.
+        Predictions with two keys ('classification', 'offset_regression')
+        - classification prediction: image array of one-hot encoded classifications
+        - regression prediction: image array of regression distance from predicted points
     """
         app = SpotDetection()
+        
+        # Disable default preprocessing and postprocessing
+        app.preprocessing_fn = None
+        app.postprocessing_fn = None
 
         pred = app.predict(images.raw, batch_size=images.batch_size, threshold=0.95)
 
@@ -69,13 +75,15 @@ class DeepcellSpotsDetector:
         batch_regress_loss = 0
 
         losses = DotNetLosses()
-
-        for i in range(predictions.shape[0]):
-            annotated_pred = point_list_to_annotations(predictions[i], image_shape=image_shape)
+        
+        class_preds = predictions['classification']
+        regress_preds = predictions['offset_regression']
+        
+        for i in range(ground_truth.shape[0]):
             annotated_truth = point_list_to_annotations(ground_truth[i], image_shape=image_shape)
 
-            class_pred = annotated_pred['detections']
-            regress_pred = annotated_pred['offset']
+            class_pred = class_preds[i]
+            regress_pred = regress_preds[i]
 
             class_truth = annotated_truth['detections']
             regress_truth = annotated_truth['offset']
@@ -87,6 +95,6 @@ class DeepcellSpotsDetector:
             batch_regress_loss += regress_loss
         
         return {
-            "class_loss": (batch_class_loss / predictions.shape[0]),
-            "regress_loss": (batch_regress_loss / predictions.shape[0])
+            "class_loss": (batch_class_loss / ground_truth.shape[0]),
+            "regress_loss": (batch_regress_loss / ground_truth.shape[0])
         }

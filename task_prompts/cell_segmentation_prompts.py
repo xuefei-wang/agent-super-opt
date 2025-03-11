@@ -126,16 +126,19 @@ class CellSegmentationPrompts(TaskPrompts):
     """
 
 
-    def __init__(self, gpu_id, seed):
+    def __init__(self, gpu_id, seed, function_bank_path):
         super().__init__(
             gpu_id=gpu_id,
             seed=seed,
             dataset_info=self.dataset_info,
             dataset_path=self.dataset_path,
             summary_prompt=self.summary_prompt,
-            save_to_function_bank_prompt=self.save_to_function_bank_prompt,
-            task_details=self.task_details
+            task_details=self.task_details,
+            function_bank_path=function_bank_path
         )
     
     def run_pipeline_prompt(self) -> str:
         return self.pipeline_prompt.format(gpu_id=self.gpu_id, seed=self.seed)
+    
+    def save_function_prompt(self) -> str:
+        return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path)

@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 import os
 import torch
 import json
+import argparse
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock
@@ -216,7 +217,7 @@ def prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts : 
 
     ```
     ## Function for saving the results:
-    {prompts.save_to_function_bank_prompt}
+    {prompts.save_function_prompt()}
 
     ## Code for running segmentation and calculating metrics:
     {prompts.run_pipeline_prompt()}
@@ -241,23 +242,38 @@ def prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts : 
     return prompt_pipeline_optimization
 
 
-def save_chat_history(chat_history, curr_iter):
-    with open(f"output/chat_history_ver{curr_iter:03d}.txt", "w") as file:
+def save_chat_history(chat_history, curr_iter, output_folder):
+    
+    output_file = os.path.join(output_folder, f"chat_history_ver{curr_iter:03d}.txt")
+    with open(output_file, "w") as file:
         for message in chat_history:
             file.write(f"{message['name']}: {message['content']}\n\n")
 
 def main():
-
-    # Load task prompts
-    from task_prompts.spot_detection_prompts import SpotDetectionPrompts
-    prompts = SpotDetectionPrompts(gpu_id=7, seed=42)
-
+    
+    parser = argparse.ArgumentParser(description="SciSeek Agent pipeline")
+    
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        required=True,
+        help="Path to the output folder."
+    )
+    
+    args = parser.parse_args()
+    
+    output_function_bank = os.path.join(args.output,"preprocessing_func_bank.json")
+    
     # Configuration
-    my_gpu_id = 7 # GPU ID to use
+    my_gpu_id = 0 # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = 42 # Random seed for reproducibility
     num_optim_iter = 50 # Number of optimization iterations
     max_round = 10000  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
+    
+    # Load task prompts
+    from task_prompts.spot_detection_prompts import SpotDetectionPrompts
+    prompts = SpotDetectionPrompts(gpu_id=0, seed=42, function_bank_path=output_function_bank)
 
     # Set GPU device
     set_gpu_device(my_gpu_id)
@@ -273,14 +289,14 @@ def main():
             code_executor_agent, group_chat_manager = set_up_agents(max_round=max_round)
 
 
-            with open("output/preprocessing_func_bank.json", "r") as file:
+            with open(output_function_bank, "r") as file:
                 function_bank = json.load(file)
 
             prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts)
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
                                             summary_args={"summary_prompt": prompts.summary_prompt})
-            save_chat_history(chat_result.chat_history, i)
+            save_chat_history(chat_result.chat_history, i, args.output)
 
 if __name__ == "__main__":
     main()

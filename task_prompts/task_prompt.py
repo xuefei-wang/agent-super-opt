@@ -9,14 +9,18 @@ class TaskPrompts:
 
     gpu_id : int
     seed : int
+    function_bank_path : str
 
     dataset_info : str
     dataset_path : str
     summary_prompt : str
-    save_to_function_bank_prompt : str
     task_details : str
 
     @abstractmethod
     def run_pipeline_prompt(self) -> str:
+        pass
+    
+    @abstractmethod
+    def save_function_prompt(self) -> str:
         pass
 

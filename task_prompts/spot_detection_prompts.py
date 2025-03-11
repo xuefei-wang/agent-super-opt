@@ -5,7 +5,7 @@ class SpotDetectionPrompts(TaskPrompts):
 
     dataset_info = """
         ```markdown
-        This is a single-channel cell spot detection dataset. The cell images have dimensions (batch, length, width, channel).
+        This is a single-channel cell spot detection dataset. IMPORTANT: The cell images have dimensions (B, L, W, C) = (batch, length, width, channel).
         ```
     """
 
@@ -39,10 +39,10 @@ class SpotDetectionPrompts(TaskPrompts):
             metrics_dict: the metrics dictionary
             '''
             
-            with open('output/preprocessing_func_bank.json', 'r') as file:
+            with open('{function_bank_path}', 'r') as file:
                 json_array = json.load(file)
 
-            with open('output/preprocessing_func_bank.json', 'w') as file:
+            with open('{function_bank_path}', 'w') as file:
                 json_data = metrics_dict
                 json_data["preprocessing_function"] = inspect.getsource(preprocessing_fn)
                 json_array.append(json_data)
@@ -84,28 +84,28 @@ class SpotDetectionPrompts(TaskPrompts):
     """
 
     task_details = """
-    All of you should work together to write a preprocessing function using OpenCV functions to improve cell spot detection performance.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
-    2. Plug the preprocessing function into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
-    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
-    4. The preprocessing function should not change the dimensions of the image.
-    5. Only one iteration is allowed for this task, even if the performance is not satisfactory.
-    6. Do not terminate the conversation until the new preprocessing function is evaluated.
-
+    You will work together to complete the following instructions in order:
+    1. View the function bank provided in the prompt to see previous preprocessing functions and their performance metrics.
+    2. Based on previous evaluations, suggest a new unique preprocessing function that may improve the performance metrics of the spot detector.
+    3. Plug the preprocessing function into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
+    4. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
 
     """
 
 
-    def __init__(self, gpu_id, seed):
+    def __init__(self, gpu_id, seed, function_bank_path):
         super().__init__(
             gpu_id=gpu_id,
             seed=seed,
             dataset_info=self.dataset_info,
             dataset_path=self.dataset_path,
             summary_prompt=self.summary_prompt,
-            save_to_function_bank_prompt=self.save_to_function_bank_prompt,
-            task_details=self.task_details
+            task_details=self.task_details,
+            function_bank_path=function_bank_path
         )
     
     def run_pipeline_prompt(self) -> str:
         return self.pipeline_prompt.format(gpu_id=self.gpu_id, seed=self.seed)
+    
+    def save_function_prompt(self) -> str:
+        return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path)
