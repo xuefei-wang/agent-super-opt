@@ -1,6 +1,8 @@
 #!/bin/sh
 
-OUTPUT_FOLDER="output/"
+OUTPUT_FOLDER="output2/"
+
+DATASET="spot_data/SpotNet-v1_1/val.npz"
 
 echo "Initializing output folder"
 
@@ -12,5 +14,5 @@ cd ..
 
 echo "Starting agent pipeline"
 
-python main_agent.py --output $OUTPUT_FOLDER
+python main_agent.py --dataset $DATASET --output $OUTPUT_FOLDER
 

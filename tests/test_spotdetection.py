@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 ### To run from project root directory: python -m tests.test_spotdetection
 
-class TestSegmentationMetrics(unittest.TestCase):
+class TestSpotDetection(unittest.TestCase):
     def test_pipeline(self):
         '''Test if prediction and evaluation pipeline completes without errors'''
         load_dotenv()
@@ -16,8 +16,6 @@ class TestSegmentationMetrics(unittest.TestCase):
 
         images = ImageData(raw = spots_data['X'], batch_size = spots_data['X'].shape[0], image_ids = [i for i in range(spots_data['X'].shape[0])])
         spots_truth = spots_data['y']
-
-        single_image_shape = images.raw.shape[1:3]
 
         def preprocess_images(images: ImageData) -> ImageData:
             return images
@@ -30,7 +28,7 @@ class TestSegmentationMetrics(unittest.TestCase):
         pred = deepcell_spot_detector.predict(images)
         
         # Get metrics
-        metrics = deepcell_spot_detector.evaluate(single_image_shape, pred, spots_truth)
+        metrics = deepcell_spot_detector.evaluate(pred, spots_truth)
         
         print(metrics)
         

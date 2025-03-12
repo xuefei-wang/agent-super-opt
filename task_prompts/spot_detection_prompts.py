@@ -8,9 +8,7 @@ class SpotDetectionPrompts(TaskPrompts):
         This is a single-channel cell spot detection dataset. IMPORTANT: The cell images have dimensions (B, L, W, C) = (batch, length, width, channel).
         ```
     """
-
-    dataset_path = "/spot_data/SpotNet-v1_1/val.npz"
-
+    
     summary_prompt = """
         Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
         Follow the format:
@@ -47,6 +45,8 @@ class SpotDetectionPrompts(TaskPrompts):
                 json_data["preprocessing_function"] = inspect.getsource(preprocessing_fn)
                 json_array.append(json_data)
                 json.dump(json_array, file)
+            
+            print("Finished writing preprocessing function to function bank")
         ```
     """
 
@@ -60,12 +60,10 @@ class SpotDetectionPrompts(TaskPrompts):
 
             load_dotenv()
 
-            spots_data = np.load('spot_data/SpotNet-v1_1/val.npz', allow_pickle=True)
+            spots_data = np.load({data_path}, allow_pickle=True)
 
             images = ImageData(raw = spots_data['X'], batch_size = spots_data['X'].shape[0], image_ids = [i for i in range(spots_data['X'].shape[0])])
             spots_truth = spots_data['y']
-
-            single_image_shape = images.raw.shape[1:3]
 
             # TODO: add your preprocessing function here
             # def preprocess_images(images: ImageData) -> ImageData:
@@ -79,7 +77,7 @@ class SpotDetectionPrompts(TaskPrompts):
             pred = deepcell_spot_detector.predict(images)
 
             # Get metrics
-            metrics = deepcell_spot_detector.evaluate(single_image_shape, pred, spots_truth)
+            metrics = deepcell_spot_detector.evaluate(pred, spots_truth)
             ```
     """
 
@@ -88,24 +86,24 @@ class SpotDetectionPrompts(TaskPrompts):
     1. View the function bank provided in the prompt to see previous preprocessing functions and their performance metrics.
     2. Based on previous evaluations, suggest a new unique preprocessing function that may improve the performance metrics of the spot detector.
     3. Plug the preprocessing function into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
-    4. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
+    4. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script. Do not terminate until you can verify the output of the code.
 
     """
 
 
-    def __init__(self, gpu_id, seed, function_bank_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
         super().__init__(
             gpu_id=gpu_id,
             seed=seed,
             dataset_info=self.dataset_info,
-            dataset_path=self.dataset_path,
+            dataset_path=dataset_path,
             summary_prompt=self.summary_prompt,
             task_details=self.task_details,
-            function_bank_path=function_bank_path
+            function_bank_path=function_bank_path,
         )
     
     def run_pipeline_prompt(self) -> str:
-        return self.pipeline_prompt.format(gpu_id=self.gpu_id, seed=self.seed)
+        return self.pipeline_prompt.format(gpu_id=self.gpu_id, seed=self.seed, data_path=self.dataset_path)
     
     def save_function_prompt(self) -> str:
         return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path)

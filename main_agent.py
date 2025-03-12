@@ -3,6 +3,7 @@ import os
 import torch
 import json
 import argparse
+import uuid
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock
@@ -23,96 +24,61 @@ from src.prompts import (
 # Load environment variables
 load_dotenv()
 
+server = LocalJupyterServer()
+executor = JupyterCodeExecutor(server, output_dir="output", timeout=300) # very high timeout for long running tasks
 
-def set_up_agents(max_round):
-    server = LocalJupyterServer()
-    executor = JupyterCodeExecutor(server, output_dir="output", timeout=10000) # very high timeout for long running tasks
-
+def set_up_agents():
+    ''' Prepare 3 agents and state transition'''
     code_executor_agent = ConversableAgent(
         "code_executor_agent",
-        llm_config=False,
+        llm_config=False,  # Turn off LLM for this agent.
         code_execution_config={
             "executor": executor
-        },  # Use the docker command line code executor
-        # human_input_mode="ALWAYS",  # Always take human input for this agent for safety.
-        human_input_mode="NEVER",  # Never take human input for this agent
+        }, 
+        human_input_mode="NEVER",  # Always take human input for this agent for safety.
         # is_termination_msg=lambda msg: "TERMINATE" in msg["content"] if msg["content"] else False,
     )
-
     code_writer_agent = ConversableAgent(
         "code_writer",
         system_message=sys_prompt_code_writer,
         llm_config={
-            # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
-            "config_list": [{"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}],
+            "config_list": [
+                {"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}
+            ]
         },
-        code_execution_config=False,
+        code_execution_config=False,  # Turn off code execution for this agent.
         human_input_mode="NEVER",
     )
-
     code_verifier_agent = ConversableAgent(
         "code_verifier",
         system_message=sys_prompt_code_verifier,
         llm_config={
-            # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
-            "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
+            "config_list": [
+                {"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}
+            ]
         },
-        code_execution_config=False,
+        code_execution_config=False,  # Turn off code execution for
         human_input_mode="NEVER",
     )
-
-
+    
     def state_transition(last_speaker, groupchat):
-        """Determine the next speaker in the group chat.
-
-        Args:
-            last_speaker: The previous speaker in the conversation
-            groupchat: The group chat instance
-
-        Returns:
-            ConversableAgent: The next speaker, or None to terminate
-        """
+        ''' Transition between speakers in an agent groupchat '''
         messages = groupchat.messages
 
-        if len(messages) <= 1:  # First round
+        if len(messages) <= 1:
             return code_writer_agent
-
-        if "TERMINATE" in messages[-1]["content"]: # Terminate if the last message contains "TERMINATE"
-            return None
 
         if last_speaker is code_writer_agent:
             return code_verifier_agent
         elif last_speaker is code_verifier_agent:
             return code_executor_agent
         elif last_speaker is code_executor_agent:
-            return code_writer_agent
-        
-    # Set up group chat
-    group_chat = GroupChat(
-        agents=[
-            code_executor_agent,
-            code_writer_agent,
-            code_verifier_agent,
-        ],
-        messages=[],
-        max_round=max_round,
-        send_introductions=True,
-        speaker_selection_method=state_transition,
-    )
-
-    # Initialize group chat manager
-    group_chat_manager = GroupChatManager(
-        groupchat=group_chat,
-        llm_config={
-            # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
-            "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
-        },
-        is_termination_msg=lambda msg: (
-            "TERMINATE" in msg["content"] if msg["content"] else False
-        ),
-    )
-
-    return code_executor_agent, group_chat_manager
+            if "exitcode: 1" in messages[-1]["content"]:
+                return code_writer_agent
+            else:
+                return code_writer_agent
+    
+    return code_executor_agent, code_writer_agent, code_verifier_agent, state_transition
 
 # Load documentation and dataset information
 # with open("artifacts/docs.md", "r") as file:
@@ -139,7 +105,7 @@ notes_pipeline_optimization = f"""
 """
 
 
-def prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts : TaskPrompts):
+def prepare_prompt_pipeline_optimization(notes_shared, function_bank_path, prompts : TaskPrompts):
 
     prompt_pipeline_optimization = f"""
 
@@ -148,9 +114,9 @@ def prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts : 
 
     ## Task Details:
     {prompts.task_details}
-
-    ## Previous preprocessing functions and their performance (might be empty):
-    {function_bank}
+    
+    ## Function bank path:
+    {function_bank_path}
 
     ## OpenCV Function APIs:
     {opencv_APIs}
@@ -178,14 +144,14 @@ def prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts : 
     All data is stored as numpy arrays for framework independence.
 
     Arrays are standardized to the following formats:
-    - Raw images: (B, C, H, W) where:
+    - Raw images: (B, H, W, C) where:
         B: batch size
         C: number of channels
         H, W: height and width
     - Masks: (B, 1, H, W) for both ground truth and predictions
 
     Attributes:
-        raw (np.ndarray): Raw image data in (B, C, H, W) format.
+        raw (np.ndarray): Raw image data in (B, H, W, C) format.
         
         batch_size (int): Number of images in the batch.
         
@@ -223,20 +189,6 @@ def prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts : 
     {prompts.run_pipeline_prompt()}
 
     
-    ## Use this helper function to get the 10 best previous function executions:
-    ```python
-        import json
-
-        with open("output/preprocessing_func_bank.json", "r") as file:
-            function_bank = json.load(file)
-
-            # Find the 10 functions with the lowest class loss
-            function_bank.sort(key=lambda x: x["class_loss"])
-            best_functions = function_bank[:10]
-            print("Best functions based on class loss:")
-            for func in best_functions:
-                print("Class Loss:" + str(func['class_loss']) + ", Function: " + str(func['preprocessing_function']))
-    ```
     """
 
     return prompt_pipeline_optimization
@@ -249,9 +201,28 @@ def save_chat_history(chat_history, curr_iter, output_folder):
         for message in chat_history:
             file.write(f"{message['name']}: {message['content']}\n\n")
 
+def save_seed_list(n, file_path):
+    '''Saves the seed list to a file path and returns the seed list'''
+    uuids = [uuid.uuid4() for _ in range(n)]
+
+    with open(file_path, "w") as file:
+        for uid in uuids:
+            file.write(f"{uid}\n")
+
+    print(f"Saved {n} seeds to {file_path}")
+    
+    return uuids
+    
 def main():
     
     parser = argparse.ArgumentParser(description="SciSeek Agent pipeline")
+    
+    parser.add_argument(
+        "-d", "--dataset",
+        type=str,
+        required=True,
+        help="Path to the dataset."
+    )
     
     parser.add_argument(
         "-o", "--output",
@@ -259,7 +230,7 @@ def main():
         required=True,
         help="Path to the output folder."
     )
-    
+        
     args = parser.parse_args()
     
     output_function_bank = os.path.join(args.output,"preprocessing_func_bank.json")
@@ -269,30 +240,55 @@ def main():
     cache_seed = 4 # Cache seed for caching the results
     random_seed = 42 # Random seed for reproducibility
     num_optim_iter = 50 # Number of optimization iterations
-    max_round = 10000  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
+    max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     
     # Load task prompts
     from task_prompts.spot_detection_prompts import SpotDetectionPrompts
-    prompts = SpotDetectionPrompts(gpu_id=0, seed=42, function_bank_path=output_function_bank)
+    prompts = SpotDetectionPrompts(gpu_id=0, seed=42, dataset_path=args.dataset, function_bank_path=output_function_bank)
 
     # Set GPU device
     set_gpu_device(my_gpu_id)
+    
+    seed_list_file = os.path.join(args.output,"seed_list.txt")
+    # Generate seed list
+    seed_list = save_seed_list(num_optim_iter, seed_list_file)
 
     # Run pipeline development and optimization
     with Cache.disk(cache_seed=cache_seed) as cache:
         
         notes_shared = prepare_notes_shared(my_gpu_id)
 
-        for i in range(0, num_optim_iter+1):
+        for i in range(num_optim_iter):
 
             # Set up agents
-            code_executor_agent, group_chat_manager = set_up_agents(max_round=max_round)
+            code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents()
+            
+            group_chat = GroupChat(
+                agents=[
+                    code_executor_agent,
+                    code_writer_agent,
+                    code_verifier_agent,
+                ],
+                messages=[],
+                max_round=max_round,
+                send_introductions=True,
+                speaker_selection_method=state_transition,
+            )
+
+            # Initialize group chat manager
+            group_chat_manager = GroupChatManager(
+                groupchat=group_chat,
+                llm_config={
+                    # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+                    "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
+                },
+                is_termination_msg=lambda msg: (
+                    "TERMINATE" in msg["content"] if msg["content"] else False
+                ),
+            )
 
 
-            with open(output_function_bank, "r") as file:
-                function_bank = json.load(file)
-
-            prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared, function_bank, prompts)
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
                                             summary_args={"summary_prompt": prompts.summary_prompt})

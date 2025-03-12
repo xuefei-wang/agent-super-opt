@@ -9,9 +9,7 @@ class CellSegmentationPrompts(TaskPrompts):
         five different cell lines (NIH-3T3, HeLa-S3, HEK293, RAW 264.7, and PC-3).
         ```
     """
-
-    dataset_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/val.npz"
-
+    
     summary_prompt = """
         Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
         Follow the format:
@@ -93,7 +91,7 @@ class CellSegmentationPrompts(TaskPrompts):
             tf.random.set_seed(seed)
 
             # Load data
-            data_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/test.npz"
+            data_path = "{data_path}"
             dataset = NpzDataset(data_path)
             indices = np.random.choice(len(dataset), size=5, replace=False)
             images = dataset.load(indices)
@@ -126,19 +124,19 @@ class CellSegmentationPrompts(TaskPrompts):
     """
 
 
-    def __init__(self, gpu_id, seed, function_bank_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
         super().__init__(
             gpu_id=gpu_id,
             seed=seed,
             dataset_info=self.dataset_info,
-            dataset_path=self.dataset_path,
+            dataset_path=dataset_path,
             summary_prompt=self.summary_prompt,
             task_details=self.task_details,
-            function_bank_path=function_bank_path
+            function_bank_path=function_bank_path,
         )
     
     def run_pipeline_prompt(self) -> str:
-        return self.pipeline_prompt.format(gpu_id=self.gpu_id, seed=self.seed)
+        return self.pipeline_prompt.format(gpu_id=self.gpu_id, seed=self.seed, data_path=self.dataset_path)
     
     def save_function_prompt(self) -> str:
         return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path)

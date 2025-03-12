@@ -10,9 +10,9 @@ class TaskPrompts:
     gpu_id : int
     seed : int
     function_bank_path : str
+    dataset_path : str
 
     dataset_info : str
-    dataset_path : str
     summary_prompt : str
     task_details : str
 

@@ -5,6 +5,12 @@ Automate Scientific Data Analysis using LLM agents
 ## Setup 
 
 ```bash
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+source .venv/bin/activate
+
 # install packages
 pip install -r requirements.txt
 
@@ -49,6 +55,11 @@ To run it using an agent:
 python main_agent.py
 ```
 
+To run tests in the test folder
+```bash
+python -m tests.test_X
+```
+
 ## Notes
 Autogen has an issue with sending images to Gemini, the issue ticket (with a quick fix) can be found [here](https://github.com/microsoft/autogen/issues/5033).
 It turns out that `autogen` is not their official package. For `autogen-agentchat==0.2`, you can do `import autogen` and similar func is supported, see [here](https://microsoft.github.io/autogen/0.2/docs/Getting-Started#quickstart). But with the latest version 0.4.1, the APIs have been changed. 
@@ -63,3 +74,6 @@ There has been some confusion regarding Autogen packages and versioning. There a
 - AG2 (`pip install ag2`, version doesn't matter), open-source continuation of Autogen 0.2
 
 Note: While the latter two packages originated from the same codebase, they now follow different development paths. AG2 continues the original Autogen 0.2 design philosophy, while Autogen 0.4+ introduces a new API structure. For this project, we will use AG2.
+
+## Quickstart: running experiments
+Run `setup_experiment.sh` in the project root directory to start an experiment. This creates an output folder as specified in the shell script, and runs the agent pipeline to output to that folder
