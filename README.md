@@ -2,6 +2,24 @@
 
 Automate Scientific Data Analysis using LLM agents
 
+## Docker Setup
+```bash
+# Build image from Dockerfile
+docker build -t sciseek .
+
+# Start the Docker container.
+# NOTE: This command outputs <container_id>.
+# Now you can access the Jupyter server in your browser via http://localhost:8888. 
+# You can find the server token by running `docker logs sciseek-container`.
+docker run -d -p 8888:8888 -v $(pwd):/home/jovyan/work --name sciseek-container sciseek
+
+# Open an interative terminal sesison inside your running Docker container.
+docker exec -it <container_id> /bin/bash
+
+# Stop the container
+docker stop <container_id>
+```
+
 ## Setup 
 
 ```bash
