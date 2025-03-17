@@ -3,6 +3,9 @@ Automate Scientific Data Analysis using LLM agents
 
 ## Setup
 
+We will use virtual environment for this project. There are two requirements files - one shared and one task-dependent. 
+You should add your task pacakges in the `requirements_specific.txt` to run the following commands to set up the environment.
+
 ```bash
 # Create virtual environment
 python -m venv .venv
@@ -21,6 +24,8 @@ pip install -r requirements.txt
 ## Getting Started
 
 All commands should be executed from the project's root directory.
+You data should be located outside the repo. The data path will be provided when initializing the task prompts.
+You can find the attribute `dataset_path` under `TaskPrompts`.
 
 First, collect all docstrings: 
 ```bash
