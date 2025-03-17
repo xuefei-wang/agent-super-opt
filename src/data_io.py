@@ -37,23 +37,23 @@ def standardize_mask(mask: np.ndarray) -> Optional[np.ndarray]:
         raise ValueError(f"Invalid mask shape {mask.shape}")
 
 def standardize_raw_image(raw: np.ndarray) -> np.ndarray:
-    """Standardize raw image shape to (B, C, H, W) format.
+    """Standardize raw image shape to (B, H, W, C) format.
 
     Args:
         raw: Input image array with shape (B, H, W), (B, H, W, C),
              or (B, C, H, W)
 
     Returns:
-        np.ndarray: Standardized array with shape (B, C, H, W)
+        np.ndarray: Standardized array with shape (B, H, W, C)
 
     Raises:
         ValueError: If input array dimensions are not 3 or 4
     """
     if raw.ndim == 3:  # (B, H, W)
-        return raw[:, np.newaxis, ...]
+        return raw[:, :, :, np.newaxis]
     elif raw.ndim == 4:
-        if raw.shape[-1] == min(raw.shape[1:]):  # (B, H, W, C)
-            raw = np.transpose(raw, (0, 3, 1, 2))
+        if raw.shape[1] == min(raw.shape[1:]):  # (B, C, H, W)
+            raw = np.transpose(raw, (0, 2, 3, 1))
         return raw
     else:
         raise ValueError(f"Invalid raw image shape {raw.shape}")
@@ -67,14 +67,14 @@ class ImageData:
     All data is stored as numpy arrays for framework independence.
 
     Arrays are standardized to the following formats:
-    - Raw images: (B, C, H, W) where:
+    - Raw images: (B, H, W, C) where:
         B: batch size
-        C: number of channels
         H, W: height and width
+        C: number of channels
     - Masks: (B, 1, H, W) for both ground truth and predictions
 
     Attributes:
-        raw (np.ndarray): Raw image data in (B, C, H, W) format.
+        raw (np.ndarray): Raw image data in (B, H, W, C) format.
         
         batch_size (int): Number of images in the batch.
         

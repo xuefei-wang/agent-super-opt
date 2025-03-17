@@ -171,3 +171,5 @@ src/sam2/
 src/deepcelltypes/
 
 .vscode/
+
+spot_data/

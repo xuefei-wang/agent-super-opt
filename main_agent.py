@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 import os
 import torch
 import json
+import argparse
+import uuid
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock
@@ -10,6 +12,8 @@ from autogen.coding.jupyter import (
     JupyterCodeExecutor,
     LocalJupyterServer,
 )
+
+from task_prompts.task_prompt import TaskPrompts
 
 from src.utils import set_gpu_device
 from src.prompts import (
@@ -20,118 +24,72 @@ from src.prompts import (
 # Load environment variables
 load_dotenv()
 
+server = LocalJupyterServer()
+executor = JupyterCodeExecutor(server, output_dir="output", timeout=300) # very high timeout for long running tasks
 
-def set_up_agents(max_round):
-    server = LocalJupyterServer()
-    executor = JupyterCodeExecutor(server, output_dir="output", timeout=10000) # very high timeout for long running tasks
-
+def set_up_agents():
+    ''' Prepare 3 agents and state transition'''
     code_executor_agent = ConversableAgent(
         "code_executor_agent",
-        llm_config=False,
+        llm_config=False,  # Turn off LLM for this agent.
         code_execution_config={
             "executor": executor
-        },  # Use the docker command line code executor
-        # human_input_mode="ALWAYS",  # Always take human input for this agent for safety.
-        human_input_mode="NEVER",  # Never take human input for this agent
+        }, 
+        human_input_mode="NEVER",  # Always take human input for this agent for safety.
         # is_termination_msg=lambda msg: "TERMINATE" in msg["content"] if msg["content"] else False,
     )
-
     code_writer_agent = ConversableAgent(
         "code_writer",
         system_message=sys_prompt_code_writer,
         llm_config={
-            # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
-            "config_list": [{"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}],
+            "config_list": [
+                {"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}
+            ]
         },
-        code_execution_config=False,
+        code_execution_config=False,  # Turn off code execution for this agent.
         human_input_mode="NEVER",
     )
-
     code_verifier_agent = ConversableAgent(
         "code_verifier",
         system_message=sys_prompt_code_verifier,
         llm_config={
-            # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
-            "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
+            "config_list": [
+                {"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}
+            ]
         },
-        code_execution_config=False,
+        code_execution_config=False,  # Turn off code execution for
         human_input_mode="NEVER",
     )
-
-
+    
     def state_transition(last_speaker, groupchat):
-        """Determine the next speaker in the group chat.
-
-        Args:
-            last_speaker: The previous speaker in the conversation
-            groupchat: The group chat instance
-
-        Returns:
-            ConversableAgent: The next speaker, or None to terminate
-        """
+        ''' Transition between speakers in an agent groupchat '''
         messages = groupchat.messages
 
-        if len(messages) <= 1:  # First round
+        if len(messages) <= 1:
             return code_writer_agent
-
-        if "TERMINATE" in messages[-1]["content"]: # Terminate if the last message contains "TERMINATE"
-            return None
 
         if last_speaker is code_writer_agent:
             return code_verifier_agent
         elif last_speaker is code_verifier_agent:
             return code_executor_agent
         elif last_speaker is code_executor_agent:
-            return code_writer_agent
-        
-    # Set up group chat
-    group_chat = GroupChat(
-        agents=[
-            code_executor_agent,
-            code_writer_agent,
-            code_verifier_agent,
-        ],
-        messages=[],
-        max_round=max_round,
-        send_introductions=True,
-        speaker_selection_method=state_transition,
-    )
-
-    # Initialize group chat manager
-    group_chat_manager = GroupChatManager(
-        groupchat=group_chat,
-        llm_config={
-            # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
-            "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
-        },
-        is_termination_msg=lambda msg: (
-            "TERMINATE" in msg["content"] if msg["content"] else False
-        ),
-    )
-
-    return code_executor_agent, group_chat_manager
+            if "exitcode: 1" in messages[-1]["content"]:
+                return code_writer_agent
+            else:
+                return code_writer_agent
+    
+    return code_executor_agent, code_writer_agent, code_verifier_agent, state_transition
 
 # Load documentation and dataset information
-with open("artifacts/docs.md", "r") as file:
-    documentation = file.read()
+# with open("artifacts/docs.md", "r") as file:
+#     documentation = file.read()
 
-# Load function bank
-with open("output/preprocessing_func_bank.json", "r") as file:
-    function_bank = json.load(file)
 
 # Load openCV function APIs
-with open("assets/opencv_APIs.md", "r") as file:
+with open("assets/opencv_APIs.txt", "r") as file:
     opencv_APIs = file.read()
 
 
-dataset_info = """
-```markdown
-This is a single-channel nuclear segmentation dataset. It consists of images from different experiments, different settings - a heterogenous dataset covering
-five different cell lines (NIH-3T3, HeLa-S3, HEK293, RAW 264.7, and PC-3).
-```
-"""
-
-dataset_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/val.npz"
 
 def prepare_notes_shared(my_gpu_id):
     notes_shared = f"""
@@ -147,42 +105,18 @@ notes_pipeline_optimization = f"""
 """
 
 
-summary_prompt = """
-Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
-Follow the format:
-{
-    "mean_iou": ...,
-    "precision": ...,
-    "recall": ...,
-    "f1_score": ...,
-    "preprocessing_function": "
-        ```python
-        YOUR_CODE_HERE
-        ```
-        ",
-}
-"""
-
-
-def prepare_prompt_pipeline_optimization(notes_shared, gpu_id, seed):
+def prepare_prompt_pipeline_optimization(notes_shared, function_bank_path, prompts : TaskPrompts):
 
     prompt_pipeline_optimization = f"""
-    # Cell Segmentation Analysis Pipeline Optimization
-    ## Objective:
-    Optimize the pipeline for cell segmentation analysis by suggesting new preprocessing functions.
 
     ## About the dataset: 
-    {dataset_info}
+    {prompts.dataset_info}
 
     ## Task Details:
-    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
-    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
-    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
-    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
-
-    ## Previous preprocessing functions and their performance (might be empty):
-    {function_bank}
+    {prompts.task_details}
+    
+    ## Function bank path:
+    {function_bank_path}
 
     ## OpenCV Function APIs:
     {opencv_APIs}
@@ -210,14 +144,14 @@ def prepare_prompt_pipeline_optimization(notes_shared, gpu_id, seed):
     All data is stored as numpy arrays for framework independence.
 
     Arrays are standardized to the following formats:
-    - Raw images: (B, C, H, W) where:
+    - Raw images: (B, H, W, C) where:
         B: batch size
         C: number of channels
         H, W: height and width
     - Masks: (B, 1, H, W) for both ground truth and predictions
 
     Attributes:
-        raw (np.ndarray): Raw image data in (B, C, H, W) format.
+        raw (np.ndarray): Raw image data in (B, H, W, C) format.
         
         batch_size (int): Number of images in the batch.
         
@@ -249,124 +183,116 @@ def prepare_prompt_pipeline_optimization(notes_shared, gpu_id, seed):
 
     ```
     ## Function for saving the results:
-    ```python
-    import inspect
-    import json
-
-    def write_results(preprocessing_fn, metrics_dict):
-        '''
-        Write the results of evaluation to the function bank JSON.
-        
-        Requires:
-        preprocessing_fn: the function
-        metrics_dict: the metrics dictionary
-        '''
-        
-        with open('output/preprocessing_func_bank.json', 'r') as file:
-            json_array = json.load(file)
-
-        with open('output/preprocessing_func_bank.json', 'w') as file:
-            json_data = metrics_dict
-            json_data["preprocessing_function"] = inspect.getsource(preprocessing_fn)
-            json_array.append(json_data)
-            json.dump(json_array, file)
-    ```
+    {prompts.save_function_prompt()}
 
     ## Code for running segmentation and calculating metrics:
-    ```python
-    import numpy as np
-    import logging
-    import pandas as pd
-    from pathlib import Path
+    {prompts.run_pipeline_prompt()}
 
-    import torch
-    import tensorflow as tf
-
-    from src.utils import set_gpu_device
-    from src.data_io import NpzDataset
-    from src.segmentation import MesmerSegmenter, calculate_metrics
-
-    gpu_id = {gpu_id}
-    seed = {seed}
-
-    # Set up output directory
-    output_dir = Path("output")
-
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler("app.log"),
-            logging.StreamHandler()  # This keeps console logging
-        ]
-    )
-    logger = logging.getLogger(__name__)
-
-    # Set GPU device
-    set_gpu_device(gpu_id)
-
-    # Set random seeds
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    tf.random.set_seed(seed)
-
-    # Load data
-    data_path = "/data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/test.npz"
-    dataset = NpzDataset(data_path)
-    indices = np.random.choice(len(dataset), size=5, replace=False)
-    images = dataset.load(indices)
-
-    # TODO: add your preprocessing function here
-    images = preprocess_images(images)
-
-    # Initialize segmenter
-    segmenter = MesmerSegmenter()
-
-    # Run segmenter
-    results = segmenter.predict(images)
-
-    # Calculate metrics
-    metrics = calculate_metrics(results.masks, results.predicted_masks)
-    df = pd.DataFrame(metrics)
-    overall_metrics = df.mean().to_dict()
-    logger.info("Overall metrics: ", overall_metrics)
-
-    ```
+    
     """
 
     return prompt_pipeline_optimization
 
 
-def save_chat_history(chat_history, curr_iter):
-    with open(f"output/chat_history_ver{curr_iter:03d}.txt", "w") as file:
+def save_chat_history(chat_history, curr_iter, output_folder):
+    
+    output_file = os.path.join(output_folder, f"chat_history_ver{curr_iter:03d}.txt")
+    with open(output_file, "w") as file:
         for message in chat_history:
             file.write(f"{message['name']}: {message['content']}\n\n")
 
+def save_seed_list(n, file_path):
+    '''Saves the seed list to a file path and returns the seed list'''
+    uuids = [uuid.uuid4() for _ in range(n)]
+
+    with open(file_path, "w") as file:
+        for uid in uuids:
+            file.write(f"{uid}\n")
+
+    print(f"Saved {n} seeds to {file_path}")
+    
+    return uuids
+    
 def main():
+    
+    parser = argparse.ArgumentParser(description="SciSeek Agent pipeline")
+    
+    parser.add_argument(
+        "-d", "--dataset",
+        type=str,
+        required=True,
+        help="Path to the dataset."
+    )
+    
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        required=True,
+        help="Path to the output folder."
+    )
+        
+    args = parser.parse_args()
+    
+    output_function_bank = os.path.join(args.output,"preprocessing_func_bank.json")
+    
     # Configuration
-    my_gpu_id = 7 # GPU ID to use
+    my_gpu_id = 0 # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = 42 # Random seed for reproducibility
-    num_optim_iter = 5 # Number of optimization iterations
+    num_optim_iter = 50 # Number of optimization iterations
     max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
+    
+    # Load task prompts
+    from task_prompts.spot_detection_prompts import SpotDetectionPrompts
+    prompts = SpotDetectionPrompts(gpu_id=0, seed=42, dataset_path=args.dataset, function_bank_path=output_function_bank)
 
     # Set GPU device
     set_gpu_device(my_gpu_id)
-
-    # Set up agents
-    code_executor_agent, group_chat_manager = set_up_agents(max_round=max_round)
+    
+    seed_list_file = os.path.join(args.output,"seed_list.txt")
+    # Generate seed list
+    seed_list = save_seed_list(num_optim_iter, seed_list_file)
 
     # Run pipeline development and optimization
     with Cache.disk(cache_seed=cache_seed) as cache:
         
         notes_shared = prepare_notes_shared(my_gpu_id)
 
-        for i in range(0, num_optim_iter+1):
-            prompt_pipeline_optimization = prepare_prompt_pipeline_optimization(notes_shared, my_gpu_id, random_seed)
+        for i in range(num_optim_iter):
+
+            # Set up agents
+            code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents()
+            
+            group_chat = GroupChat(
+                agents=[
+                    code_executor_agent,
+                    code_writer_agent,
+                    code_verifier_agent,
+                ],
+                messages=[],
+                max_round=max_round,
+                send_introductions=True,
+                speaker_selection_method=state_transition,
+            )
+
+            # Initialize group chat manager
+            group_chat_manager = GroupChatManager(
+                groupchat=group_chat,
+                llm_config={
+                    # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
+                    "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
+                },
+                is_termination_msg=lambda msg: (
+                    "TERMINATE" in msg["content"] if msg["content"] else False
+                ),
+            )
+
+
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
-                                            summary_args={"summary_prompt": summary_prompt})
-            save_chat_history(chat_result.chat_history, i)
+                                            summary_args={"summary_prompt": prompts.summary_prompt})
+            save_chat_history(chat_result.chat_history, i, args.output)
 
 if __name__ == "__main__":
     main()

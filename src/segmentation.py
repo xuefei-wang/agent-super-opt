@@ -20,7 +20,7 @@ from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
 from .data_io import ImageData, standardize_mask
 
-
+# TODO: Move to base class
 def calculate_metrics(
     true_mask: np.ndarray,
     pred_mask: np.ndarray,
