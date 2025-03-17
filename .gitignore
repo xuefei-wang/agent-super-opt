@@ -161,18 +161,12 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# virual environment
-sci-agent-dev/
-
-output/
-artifacts/
-
-src/sam2/
-src/deepcelltypes/
-
+# VS Code
 .vscode/
 
-spot_data/
+# Project folders
+output/
+artifacts/
 
 # Generated requirements file
 requirements.txt
