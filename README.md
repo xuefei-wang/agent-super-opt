@@ -9,7 +9,7 @@ docker build -t sciseek .
 # Start the Docker container. This will output the container ID.
 docker run -d -p 8888:8888 sciseek
 
-# Open an interative terminal sesison inside your running Docker container.
+# Open an interactive terminal session inside your running Docker container.
 docker exec -it <container_id> /bin/bash
 
 # To run the Jupyter server, copy the link from the output into your web browser.
