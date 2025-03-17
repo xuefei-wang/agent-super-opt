@@ -22,7 +22,7 @@ load_dotenv()
 
 
 def set_up_agents(max_round):
-    server = LocalJupyterServer()
+    server = DockerJupyterServer()
     executor = JupyterCodeExecutor(server, output_dir="output", timeout=10000) # very high timeout for long running tasks
 
     code_executor_agent = ConversableAgent(
