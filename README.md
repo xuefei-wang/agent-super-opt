@@ -41,14 +41,6 @@ echo "[]" > output/preprocessing_func_bank.json
 ```
 
 
-To run it manually:
-```bash
-python main_manual.py --data_path /data/user-data/xwang3/DynamicNuclearNet/DynamicNuclearNet-segmentation-v1_0/test.npz --output output --gpu 4 --segmenter mesmer --seed 42
-## Additional flags:
-# --no-viz: Disable static visualization saving
-# --interactive: Enable interactive napari visualization
-```
-
 
 To run it using an agent:
 ```bash
