@@ -66,5 +66,5 @@ You can find the attribute `dataset_path` under `TaskPrompts`.
 4. Run the agent
    
     ```bash
-    python main_agent.py --dataset YOUR_DATA_PATH --output YOUR_OUTPUT_FOLDER
+    python main.py --dataset YOUR_DATA_PATH --output YOUR_OUTPUT_FOLDER
     ```
