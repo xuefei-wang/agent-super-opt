@@ -27,32 +27,52 @@ All commands should be executed from the project's root directory.
 You data should be located outside the repo. The data path will be provided when initializing the task prompts.
 You can find the attribute `dataset_path` under `TaskPrompts`.
 
-First, collect all docstrings: 
-```bash
-# Default, non-recursively
-python collect_docstrings.py --input_path src --output_file artifacts/docs.md
+0. Implement your tool
+   
+   Create a file under `src/`, wrap your tool following the pattern below, and provide comprehensive docstrings. 
+   ```
+   BaseTool -> BaseTaskTool -> YourTaskTool
+   ```
 
-# Alternative, recursively (collect docstrings from all subfolders)
-python collect_docstrings.py --input_path src --output_file artifacts/docs.md --recursive
-```
+1. Test that your tool works as expected
+   
+   Basic version of tests is a manual pipeline testing that your tools works as expected. Additional unit tests are at your discretion. You can create a file under `tests/` folder and run the following command:
+   
+    ```bash
+    python -m tests.test_X
+    ```
 
-Next, create an output folder and initialize an empty json file as the funtion bank:
-```bash
-mkdir output
-echo "[]" > output/preprocessing_func_bank.json
-```
+2. Collect the docstrings
+   
+   The following commands will collect the doctrings from `src/` into a markdown file. (For this iteration, we are not using this, but will in the future.)
+    
+    ```bash
+    # Default, non-recursively
+    python collect_docstrings.py --input_path src --output_file artifacts/docs.md
 
-Then, to run the agent workflow:
-```bash
-python main_agent.py
-```
+    # Alternative, recursively (collect docstrings from all subfolders)
+    python collect_docstrings.py --input_path src --output_file artifacts/docs.md --recursive
+    ```
 
-If you want to run tests:
-```bash
-python -m tests.test_X
-```
+3. Intialize the function bank
+   
+   create an output folder and initialize an empty json file as the funtion bank:
+   
+    ```bash
+    mkdir output
+    echo "[]" > output/preprocessing_func_bank.json
+    ```
 
-If you want to launch experiments using shell script: 
-```bash
-bash setup_experiment.sh
-```
+4. Run the agent
+   
+    ```bash
+    python main_agent.py
+    ```
+
+5. (Optional) Automate experiments
+   
+   If you want to launch multiple experiments, maybe consider using the following bash script:
+   
+    ```bash
+    bash setup_experiment.sh
+    ```
