@@ -10,6 +10,10 @@ python -m venv .venv
 # Activate virtual environment
 source .venv/bin/activate
 
+# Merge two requirement files into one
+rm -f requirements.txt
+cat requirements_shared.txt requirements_specific.txt > requirements.txt
+
 # Install packages
 pip install -r requirements.txt
 ```

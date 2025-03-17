@@ -1,14 +1,10 @@
-deepcell
-zarr
-napari[all]
-torch
 scikit-image
 opencv-python
 pyyaml
 tqdm
 jupyter_kernel_gateway
 PyWavelets
-ag2[gemini]
-deepcell-spots
 numpy
+zarr
+torch
 ag2[openai]

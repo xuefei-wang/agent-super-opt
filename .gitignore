@@ -173,3 +173,6 @@ src/deepcelltypes/
 .vscode/
 
 spot_data/
+
+# Generated requirements file
+requirements.txt
