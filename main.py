@@ -24,7 +24,7 @@ from prompts.agent_prompts import (
 # Load environment variables
 load_dotenv()
 
-server = LocalJupyterServer()
+server = DockerJupyterServer()
 executor = JupyterCodeExecutor(server, output_dir="output", timeout=300) # very high timeout for long running tasks
 
 def set_up_agents():

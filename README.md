@@ -1,6 +1,25 @@
 # Sci-agent
 Automate Scientific Data Analysis using LLM agents
 
+## Docker Setup
+```bash
+# Build image from Dockerfile. You only need to run this once. 
+docker build -t sciseek .
+
+# Start the Docker container. This will output the container ID.
+docker run -d -p 8888:8888 sciseek
+
+# Open an interative terminal sesison inside your running Docker container.
+docker exec -it <container_id> /bin/bash
+
+# To run the Jupyter server, copy the link from the output into your web browser.
+# The link will look like this: http://127.0.0.1:8888/tree?token=<some_token>
+docker logs <container_id>
+
+# Stop the container
+docker stop <container_id>
+```
+
 ## Setup
 
 We will use virtual environment for this project. There are two requirements files - one shared and one task-dependent. 
