@@ -66,13 +66,5 @@ You can find the attribute `dataset_path` under `TaskPrompts`.
 4. Run the agent
    
     ```bash
-    python main_agent.py
-    ```
-
-5. (Optional) Automate experiments
-   
-   If you want to launch multiple experiments, maybe consider using the following bash script:
-   
-    ```bash
-    bash setup_experiment.sh
+    python main_agent.py --dataset YOUR_DATA_PATH --output YOUR_OUTPUT_FOLDER
     ```
