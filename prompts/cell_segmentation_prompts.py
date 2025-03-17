@@ -1,4 +1,4 @@
-from task_prompt import TaskPrompts
+from prompts import TaskPrompts
 
 class CellSegmentationPrompts(TaskPrompts):
     """Task prompts for cell segmentation analysis."""

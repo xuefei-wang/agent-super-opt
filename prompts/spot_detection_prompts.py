@@ -1,4 +1,4 @@
-from task_prompts.task_prompt import TaskPrompts
+from prompts import TaskPrompts
 
 class SpotDetectionPrompts(TaskPrompts):
     """Task prompts for biological cell spot detection."""

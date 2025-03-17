@@ -13,10 +13,10 @@ from autogen.coding.jupyter import (
     LocalJupyterServer,
 )
 
-from task_prompts.task_prompt import TaskPrompts
+from prompts.task_prompts import TaskPrompts
 
 from src.utils import set_gpu_device
-from src.prompts import (
+from prompts.agent_prompts import (
     sys_prompt_code_writer,
     sys_prompt_code_verifier,
 )
@@ -243,7 +243,7 @@ def main():
     max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     
     # Load task prompts
-    from task_prompts.spot_detection_prompts import SpotDetectionPrompts
+    from prompts.spot_detection_prompts import SpotDetectionPrompts
     prompts = SpotDetectionPrompts(gpu_id=0, seed=42, dataset_path=args.dataset, function_bank_path=output_function_bank)
 
     # Set GPU device
