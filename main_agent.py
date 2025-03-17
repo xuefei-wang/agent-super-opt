@@ -35,7 +35,7 @@ def set_up_agents():
         code_execution_config={
             "executor": executor
         }, 
-        human_input_mode="NEVER",  # Always take human input for this agent for safety.
+        human_input_mode="NEVER",  # Never take human input for this agent
         # is_termination_msg=lambda msg: "TERMINATE" in msg["content"] if msg["content"] else False,
     )
     code_writer_agent = ConversableAgent(
