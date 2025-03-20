@@ -60,124 +60,190 @@ def standardize_raw_image(raw: np.ndarray) -> np.ndarray:
 
 @dataclass
 class ImageData:
-    """Framework-agnostic container for batched biological image data.
+    """Framework-agnostic container for batched image data. Handles variable
+    image resolutions
     
     This class provides a standardized structure for storing and managing batched 
-    biological image data along with related annotations and predictions.
-    All data is stored as numpy arrays for framework independence.
+    image data along with related annotations and predictions.
+    Data is internally converted to lists of arrays for flexibility with varying image sizes.
 
-    Arrays are standardized to the following formats:
-    - Raw images: (B, H, W, C) where:
-        B: batch size
-        H, W: height and width
-        C: number of channels
-    - Masks: (B, 1, H, W) for both ground truth and predictions
+    The class accepts both lists of arrays and numpy arrays as input, but will convert them
+    internally to lists to support variable-sized images across different frameworks.
 
     Attributes:
-        raw (np.ndarray): Raw image data in (B, H, W, C) format.
+        raw (Union[List[np.ndarray], np.ndarray]): Raw image data, can be provided as either 
+            a list of arrays or a numpy array. Each image should have shape (H, W, C).
         
-        batch_size (int): Number of images in the batch.
+        batch_size (Optional[int]): Number of images to include in the batch. Can be smaller 
+            than the total dataset size. If None, will use the full dataset size.
         
-        image_ids (Union[int, str, List[Union[int, str]]]): Unique identifier(s) for images
-            in the batch. Can be a single value for batch size 1, or a list matching 
-            batch size.
+        image_ids (Union[List[int], List[str], None]): Unique identifier(s) for images
+            in the batch as a list. If None, auto-generated integer IDs [0,1,2,...] will be created.
         
         channel_names (Optional[List[str]]): Names of imaging channels in order matching
             raw data channels. Length must equal number of channels.
         
-        tissue_types (Optional[Union[str, List[str]]]): Type of biological tissue for each image,
-            e.g., ["liver", "kidney"]. Length must equal batch size.
+        masks (Optional[Union[List[np.ndarray], np.ndarray]]): Ground truth segmentation masks.
+            Integer-valued arrays where 0 is background and positive integers are unique 
+            object identifiers. Each mask should have shape (H, W, 1) or (H, W).
         
-        image_mpps (Optional[Union[float, List[float]]]): Microns per pixel resolution for each
-            image. Length must equal batch size.
+        predicted_masks (Optional[Union[List[np.ndarray], np.ndarray]]): Model-predicted 
+            segmentation masks. Each mask should have shape (H, W, 1) or (H, W).
         
-        masks (Optional[np.ndarray]): Ground truth segmentation masks in (B, 1, H, W) 
-            format. Integer-valued array where 0 is background and positive integers 
-            are unique cell identifiers.
-        
-        cell_types (Optional[List[Dict[int, str]]]): List of mappings from cell 
-            identifiers to cell type labels for each image. Length must equal batch size.
-        
-        predicted_masks (Optional[np.ndarray]): Model-predicted segmentation masks in
-            (B, 1, H, W) format.
-        
-        predicted_cell_types (Optional[List[Dict[int, str]]]): List of mappings from
-            cell identifiers to predicted cell types for each image.
+        predicted_classes (Optional[List[Dict[int, str]]]): List of mappings from
+            object identifiers to predicted classes for each image.
     """
-    raw: np.ndarray
-    batch_size: int
-    image_ids: Union[int, str, List[Union[int, str]]]
+    raw: Union[List[np.ndarray], np.ndarray]
+    batch_size: Optional[int] = None
+    image_ids: Optional[Union[int, str, List[Union[int, str]]]] = None
     channel_names: Optional[List[str]] = None
-    tissue_types: Optional[Union[str, List[str]]] = None
-    image_mpps: Optional[List[float]] = None
-    masks: Optional[np.ndarray] = None
-    cell_types: Optional[List[Dict[int, str]]] = None
-    predicted_masks: Optional[np.ndarray] = None
-    predicted_cell_types: Optional[List[Dict[int, str]]] = None
+    masks: Optional[Union[List[np.ndarray], np.ndarray]] = None
+    predicted_masks: Optional[Union[List[np.ndarray], np.ndarray]] = None
+    predicted_classes: Optional[List[Dict[int, str]]] = None
 
     def __post_init__(self):
         """Validate and standardize data after initialization."""
-        self.batch_size = self.raw.shape[0]
-        
-        if self.masks is not None:
-            if self.masks.shape[0] != self.batch_size or \
-               self.masks.shape[2:] != self.raw.shape[2:]:
-                raise ValueError(
-                    f"Mask shape {self.masks.shape} does not match raw image dimensions "
-                    f"(batch_size={self.batch_size}, H={self.raw.shape[2]}, W={self.raw.shape[3]})"
-                )
-        
-        if self.predicted_masks is not None:
-            if self.predicted_masks.shape[0] != self.batch_size or \
-               self.predicted_masks.shape[2:] != self.raw.shape[2:]:
-                raise ValueError(
-                    f"Predicted mask shape {self.predicted_masks.shape} does not match dimensions "
-                    f"(batch_size={self.batch_size}, H={self.raw.shape[2]}, W={self.raw.shape[3]})"
-                )
+        # Convert raw to a standardized format (list of arrays)
+        if isinstance(self.raw, np.ndarray):
+            if self.raw.dtype == object:
+                # It's already an object array, convert to list
+                self.raw = list(self.raw)
+            else:
+                # It's a regular ndarray, check if it's a batch
+                if len(self.raw.shape) >= 3:  # Assuming (B,H,W,C) or similar
+                    # Convert to list of arrays
+                    self.raw = [self.raw[i] for i in range(self.raw.shape[0])]
+                else:
+                    # Single image
+                    self.raw = [self.raw]
+        # Validate raw data format
+        for i, img in enumerate(self.raw):
+            if len(img.shape) != 3:
+                raise ValueError(f"Image at index {i} has {len(img.shape)} dimensions, expected 3 (H,W,C)")
+            # Ensure all images have the same number of channels
+            if i > 0 and img.shape[2] != self.raw[0].shape[2]:
+                raise ValueError(f"Image at index {i} has {img.shape[2]} channels, expected {self.raw[0].shape[2]}")
 
-        # Standardize image_ids
-        if isinstance(self.image_ids, (int, str)):
-            if self.batch_size != 1:
-                raise ValueError("Single image_id provided but batch size is not 1")
-            self.image_ids = [self.image_ids]
-        if len(self.image_ids) != self.batch_size:
+        # Total dataset size
+        total_size = len(self.raw)
+
+        # Set batch size if not provided
+        if self.batch_size is None:
+            self.batch_size = total_size
+        elif self.batch_size > total_size:
+            raise ValueError(f"Requested batch_size ({self.batch_size}) exceeds dataset size ({total_size})")
+        
+        # Generate default image_ids if none provided - use integers [0,1,2,...]
+        if self.image_ids is None:
+            self.image_ids = list(range(total_size))
+        elif not isinstance(self.image_ids, list):
+            raise ValueError("image_ids must be a list of integers or strings")
+        
+        # Validate image_ids length matches total dataset size
+        if len(self.image_ids) != total_size:
             raise ValueError(
-                f"Number of image_ids ({len(self.image_ids)}) does not match batch size ({self.batch_size})"
+                f"Number of image_ids ({len(self.image_ids)}) does not match dataset size ({total_size})"
             )
         
-        # Validate and standardize metadata
-        if self.channel_names is not None and len(self.channel_names) != self.raw.shape[1]:
+        # Apply similar conversion to masks
+        if self.masks is not None:
+            if isinstance(self.masks, np.ndarray):
+                if self.masks.dtype == object:
+                    self.masks = list(self.masks)
+                else:
+                    if len(self.masks.shape) >= 3:  # Batch
+                        self.masks = [self.masks[i] for i in range(self.masks.shape[0])]
+                    else:
+                        # Single mask
+                        self.masks = [self.masks]
+
+        # Validate masks length
+        if len(self.masks) != total_size:
+            raise ValueError(f"Number of masks ({len(self.masks)}) does not match dataset size ({total_size})")
+        
+        # Check dimensions
+            for i, (img, mask) in enumerate(zip(self.raw, self.masks)):
+                # Ensure mask has either 2D or 3D shape
+                if not (len(mask.shape) == 2 or (len(mask.shape) == 3 and mask.shape[2] == 1)):
+                    raise ValueError(f"Mask at index {i} has invalid shape {mask.shape}, expected (H,W) or (H,W,1)")
+                
+                # Check spatial dimensions match
+                if mask.shape[:2] != img.shape[:2]:
+                    raise ValueError(f"Mask shape {mask.shape[:2]} does not match image {i} dimensions {img.shape[:2]}")
+        
+        # Similar handling for predicted_masks
+        if self.predicted_masks is not None:
+            if isinstance(self.predicted_masks, np.ndarray):
+                if self.predicted_masks.dtype == object:
+                    self.predicted_masks = list(self.predicted_masks)
+                else:
+                    if len(self.predicted_masks.shape) >= 3:
+                        self.predicted_masks = [self.predicted_masks[i] for i in range(self.predicted_masks.shape[0])]
+                    else:
+                        # Single mask
+                        self.predicted_masks = [self.predicted_masks]
+            
+            # Validate predicted_masks length
+            if len(self.predicted_masks) != total_size:
+                raise ValueError(f"Number of predicted masks ({len(self.predicted_masks)}) does not match dataset size ({total_size})")
+
+            # Validation
+            for i, (img, pmask) in enumerate(zip(self.raw, self.predicted_masks)):
+                # Ensure mask has either 2D or 3D shape
+                if not (len(pmask.shape) == 2 or (len(pmask.shape) == 3 and pmask.shape[2] == 1)):
+                    raise ValueError(f"Predicted mask at index {i} has invalid shape {pmask.shape}, expected (H,W) or (H,W,1)")
+                
+                # Check spatial dimensions match
+                if pmask.shape[:2] != img.shape[:2]:
+                    raise ValueError(f"Predicted mask shape {pmask.shape[:2]} doesn't match image {i} dimensions {img.shape[:2]}")
+
+
+        # Validate channel_names
+        if self.channel_names is not None:
+            # Assuming all images have the same number of channels
+            if len(self.channel_names) != self.raw[0].shape[2]:
+                raise ValueError(
+                    f"Number of channel names ({len(self.channel_names)}) does not match "
+                    f"number of channels ({self.raw[0].shape[2]})"
+                )
+        
+        # Validate predicted_classes if provided
+        if self.predicted_classes is not None and len(self.predicted_classes) != total_size:
             raise ValueError(
-                f"Number of channel names ({len(self.channel_names)}) does not match "
-                f"number of channels ({self.raw.shape[1]})"
+                f"Number of predicted_classes entries ({len(self.predicted_classes)}) "
+                f"does not match dataset size ({total_size})"
             )
-        
-        if self.tissue_types is not None:
-            if isinstance(self.tissue_types, str):
-                self.tissue_types = [self.tissue_types] * self.batch_size
-            if len(self.tissue_types) != self.batch_size:
-                raise ValueError(
-                    f"Number of tissue types ({len(self.tissue_types)}) does not match batch size"
-                )
-        
-        if self.image_mpps is not None:
-            if isinstance(self.image_mpps, (int, float)):
-                self.image_mpps = [float(self.image_mpps)] * self.batch_size
-            if len(self.image_mpps) != self.batch_size:
-                raise ValueError(
-                    f"Number of image MPPs ({len(self.image_mpps)}) does not match batch size"
-                )
-            self.image_mpps = [float(mpp) for mpp in self.image_mpps]
 
     @property
     def num_channels(self) -> int:
         """Get number of channels in raw image data."""
-        return self.raw.shape[1]
+        # Get the number of channels from the first image
+        return self.raw[0].shape[2]
 
     @property
-    def spatial_shape(self) -> Tuple[int, int]:
-        """Get spatial dimensions (H, W) of images."""
-        return self.raw.shape[2:]
+    def spatial_shape(self) -> Union[Tuple[int, int], List[Tuple[int, int]]]:
+        """Get spatial dimensions (H, W) of images. Returns a tuple if all images have the same shape,
+        otherwise returns a list of tuples.
+        
+        Returns one of:
+            Tuple (H, W) if all images have the same shape,
+            List of tuples (H, W) if images have different shapes
+        """
+        shapes = [img.shape[0:2] for img in self.raw]
+        if all(shape == shapes[0] for shape in shapes):
+            return shapes[0]
+        else:
+            return shapes
+
+    
+    @property
+    def spatial_shapes(self) -> List[Tuple[int, int]]:
+        """Get spatial dimensions (H, W) of images for each image in dataset.
+        
+        Returns:
+            List of tuples (H, W) for each image in dataset
+        """
+        return [img.shape[0:2] for img in self.raw]
     
     def get_item(self, idx: int) -> 'ImageData':
         """Get single item from batch as new ImageData object.
@@ -192,27 +258,65 @@ class ImageData:
             raise IndexError(f"Index {idx} out of range for batch size {self.batch_size}")
             
         return ImageData(
-            raw=self.raw[idx:idx+1],
+            raw=[self.raw[idx]],
             batch_size=1,
             image_ids=[self.image_ids[idx]],
             channel_names=self.channel_names,
-            tissue_types=[self.tissue_types[idx]] if self.tissue_types else None,
-            image_mpps=[self.image_mpps[idx]] if self.image_mpps else None,
-            masks=self.masks[idx:idx+1] if self.masks is not None else None,
-            cell_types=[self.cell_types[idx]] if self.cell_types else None,
-            predicted_masks=self.predicted_masks[idx:idx+1] if self.predicted_masks is not None else None,
-            predicted_cell_types=[self.predicted_cell_types[idx]] if self.predicted_cell_types else None
+            masks=[self.masks[idx]] if self.masks is not None else None,
+            predicted_masks=[self.predicted_masks[idx]] if self.predicted_masks is not None else None,
+            predicted_classes=[self.predicted_classes[idx]] if self.predicted_classes is not None else None
+        )
+    
+    def to_numpy(self) -> 'ImageDataNP':
+        """Convert ImageData to ImageDataNP.  Beware, this won't handle datasets 
+        with variable image sizes."""
+        if isinstance(self.spatial_shape, list):
+            raise ValueError("Cannot convert ImageData with variable image sizes to ImageDataNP")
+        
+        return ImageDataNP(
+            raw=np.array(self.raw),
+            masks=np.array(self.masks) if self.masks is not None else None,
+            predicted_masks=np.array(self.predicted_masks) if self.predicted_masks is not None else None,
         )
     
     def __len__(self) -> int:
-        """Get batch size."""
-        return self.batch_size
+        """Get dataset size."""
+        return len(self.raw)
     
     def __iter__(self) -> Iterator['ImageData']:
-        """Iterate over items in batch."""
-        for i in range(self.batch_size):
+        """Iterate over items in dataset."""
+        for i in range(len(self)):
             yield self.get_item(i)
 
+@dataclass
+class ImageDataNP:
+    """stripped down ImageData class for numpy arrays"""
+    raw: np.ndarray
+    masks: Optional[np.ndarray] = None
+    predicted_masks: Optional[np.ndarray] = None
+    predicted_classes: Optional[np.ndarray] = None
+
+    def __post_init__(self):
+        """Convert lists to numpy arrays"""
+        if isinstance(self.raw, list):
+            self.raw = np.array(self.raw)
+        if isinstance(self.masks, list):
+            self.masks = np.array(self.masks)
+        if isinstance(self.predicted_masks, list):
+            self.predicted_masks = np.array(self.predicted_masks)
+
+    def __len__(self) -> int:
+        """Get dataset size."""
+        return self.raw.shape[0]
+    
+    def __getitem__(self, idx: int) -> 'ImageDataNP':
+        """Get item from dataset."""
+        return ImageDataNP(
+            raw=self.raw[idx],
+            masks=self.masks[idx] if self.masks is not None else None,
+            predicted_masks=self.predicted_masks[idx] if self.predicted_masks is not None else None,
+            predicted_classes=self.predicted_classes[idx] if self.predicted_classes is not None else None
+        )
 
 class BaseDataset(ABC):
     """Abstract base class for dataset IO interfaces."""
