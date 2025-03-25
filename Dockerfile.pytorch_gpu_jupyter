@@ -1,0 +1,76 @@
+# To build the image:
+# docker build -f Dockerfile.pytorch_gpu_jupyter -t sciseek-gpu-jupyter .
+
+# To run the image:
+# docker run -d --name sciseek-container-jupyter --gpus all \
+#   -p 8888:8888 \
+#   -e AUTOGEN_CACHE_DIR=/workspace/output/cache \
+#   -e PYTHONPATH=/workspace/repo \
+#   -v /path/to/your/local/repo:/workspace/repo:ro \
+#   -v /path/to/your/output_dir:/workspace/output:rw \
+#   -v /path/to/your/data:/workspace/data:ro \
+#   sciseek-gpu
+
+# Example command to run the container:
+# docker run -d --name sciseek-container-jupyter --gpus all \
+#   -p 8888:8888 \
+#   -e AUTOGEN_CACHE_DIR=/workspace/output/cache \
+#   -e PYTHONPATH=/workspace/repo \
+#   -v /home/alexfarhang/git/alex_fork/sci-agent:/workspace/repo:ro \
+#   -v /home/alexfarhang/git/alex_fork/output:/workspace/output:rw \
+#   -v /home/alexfarhang/data/cellpose/train:/workspace/data:ro \
+#   sciseek-gpu-jupyter
+
+# Use Jupyter's scipy notebook as base
+FROM quay.io/jupyter/scipy-notebook
+
+# Fix for shell command safety
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Switch to root for installation steps
+USER root
+
+# Install PyTorch with GPU support
+RUN pip install --no-cache-dir --extra-index-url=https://pypi.nvidia.com --index-url 'https://download.pytorch.org/whl/cu118' \
+    'torch' \
+    'torchaudio' \
+    'torchvision' && \
+    fix-permissions "${CONDA_DIR}" && \
+    fix-permissions "/home/${NB_USER}"
+
+# Set NVIDIA environment variables
+ENV NVIDIA_VISIBLE_DEVICES="all" \
+    NVIDIA_DRIVER_CAPABILITIES="compute,utility"
+
+# Add NVIDIA binaries to path
+ENV PATH="${PATH}:/usr/local/nvidia/bin" \
+    LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:/usr/local/nvidia/lib64"
+
+# Install AG2 and any other required packages
+RUN pip install --no-cache-dir ag2 && \
+    fix-permissions "${CONDA_DIR}" && \
+    fix-permissions "/home/${NB_USER}"
+
+# Copy and install requirements
+COPY --chown=${NB_UID}:${NB_GID} requirements_shared.txt requirements_specific.txt ./
+RUN cat requirements_shared.txt requirements_specific.txt > requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt && \
+    fix-permissions "/home/${NB_USER}"
+
+# Create workspace directory for mounting volumes
+RUN mkdir -p /workspace && \
+    chown ${NB_UID}:${NB_GID} /workspace && \
+    chmod 755 /workspace
+
+# Switch back to the notebook user
+USER ${NB_UID}
+
+# Set working directory
+WORKDIR /workspace
+
+# Expose port for Jupyter
+EXPOSE 8888
+
+# Start Jupyter Notebook server
+# Use the Jupyter startup script instead of direct command
+CMD ["start-notebook.sh", "--ServerApp.token=''"]
