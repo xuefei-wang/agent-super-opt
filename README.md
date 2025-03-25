@@ -1,47 +1,7 @@
 # Sci-agent
 Automate Scientific Data Analysis using LLM agents
 
-All code will be run inside a Docker container.  Mount paths to data, codebase, and output; gpus enabled.  Data and output directory should not be within the codebase folder.
-
-## Docker Setup: 
-### One time per image (```Dockerfile.pytorch_gpu_cmdline``` or ```Dockerfile.pytorch_gpu_jupyter```)
-```bash
-# Build the image
-docker build -f Dockerfile.pytorch_gpu_cmdline -t sciseek-gpu .
-# or
-docker build -f Dockerfile.pytorch_gpu_jupyter -t sciseek-gpu-jupyter .
-```
-
-## Running Docker container
-```bash
-# Start the Docker container
-docker run -d --name sciseek-container-cmdline --gpus all \
-  -e AUTOGEN_CACHE_DIR=/workspace/output/cache \
-  -e PYTHONPATH=/workspace/repo \
-  -v /path/to/your/local/repo:/workspace/repo:ro \
-  -v /path/to/your/output_dir:/workspace/output:rw \
-  -v /path/to/your/data:/workspace/data:ro \
-  sciseek-gpu
-
-# Enter the container
-docker exec -it sciseek-container-cmdline /bin/bash
-
-# Run main.py
-cd /workspace/repo
-python main.py --dataset /workspace/data/ --output /workspace/output/ --experiment_name {experiment_name}
-
-# Exit the container 
-exit
-
-# Stop and remove container
-docker stop sciseek-container-cmdline
-docker rm sciseek-container-cmdline
-
-# Make output directory writeable by anyone 
-sudo chmod -R 777 /path/to/your/output_dir/
-```
-
-## Docker Setup (For ```Dockerfile```)
+## Docker Setup
 ```bash
 # Build image from Dockerfile. You only need to run this once. 
 docker build -t sciseek .
@@ -60,7 +20,7 @@ docker logs <container_id>
 docker stop <container_id>
 ```
 
-## Setup (For fully local)
+## Setup
 
 We will use virtual environment for this project. There are two requirements files - one shared and one task-dependent. 
 You should add your task pacakges in the `requirements_specific.txt` to run the following commands to set up the environment.
