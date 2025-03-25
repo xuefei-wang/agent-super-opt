@@ -1,4 +1,4 @@
-from prompts import TaskPrompts
+from prompts.task_prompts import TaskPrompts
 
 class SpotDetectionPrompts(TaskPrompts):
     """Task prompts for biological cell spot detection."""
@@ -86,7 +86,8 @@ class SpotDetectionPrompts(TaskPrompts):
     1. View the function bank provided in the prompt to see previous preprocessing functions and their performance metrics.
     2. Based on previous evaluations, suggest a new unique preprocessing function that may improve the performance metrics of the spot detector.
     3. Plug the preprocessing function into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
-    4. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script. Do not terminate until you can verify the output of the code.
+    4. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script. Do not terminate until you can verify the output of the code. 
+    Make sure that the entire pipeline runs to end-to-end with the new preprocessing function and computes metrics before saving to function bank.
 
     """
 
