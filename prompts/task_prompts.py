@@ -15,7 +15,7 @@ class TaskPrompts:
     dataset_info : str
     summary_prompt : str
     task_details : str
-
+    pipeline_metrics_info : str
     @abstractmethod
     def run_pipeline_prompt(self) -> str:
         pass
@@ -23,4 +23,3 @@ class TaskPrompts:
     @abstractmethod
     def save_function_prompt(self) -> str:
         pass
-
