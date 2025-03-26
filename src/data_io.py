@@ -157,11 +157,11 @@ class ImageData:
                         # Single mask
                         self.masks = [self.masks]
 
-        # Validate masks length
-        if self.masks is not None and len(self.masks) != total_size:
-            raise ValueError(f"Number of masks ({len(self.masks)}) does not match dataset size ({total_size})")
+            # Validate masks length
+            if len(self.masks) != total_size:
+                raise ValueError(f"Number of masks ({len(self.masks)}) does not match dataset size ({total_size})")
         
-        # Check dimensions
+            # Check dimensions
             for i, (img, mask) in enumerate(zip(self.raw, self.masks)):
                 # Ensure mask has either 2D or 3D shape
                 if not (len(mask.shape) == 2 or (len(mask.shape) == 3 and mask.shape[2] == 1)):
