@@ -158,7 +158,7 @@ class ImageData:
                         self.masks = [self.masks]
 
         # Validate masks length
-        if len(self.masks) != total_size:
+        if self.masks is not None and len(self.masks) != total_size:
             raise ValueError(f"Number of masks ({len(self.masks)}) does not match dataset size ({total_size})")
         
         # Check dimensions
