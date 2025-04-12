@@ -30,7 +30,7 @@ def worst_n(function_bank_path: str, sorting_function: Callable[[dict], float], 
         json_array = json.load(file)
         # Filter out None values
         sorted_bank = list(filter(lambda x:sorting_function(x) is not None, json_array))
-        sorted_bank = sorted(json_array, key=lambda x:sorting_function(x), reverse=True)
+        sorted_bank = sorted(sorted_bank, key=lambda x:sorting_function(x), reverse=True)
         return sorted_bank[:n]
 
 def last_n(function_bank_path: str, n: int = 5) -> list:
