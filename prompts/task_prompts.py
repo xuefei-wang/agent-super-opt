@@ -1,6 +1,7 @@
 
 from abc import abstractmethod
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -16,6 +17,8 @@ class TaskPrompts:
     summary_prompt : str
     task_details : str
     pipeline_metrics_info : str
+    checkpoint_path : str
+
     @abstractmethod
     def run_pipeline_prompt(self) -> str:
         pass

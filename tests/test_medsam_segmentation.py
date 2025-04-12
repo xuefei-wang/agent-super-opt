@@ -2,12 +2,13 @@ import unittest
 from src.medsam_segmentation import MedSAMTool, prepare_image_data
 import argparse
 import sys
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 
 '''
 To run from the project root directory:
 
-CPU: python -m tests.test_medsam_segmentation --checkpoint_path {checkpoint_path} --data_path {data_path}
-GPU: python -m tests.test_medsam_segmentation --device {gpu_id}
+python -m tests.test_medsam_segmentation --data_path /workspace/data/codabench_validation_data
 '''
 
 class TestMedSAMSegmentation(unittest.TestCase):
@@ -17,10 +18,11 @@ class TestMedSAMSegmentation(unittest.TestCase):
         """    
         medsam_tool = MedSAMTool(gpu_id=self.device, checkpoint_path=self.checkpoint_path)
         images = prepare_image_data(self.data_path, num_files=1, batch_size=1)
+        
         pred_masks = medsam_tool.predict(images)
         gt_masks_list = images.masks
         losses = medsam_tool.evaluate(pred_masks, gt_masks_list)
-        print('losses', losses)
+        medsam_tool.visualize(images, pred_masks, gt_masks_list)
 
         self.assertIn('dice_loss', losses)
 

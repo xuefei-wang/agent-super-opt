@@ -219,21 +219,25 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
     random_seed = args.random_seed # Random seed for reproducibility
     num_optim_iter = 50 # Number of optimization iterations
     max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
+    checkpoint_path = args.checkpoint_path
     
     # Load task prompts
     if args.experiment_name == "spot_detection":
         from prompts.spot_detection_prompts import SpotDetectionPrompts
         prompt_class = SpotDetectionPrompts
+        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts
         prompt_class = CellposeSegmentationPrompts
-    # elif args.experiment_name == "medSAM_segmentation":
-    #     from prompts.medSAM_segmentation_prompts import MedSAMSegmentationPrompts
-    #     prompt_class = MedSAMSegmentationPrompts
+        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+    elif args.experiment_name == "medSAM_segmentation":
+        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
+        prompt_class = MedSAMSegmentationPrompts
+        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank, checkpoint_path=checkpoint_path)
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
 
-    prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+    # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
 
     # Set GPU device
     set_gpu_device(my_gpu_id)
@@ -307,6 +311,13 @@ if __name__ == "__main__":
         required=True,
         choices=["spot_detection", "cellpose_segmentation", "medSAM_segmentation"],
         help="Name of the experiment. Must be one of: spot_detection, cellpose_segmentation, medSAM_segmentation"
+    )
+
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        required=False,
+        help="Path to the model checkpoint file. Only used for medSAM segmentation."
     )
 
     parser.add_argument(
