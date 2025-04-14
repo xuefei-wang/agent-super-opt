@@ -18,7 +18,6 @@ from prompts.task_prompts import TaskPrompts
 from src.utils import set_gpu_device
 from prompts.agent_prompts import (
     sys_prompt_code_writer,
-    sys_prompt_code_writer_commandline,
     sys_prompt_code_verifier,
 )
 
@@ -28,9 +27,7 @@ load_dotenv()
 
 def set_up_agents(executor: CodeExecutor):
     ''' Prepare 3 agents and state transition'''
-    if isinstance(executor, LocalCommandLineCodeExecutor):
-        code_writer_prompt = sys_prompt_code_writer_commandline
-    elif isinstance(executor, JupyterCodeExecutor):
+    if isinstance(executor, JupyterCodeExecutor) or isinstance(executor, LocalCommandLineCodeExecutor):
         code_writer_prompt = sys_prompt_code_writer
     else:
         raise ValueError(f"Executor type {type(executor)} not supported")
