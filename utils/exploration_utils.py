@@ -10,11 +10,13 @@ class ProbabilisticExploration:
     '''
 
     explore_prompt = """
-    Prioritize exploring new functions, taking inspiration from the best or the most recent functions in the function bank.
+    Prioritize exploring new functions, taking inspiration from the best or the most recent functions in the function bank. Do NOT to use the same methods as functions already in the pre-processing function bank.
+    For example, if the best or worst functions use filtering, use a different operation altogether. If you do use the same methods, try to use them in a different way. 
     """
 
     refine_prompt = """
     Prioritize refining existing functions, choosing either the best or most recent functions and suggesting an incremental improvement, i.e. adjusting hyperparameters.
+    For example, if a function uses an operation with a kernel size of 5, suggest a kernel size of 3 or 7.
     """
 
     def __init__(self, seed: int, temperature: float):
