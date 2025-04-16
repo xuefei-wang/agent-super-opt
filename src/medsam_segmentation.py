@@ -13,11 +13,6 @@ except ImportError:
     from src.data_io import ImageData
 
 try:
-    from tools import BaseSegmenter
-except ImportError:
-    from src.tools import BaseSegmenter
-
-try:
     from utils import set_gpu_device
 except ImportError:
     from src.utils import set_gpu_device
@@ -26,10 +21,10 @@ from medsam import medsam_inference, show_box, show_mask, preprocess, visualize_
 from segment_anything import build_sam_vit_b
 from cv2 import imread
 
-# MedSAM_CKPT_PATH = '/workspace/data/medsam_vit_b.pth'
-# MedSAM_CKPT_PATH = 'work_dir/MedSAM/medsam_vit_b.pth'
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
-class MedSAMTool(BaseSegmenter):
+class MedSAMTool():
     """
     MedSAMTool is a class that provides a simple interface for the MedSAM model
     """
@@ -85,7 +80,7 @@ class MedSAMTool(BaseSegmenter):
             # preprocess
             box = self._get_bounding_box(mask_np)
             image_embedding, box_1024, H, W, _, _ = preprocess(medsam_model, img_np, box, device=self.device)
-            mask = medsam_inference(medsam_model, image_embedding, box_1024, H, W)   
+            _, mask = medsam_inference(medsam_model, image_embedding, box_1024, H, W)   
             all_masks.append(mask)   
         return all_masks
     
@@ -107,20 +102,110 @@ class MedSAMTool(BaseSegmenter):
             gt_tensor = torch.tensor(gt / 255.0, dtype=torch.float32)
 
             dice_loss = monai.losses.DiceLoss(sigmoid=True, squared_pred=True, reduction='mean')
-            total_dice_loss += dice_loss(pred_tensor, gt_tensor)
-
+            immediate_loss = dice_loss(pred_tensor, gt_tensor)
+            print("immediate_loss", immediate_loss)
+            total_dice_loss += immediate_loss
+        
         return {"dice_loss": total_dice_loss.item() / len(pred_masks)}
 
     def preprocess(self, image_data: ImageData) -> ImageData:
         return image_data
 
+    def visualize(self, image_data, pred_masks, gt_masks):
+        _, axes = plt.subplots(3, 2, figsize=(24, 24))
+        for i, (image, pred_mask, gt_mask) in enumerate(zip(image_data.raw, pred_masks, gt_masks)):
+            # Plot predicted mask
+            ax = axes[i, 0]
+            ax.imshow(image)
+            ax.imshow(pred_mask, alpha=0.5, cmap='gray')
+           
+           # Plot bounding box
+            box_string = self._get_bounding_box(gt_mask)
+            x1, y1, x2, y2 = map(int, box_string.strip('[]').split(','))
+            width, height = x2 - x1, y2 - y1
+            rect_pred = patches.Rectangle((x1, y1), width, height, linewidth=2, edgecolor='r', facecolor='none')
+            ax.add_patch(rect_pred)
+            ax.set_title(f"Image {i+1}: Predicted Mask")
+            ax.axis('off')
+
+            # Plot ground truth mask
+            ax = axes[i, 1]
+            ax.imshow(image)
+            ax.imshow(gt_mask, alpha=0.5, cmap='gray')
+            rect_gt = patches.Rectangle((x1, y1), width, height, linewidth=2, edgecolor='r', facecolor='none')
+            ax.add_patch(rect_gt)
+            ax.set_title(f"Image {i+1}: Ground Truth Mask")
+            ax.axis('off')
+
+        plt.tight_layout()
+        plt.show()
+
+def _get_binary_masks(nonbinary_mask):
+        """ 
+        Given nonbinary mask which encodes N masks, return N binary masks which
+        should encode the same information.
+        
+        Parameters:
+            - nonbinary_mask: ndarray of shape (H, W)
+        Returns:
+            - binary_masks: ndarray of shape (N, H, W)
+        """
+        binary_masks = []
+        for i in np.unique(nonbinary_mask)[1:]:
+            binary_mask = (nonbinary_mask == i).astype(np.uint8)
+            binary_masks.append(binary_mask.copy())
+        binary_masks = np.stack(binary_masks, axis=0)
+        return binary_masks
+
 def prepare_image_data(data_path, num_files, batch_size=8) -> ImageData:
     """
-    Construct an ImageData object from the MedSAM dataset.
+    Construct an ImageData object from the MedSAM dataset with NPZ format.
 
     Args:
         data_path: str, path to the dataset which includes image and mask
-            directories
+            directories.
+        num_files: int, number of files to load
+        batch_size: int, batch size for the ImageData object
+    
+    Returns:
+        ImageData object containing the images and masks
+    """
+    img_path = os.path.join(data_path, 'imgs')
+    mask_path = os.path.join(data_path, 'gts')
+
+    img_files = sorted(glob.glob(os.path.join(img_path, '*')))[:num_files]
+    mask_files = sorted(glob.glob(os.path.join(mask_path, '*')))[:num_files]
+
+    raw_images, raw_boxes, raw_masks = [], [], []
+    for img_npz_file, mask_npz_file in zip(img_files, mask_files):
+        img_data, mask_data = np.load(img_npz_file), np.load(mask_npz_file)  
+        
+        image, boxes, nonbinary_mask = img_data['imgs'], img_data["boxes"], mask_data['gts']
+        binary_masks = _get_binary_masks(nonbinary_mask)
+        
+        for box, mask in zip(boxes, binary_masks):
+            x1, y1, x2, y2 = box
+            box_string = f"[{x1},{y1},{x2},{y2}]"
+            
+            raw_images.append(image)
+            raw_boxes.append(box_string)
+            raw_masks.append(mask)
+
+    images = ImageData(raw=raw_images,
+                    batch_size=batch_size,
+                    image_ids=[i for i in range(len(raw_images))],
+                    masks=raw_masks,
+                    predicted_masks=raw_masks)
+    return images
+
+
+def prepare_image_data_png(data_path, num_files, batch_size=8) -> ImageData:
+    """
+    Construct an ImageData object from the MedSAM dataset with PNG format.
+
+    Args:
+        data_path: str, path to the dataset which includes image and mask
+            directories.
         num_files: int, number of files to load
         batch_size: int, batch size for the ImageData object
     
@@ -134,6 +219,7 @@ def prepare_image_data(data_path, num_files, batch_size=8) -> ImageData:
     mask_files = sorted(glob.glob(os.path.join(mask_path, '*')))[:num_files]
 
     raw_images = [imread(f) for f in img_files]
+
     raw_masks = [imread(f) for f in mask_files]
     raw_masks = [mask[:, :, 0] if len(mask.shape) == 3 else mask for mask in raw_masks]
 

@@ -11,10 +11,6 @@ x = 3  # Code example
 ```python
 print(x)  # Using previous variable
 ```
-- Use bash commands with prefix `!` to explore and interact with files:
-```python
-!ls  # List files
-!cat file.txt  # Print file content
 ```
 
 Notes:
@@ -25,6 +21,7 @@ Notes:
 - Write code incrementally to build your solution; avoid writing all the code at once
 - Write "TERMINATE" when the task is complete
 """
+
 
 
 sys_prompt_code_verifier = """
