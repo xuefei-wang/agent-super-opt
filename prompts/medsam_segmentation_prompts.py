@@ -92,20 +92,47 @@ class MedSAMSegmentationPrompts(TaskPrompts):
             torch.manual_seed(seed)
 
             # Load data
+            def _get_binary_masks(nonbinary_mask):
+                '''
+                Given nonbinary mask which encodes N masks, return N binary masks which
+                should encode the same information.
+                
+                Parameters:
+                    - nonbinary_mask: ndarray of shape (H, W)
+                Returns:
+                    - binary_masks: ndarray of shape (N, H, W)
+                '''
+                binary_masks = []
+                for i in np.unique(nonbinary_mask)[1:]:
+                    binary_mask = (nonbinary_mask == i).astype(np.uint8)
+                    binary_masks.append(binary_mask.copy())
+                binary_masks = np.stack(binary_masks, axis=0)
+                return binary_masks
             data_path = '{data_path}'
-            img_path = os.path.join(data_path, 'CXR_png')
-            mask_path = os.path.join(data_path, 'masks')
+            img_path = os.path.join(data_path, 'imgs')
+            mask_path = os.path.join(data_path, 'gts')
 
-            img_files = sorted(glob.glob(os.path.join(img_path, '*')))
-            mask_files = sorted(glob.glob(os.path.join(mask_path, '*')))
+            img_files = sorted(glob.glob(os.path.join(img_path, '*')))[:num_files]
+            mask_files = sorted(glob.glob(os.path.join(mask_path, '*')))[:num_files]
 
-            raw_images = [imread(f) for f in img_files][:2]
-            raw_masks = [imread(f) for f in mask_files][:2]
-            raw_masks = [mask[:, :, 0] if len(mask.shape) == 3 else mask for mask in raw_masks]
+            raw_images, raw_boxes, raw_masks = [], [], []
+            for img_npz_file, mask_npz_file in zip(img_files, mask_files):
+                img_data, mask_data = np.load(img_npz_file), np.load(mask_npz_file)  
+                
+                image, boxes, nonbinary_mask = img_data['imgs'], img_data["boxes"], mask_data['gts']
+                binary_masks = _get_binary_masks(nonbinary_mask)
+                
+                for box, mask in zip(boxes, binary_masks):
+                    x1, y1, x2, y2 = box
+                    box_string = "[" + ",".join(map(str, [x1, y1, x2, y2])) + "]"
+                    
+                    raw_images.append(image)
+                    raw_boxes.append(box_string)
+                    raw_masks.append(mask)
 
             images = ImageData(raw=raw_images,
                             batch_size=batch_size,
-                            image_ids=[i for i in range(num_files)],
+                            image_ids=[i for i in range(len(raw_images))],
                             masks=raw_masks,
                             predicted_masks=raw_masks)
 
