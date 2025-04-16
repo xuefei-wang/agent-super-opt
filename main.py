@@ -234,8 +234,6 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
 
-    # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
-
     # Set GPU device
     set_gpu_device(my_gpu_id)
     
