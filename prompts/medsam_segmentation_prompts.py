@@ -160,7 +160,6 @@ class MedSAMSegmentationPrompts(TaskPrompts):
     task_details = """
     All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
 
-    Note: this is a stateless execution environment, so all code must be contained in the same block.
     - Do NOT remove the import statements from any of the code snippets provided in the pipeline prompt.
     - If you use other libraries in your preprocessing function, make sure to import them at the top of the code block.
 
