@@ -17,7 +17,7 @@ class TaskPrompts:
     summary_prompt : str
     task_details : str
     pipeline_metrics_info : str
-    checkpoint_path : str
+    checkpoint_path : Optional[str] = None
 
     @abstractmethod
     def run_pipeline_prompt(self) -> str:
