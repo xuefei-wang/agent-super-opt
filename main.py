@@ -119,26 +119,25 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
     if(n_top > 0):
         sample += f"""
     ## Top 3 {n_top} performing functions from function bank:
-    {pretty_print_list(top_n(function_bank_path, n = 3, sorting_function=sorting_function))}
+    {pretty_print_list(top_n(function_bank_path, n = n_top, sorting_function=sorting_function))}
 
         """
     
     if(n_worst > 0):
         sample += f"""
     ## Worst {n_worst} performing functions from the function bank:
-    {pretty_print_list(worst_n(function_bank_path, n = 3, sorting_function=sorting_function))}
+    {pretty_print_list(worst_n(function_bank_path, n = n_worst, sorting_function=sorting_function))}
 
         """
 
     if(n_last > 0):
         sample += f"""
     ## Execution history / most recent {n_last} functions from function bank:
-    {pretty_print_list(last_n(function_bank_path, n = 3))}
+    {pretty_print_list(last_n(function_bank_path, n = n_last))}
 
         """
 
     return sample
-
 
 def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts):
 
