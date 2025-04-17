@@ -18,13 +18,10 @@ from prompts.task_prompts import TaskPrompts
 from src.utils import set_gpu_device
 from prompts.agent_prompts import (
     sys_prompt_code_writer,
-    sys_prompt_code_writer_commandline,
     sys_prompt_code_verifier,
 )
 
 from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
-
-from utils.exploration_utils import ProbabilisticExploration
 
 # Load environment variables
 load_dotenv()
@@ -32,9 +29,7 @@ load_dotenv()
 
 def set_up_agents(executor: CodeExecutor):
     ''' Prepare 3 agents and state transition'''
-    if isinstance(executor, LocalCommandLineCodeExecutor):
-        code_writer_prompt = sys_prompt_code_writer_commandline
-    elif isinstance(executor, JupyterCodeExecutor):
+    if isinstance(executor, JupyterCodeExecutor) or isinstance(executor, LocalCommandLineCodeExecutor):
         code_writer_prompt = sys_prompt_code_writer
     else:
         raise ValueError(f"Executor type {type(executor)} not supported")
@@ -105,20 +100,47 @@ def prepare_notes_shared(my_gpu_id):
     notes_shared = f"""
     - Always check the documentation for the available APIs before reinventing the wheel
     - Use GPU {my_gpu_id} for running the pipeline, set `cuda: {my_gpu_id}` in the code snippet!
-    - Don't suggest trying larger models as the model size is fixed.    
+    - Don't suggest trying larger models as the model size is fixed.
     """
     return notes_shared
 
 
 
 notes_pipeline_optimization = f"""
-    - Be sure to utilize to_numpy() in the ImageData class if errors with lists occurs #TODO: DELETE
     - THE PROVIDED EVALUATION PIPELINE WORKS OUT OF THE BOX, IF THERE IS AN ERROR IT IS WITH THE PREPROCESSING FUNCTION
 
 """
 
+def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_last: int, sorting_function: callable):
+    ''' Returns a sample of the function bank '''
 
-def prepare_prompt_pipeline_optimization(notes_shared, function_bank_path, prompts : TaskPrompts, mode_prompt: str):
+    sample = ""
+
+    if(n_top > 0):
+        sample += f"""
+    ## Top 3 {n_top} performing functions from function bank:
+    {pretty_print_list(top_n(function_bank_path, n = 3, sorting_function=sorting_function))}
+
+        """
+    
+    if(n_worst > 0):
+        sample += f"""
+    ## Worst {n_worst} performing functions from the function bank:
+    {pretty_print_list(worst_n(function_bank_path, n = 3, sorting_function=sorting_function))}
+
+        """
+
+    if(n_last > 0):
+        sample += f"""
+    ## Execution history / most recent {n_last} functions from function bank:
+    {pretty_print_list(last_n(function_bank_path, n = 3))}
+
+        """
+
+    return sample
+
+
+def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts):
 
     prompt_pipeline_optimization = f"""
 
@@ -131,14 +153,8 @@ def prepare_prompt_pipeline_optimization(notes_shared, function_bank_path, promp
     ## Task Metrics Details:
     {prompts.pipeline_metrics_info}
     
-    ## Top 3 best performing functions from function bank:
-    {pretty_print_list(top_n(function_bank_path, n = 3, sorting_function=lambda x: x["class_loss"]))}
-
-    ## Worst 3 performing functions from the function bank:
-    {pretty_print_list(worst_n(function_bank_path, n = 3, sorting_function=lambda x: x["class_loss"]))}
-
-    ## Execution history / most recent 3 functions from function bank:
-    {pretty_print_list(last_n(function_bank_path, n = 3))}
+    ## Function bank path:
+    {function_bank_path}
 
     ## OpenCV Function APIs:
     {opencv_APIs}
@@ -201,10 +217,6 @@ def prepare_prompt_pipeline_optimization(notes_shared, function_bank_path, promp
     ## Code for running pipeline and calculating metrics:
     {prompts.run_pipeline_prompt()}
 
-
-    ## Priority:
-    {mode_prompt}
-
     """
 
     return prompt_pipeline_optimization
@@ -263,12 +275,6 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
     seed_list_file = os.path.join(args.output,"seed_list.txt")
     # Generate seed list
     seed_list = save_seed_list(num_optim_iter, seed_list_file)
-
-    # Load mode prompts
-    exploration_modes = ProbabilisticExploration(
-        seed=random_seed,
-        temperature=0.5
-    )
 
     # Run pipeline development and optimization
     with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{args.output}/cache") as cache:
