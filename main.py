@@ -118,7 +118,7 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     if(n_top > 0):
         sample += f"""
-    ## Top 3 {n_top} performing functions from function bank:
+    ## Top {n_top} performing functions from function bank:
     {pretty_print_list(top_n(function_bank_path, n = n_top, sorting_function=sorting_function))}
 
         """
