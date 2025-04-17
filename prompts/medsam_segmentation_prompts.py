@@ -112,6 +112,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
             img_path = os.path.join(data_path, 'imgs')
             mask_path = os.path.join(data_path, 'gts')
 
+            num_files = 1
             img_files = sorted(glob.glob(os.path.join(img_path, '*')))[:num_files]
             mask_files = sorted(glob.glob(os.path.join(mask_path, '*')))[:num_files]
 
@@ -159,11 +160,6 @@ class MedSAMSegmentationPrompts(TaskPrompts):
 
     task_details = """
     All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
-
-    Note: this is a stateless execution environment, so all code must be contained in the same block.
-    - Do NOT remove the import statements from any of the code snippets provided in the pipeline prompt.
-    - If you use other libraries in your preprocessing function, make sure to import them at the top of the code block.
-
     1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below). Remember, the images after preprocessing must still conform to the format specified in the ImageData API.
     2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet. Make sure the loading of images, proprocessing function implementation, and all other pipeline workflow code are contained in the SAME code block.
     3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
