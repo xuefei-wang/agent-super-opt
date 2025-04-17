@@ -61,7 +61,7 @@ class CellposeTool(BaseSegmenter):
         # flows[k][3] = final pixel locations after Euler integration
         # styles (List[np.ndarray]): List of style vectors (size 256) summarizing each image
         # extra (Any): Diameters if using Cellpose model, input images if using denoise model
-        to_normalize = False
+        to_normalize = True
         raw_list=images.raw
         if self.model_name == "cyto3":
             self.segmenter = models.Cellpose(model_type='cyto3',device=self.device, gpu=True)
