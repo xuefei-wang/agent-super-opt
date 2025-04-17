@@ -12,6 +12,7 @@ x = 3  # Code example
 Notes:
 - Code outputs will be returned to you
 - Feel free to document your thought process and exploration steps, as your output will be both reviewed and summarized by another developer to extract the final solution
+- Remember that all images processed by your written `preprocessing_function` will directly be converted into ImageData objects. So, double-check that the preprocessed image dimensions align with the dimension requirements listed in the ImageData API documentation
 - Make sure each conversation has at least one code block
 - For generating numbers or variables, you will need to print those out so that you can obtain the results
 - Write code incrementally to build your solution; avoid writing all the code at once
