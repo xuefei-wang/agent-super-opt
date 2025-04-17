@@ -137,7 +137,7 @@ class DeepcellSpotsDetector(BaseSpotDetector):
         app.preprocessing_fn = None
         app.postprocessing_fn = None
 
-        pred = app.predict(images.raw, batch_size=images.batch_size, threshold=0.95)
+        pred = app.predict(images.to_numpy().raw, batch_size=images.batch_size, threshold=0.95)
 
         return pred
     

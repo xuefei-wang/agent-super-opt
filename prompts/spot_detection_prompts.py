@@ -60,7 +60,7 @@ class SpotDetectionPrompts(TaskPrompts):
 
             load_dotenv()
 
-            spots_data = np.load({data_path}, allow_pickle=True)
+            spots_data = np.load("{data_path}", allow_pickle=True)
 
             images = ImageData(raw = spots_data['X'], batch_size = spots_data['X'].shape[0], image_ids = [i for i in range(spots_data['X'].shape[0])])
             spots_truth = spots_data['y']
@@ -91,6 +91,13 @@ class SpotDetectionPrompts(TaskPrompts):
 
     """
 
+    pipeline_metrics_info = """
+    {
+    class_loss: loss from one-hot encoded 2D matrix, where 1 is a spot and 0 is not a spot
+    regress_loss: loss 2D matrix where each entry is distance from a predicted spot
+    }
+    """
+
 
     def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
         super().__init__(
@@ -101,6 +108,7 @@ class SpotDetectionPrompts(TaskPrompts):
             summary_prompt=self.summary_prompt,
             task_details=self.task_details,
             function_bank_path=function_bank_path,
+            pipeline_metrics_info=self.pipeline_metrics_info
         )
     
     def run_pipeline_prompt(self) -> str:
