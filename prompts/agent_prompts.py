@@ -29,6 +29,8 @@ Clean the worklog by:
 - Ensuring code readability and adherence to best practices
 - Don't modify the existing code unless necessary; don't write new code
 - Don't drop print statements or any other output that is essential for understanding the code
+- Ensure that all import statements are included. Do NOT remove the imports from any of the code snippets provided in the pipeline prompt. If you use other additional libraries to write your preprocessing function, make sure to import those as well.
+- Ensure that all code blocks are included. Since the execution environment is stateless, it's important that the code is self-contained and can be executed without external dependencies.
 
 Respond in the following format:
 ```python
