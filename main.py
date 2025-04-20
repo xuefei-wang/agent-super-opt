@@ -373,6 +373,11 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
+    # Work directory
+    if args.work_dir is None:
+        work_dir = args.output
+    else:
+        work_dir = args.work_dir
     # server = LocalJupyterServer(log_file=os.path.join("..", args.output, "jupyter_gateway.log"))
     # server = LocalJupyterServer(log_file=None)
     # executor = JupyterCodeExecutor(server, output_dir=args.output, timeout=300) # very high timeout for long running tasks
