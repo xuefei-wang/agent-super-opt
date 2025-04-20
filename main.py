@@ -381,6 +381,6 @@ if __name__ == "__main__":
     # server = LocalJupyterServer(log_file=os.path.join("..", args.output, "jupyter_gateway.log"))
     # server = LocalJupyterServer(log_file=None)
     # executor = JupyterCodeExecutor(server, output_dir=args.output, timeout=300) # very high timeout for long running tasks
-    executor = LocalCommandLineCodeExecutor(work_dir=args.work_dir, timeout=300)
+    executor = LocalCommandLineCodeExecutor(work_dir=work_dir, timeout=300)
         
     main(args, executor) 
