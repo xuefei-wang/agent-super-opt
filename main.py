@@ -21,6 +21,8 @@ from prompts.agent_prompts import (
     sys_prompt_code_verifier,
 )
 
+from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
+
 # Load environment variables
 load_dotenv()
 
@@ -105,10 +107,39 @@ def prepare_notes_shared(my_gpu_id):
 
 
 notes_pipeline_optimization = f"""
+    - THE PROVIDED EVALUATION PIPELINE WORKS OUT OF THE BOX, IF THERE IS AN ERROR IT IS WITH THE PREPROCESSING FUNCTION
+
 """
 
+def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_last: int, sorting_function: callable):
+    ''' Returns a sample of the function bank '''
 
-def prepare_prompt_pipeline_optimization(notes_shared, function_bank_path, prompts : TaskPrompts):
+    sample = ""
+
+    if(n_top > 0):
+        sample += f"""
+    ## Top {n_top} performing functions from function bank:
+    {pretty_print_list(top_n(function_bank_path, n = n_top, sorting_function=sorting_function))}
+
+        """
+    
+    if(n_worst > 0):
+        sample += f"""
+    ## Worst {n_worst} performing functions from the function bank:
+    {pretty_print_list(worst_n(function_bank_path, n = n_worst, sorting_function=sorting_function))}
+
+        """
+
+    if(n_last > 0):
+        sample += f"""
+    ## Execution history / most recent {n_last} functions from function bank:
+    {pretty_print_list(last_n(function_bank_path, n = n_last))}
+
+        """
+
+    return sample
+
+def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts):
 
     prompt_pipeline_optimization = f"""
 
@@ -174,14 +205,17 @@ def prepare_prompt_pipeline_optimization(notes_shared, function_bank_path, promp
         predicted_classes (Optional[List[Dict[int, str]]]): List of mappings from
             object identifiers to predicted classes for each image.
 
+    Functions:
+        to_numpy (self) -> 'ImageDataNP': Converts ImageData to ImageDataNP, which has the same API but uses numpy arrays internally.
+            Better suited for datasets using numpy arrays.
+
     ```
     ## Function for saving the results:
     {prompts.save_function_prompt()}
 
-    ## Code for running segmentation and calculating metrics:
+    ## Code for running pipeline and calculating metrics:
     {prompts.run_pipeline_prompt()}
 
-    
     """
 
     return prompt_pipeline_optimization
@@ -329,12 +363,24 @@ if __name__ == "__main__":
         required=False,
         help="Random seed to use."
     )
+
+    parser.add_argument(
+        "--work_dir",
+        type=str,
+        required=True,
+        help="The working directory for the agent to access source code."
+    )
     
     args = parser.parse_args()
 
+    # Work directory
+    if args.work_dir is None:
+        work_dir = args.output
+    else:
+        work_dir = args.work_dir
     # server = LocalJupyterServer(log_file=os.path.join("..", args.output, "jupyter_gateway.log"))
     # server = LocalJupyterServer(log_file=None)
     # executor = JupyterCodeExecutor(server, output_dir=args.output, timeout=300) # very high timeout for long running tasks
-    executor = LocalCommandLineCodeExecutor(work_dir=args.output, timeout=300)
+    executor = LocalCommandLineCodeExecutor(work_dir=work_dir, timeout=300)
         
     main(args, executor) 
