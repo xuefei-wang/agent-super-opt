@@ -1,7 +1,9 @@
 from typing import Optional
 from deepcell_spots.applications import SpotDetection
 from deepcell_spots.dotnet_losses import DotNetLosses
+from deepcell_spots.point_metrics import point_F1_score
 from deepcell_spots.utils.augmentation_utils import subpixel_distance_transform
+from deepcell_spots.utils.postprocessing_utils import y_annotations_to_point_list_max
 from tensorflow.keras.utils import to_categorical
 import numpy as np
 
@@ -43,7 +45,6 @@ class BaseSpotDetector(ABC):
     def predict(
         self,
         image_data: ImageData,
-        **kwargs
     ) -> np.ndarray:
         """Generate spot detection predictions.
         
@@ -63,8 +64,7 @@ class BaseSpotDetector(ABC):
         self,
         pred: np.ndarray,
         truth: np.ndarray,
-        **kwargs
-    ) -> np.ndarray:
+    ) -> dict:
         """Evaluate loss and metrics of predicted spot locations to the ground truth.
 
         This function computes various evaluation metrics to assess the quality of cell
@@ -77,10 +77,11 @@ class BaseSpotDetector(ABC):
             truth: Ground truth list of x and y coordinate locations for spots in each image with shape (B, N, 2).
 
         Returns:
-            List[Dict[str, float]]: List of dictionaries (one per batch item) with metrics:
+            Dict[str, float]: Dictionary with metric(s):
+                - f1_score: Mean F1 score of predicted spots
                 - class_loss: Mean IoU of correctly matched objects
                 - regress_loss: Fraction of predicted objects that match ground truth
-            """
+        """
         pass
 
 
@@ -127,33 +128,42 @@ class DeepcellSpotsDetector(BaseSpotDetector):
         - image: numpy array of shape (H, W, C) representing the input image.
 
         Returns:
-        Predictions with two keys ('classification', 'offset_regression')
-        - classification prediction: image array of one-hot encoded classifications
-        - regression prediction: image array of regression distance from predicted points
+        - numpy array containing coordinate locations of detected spots.
     """
         app = SpotDetection()
         
-        # Disable default preprocessing and postprocessing
+        # Disable default preprocessing
         app.preprocessing_fn = None
         app.postprocessing_fn = None
 
-        pred = app.predict(images.to_numpy().raw, batch_size=images.batch_size, threshold=0.95)
+        pred = app.predict(images.to_numpy().raw, batch_size=images.batch_size)
 
         return pred
-    
-    def evaluate(self, pred: np.ndarray, truth: np.ndarray) -> np.ndarray:
+
+    def evaluate(self, pred: np.ndarray, truth: np.ndarray) -> dict:
         """
         Evaluate detections against ground truth using the model output.
-        
+
         Parameters:
             - pred: ndarray with two keys ['classification', 'offset_regression']
-            - truth: ndarray, list of x and y coordinates of spots per image
+            - truth: ndarray, list of x and y coordinates of true spots per image
 
-        Returns: 
-            List[Dict[str, float]]: List of dictionaries (one per batch item) with metrics:
+        Returns:
+            Dict[str, float]: Dictionary with metric(s):
+                - f1_score: Mean F1 score of predicted spots
                 - class_loss: Mean IoU of correctly matched objects
                 - regress_loss: Fraction of predicted objects that match ground truth
         """
+        class_preds = pred['classification']
+        regress_preds = pred['offset_regression']
+
+        f1_list = []
+        for idx in range(len(truth)):
+            r_i = regress_preds[idx:idx + 1]
+            c_i = class_preds[idx:idx + 1]
+            all_preds = {"offset_regression": r_i, "classification": c_i}
+            points_list = y_annotations_to_point_list_max(all_preds, threshold=0.98)[0]
+            f1_list.append(point_F1_score(truth[idx], points_list, threshold=1))
 
         def point_list_to_annotations(points, image_shape, dy=1, dx=1):
             """ Generate label images used in loss calculation from point labels.
@@ -186,15 +196,12 @@ class DeepcellSpotsDetector(BaseSpotDetector):
 
             annotations = {'detections': one_hot_encoded_cp, 'offset': offset}
             return annotations
-        
+
         batch_class_loss = 0
         batch_regress_loss = 0
 
         losses = DotNetLosses()
-        
-        class_preds = pred['classification']
-        regress_preds = pred['offset_regression']
-        
+
         for i in range(truth.shape[0]):
             annotated_truth = point_list_to_annotations(truth[i], image_shape=class_preds.shape[1:3])
 
@@ -209,8 +216,9 @@ class DeepcellSpotsDetector(BaseSpotDetector):
 
             batch_class_loss += class_loss
             batch_regress_loss += regress_loss
-        
+
         return {
+            "f1_score": np.mean(f1_list),
             "class_loss": (batch_class_loss / truth.shape[0]),
-            "regress_loss": (batch_regress_loss / truth.shape[0])
+            "regress_loss": (batch_regress_loss / truth.shape[0]),
         }

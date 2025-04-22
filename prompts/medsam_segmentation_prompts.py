@@ -10,51 +10,12 @@ class MedSAMSegmentationPrompts(TaskPrompts):
         dimensions (H, W, C) = (height, width, channel).
         ```
     """
-    
-    summary_prompt = """
-        Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
-        Follow the format:
-        {
-        "dice_loss": ...,
-        "preprocessing_function": "
-            ```python
-            YOUR_CODE_HERE
-            ```
-            ",
-        }
-        """
-    
+
     pipeline_metrics_info = """
+        The advantage quantifies how much better this function performs than average (if positive) or how much worse than average (if negative). We want to maximize the advantage.
         The following metrics are used to evaluate the performance of the pipeline: dice_loss.
         The dice loss is the dice similarity coefficient (DSC) score of the pipeline.
     """
-
-
-    save_to_function_bank_prompt = """
-        ```python
-        import inspect
-        import json
-
-        def write_results(preprocessing_fn, metrics_dict):
-            '''
-            Write the results of evaluation to the function bank JSON.
-            
-            Requires:
-            preprocessing_fn: the function
-            metrics_dict: the metrics dictionary
-            '''
-            
-            with open('/workspace/output/preprocessing_func_bank.json', 'r') as file:
-                json_array = json.load(file)
-
-            with open('/workspace/output/preprocessing_func_bank.json', 'w') as file:
-                json_data = metrics_dict
-                json_data["preprocessing_function"] = inspect.getsource(preprocessing_fn)
-                json_array.append(json_data)
-                json.dump(json_array, file)
-        ```
-    """
-
 
     pipeline_prompt = """
         ```python
@@ -136,53 +97,73 @@ class MedSAMSegmentationPrompts(TaskPrompts):
                             image_ids=[i for i in range(len(raw_images))],
                             masks=raw_masks,
                             predicted_masks=raw_masks)
-
-            # TODO: add your preprocessing function here
-            # def preprocess_images(images: ImageData) -> ImageData:
-            #   YOUR CODE HERE
-
-            images = preprocess_images(images)
             
             # Initialize segmenter
             segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path={checkpoint_path})
+            
+            # TODO: fill in your {k_word} preprocessing functions below
+            {functions}
+            
+            preprocessing_fns = [{function_names}]
+            
+            metrics = []
+            
+            for preprocessing_fn in preprocessing_fns:
+            
+                # Apply preprocessing function to images
+                images = preprocessing_fn(images)
 
-            # Run segmenter
-            pred_masks = segmenter.predict(images)
-
-            # Calculate Metrics
-            losses = segmenter.evaluate(pred_masks, images.masks)
-
-            df = pd.DataFrame([losses])
-            overall_losses = df.mean().to_dict()
-            logger.info("Overall losses %s", overall_losses)
+                # Run segmenter
+                pred_masks = segmenter.predict(images)
+    
+                # Calculate Metrics
+                losses = segmenter.evaluate(pred_masks, images.masks)
+    
+                df = pd.DataFrame([losses])
+                overall_losses = df.mean().to_dict()
+                metrics.append(overall_losses)
+                logger.info(f"Overall losses of function {preprocessing_fn.__name__}: ", overall_losses)
+                
+            compute_reward = lambda m: -m["dice_loss"]
+            
+            group_baseline = np.mean(list(map(compute_reward, metrics)))
+            
+            metrics = [{{**m, "advantage": compute_reward(m) - group_baseline}} for m in metrics]
             ```
     """
 
     task_details = """
-    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below). Remember, the images after preprocessing must still conform to the format specified in the ImageData API.
-    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet. Make sure the loading of images, proprocessing function implementation, and all other pipeline workflow code are contained in the SAME code block.
-    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
+    All of you should work together to write {k_word} preprocessing functions to improve segmentation performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their respective advantages (provided below), suggest {k_word} new unique preprocessing functions that maximize the advantages using OpenCV functions (APIs provided below). Remember, the bigger the advantage for a particular function, the better it performed than average. Also, the images after preprocessing must still conform to the format specified in the ImageData API.
+    2. Plug each of the {k_word} preprocessing functions into the pipeline and run the segmenter to calculate the performance metrics and advantages of each one, using the provided code snippet. Make sure the loading of images, preprocessing function implementations, and all other pipeline workflow code are contained in the SAME code block.
+    3. Save the {k_word} newly proposed preprocessing functions, their performance metrics, and their advantages in the function bank, using the provided script.
     4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
-    6. Do not terminate the conversation until the new preprocessing function is evaluated and the numerical loss metric(s) are logged.
+    6. Do not terminate the conversation until the new preprocessing functions are evaluated and the advantages and numerical loss metric(s) are logged.
     """
 
 
-    def __init__(self, gpu_id, checkpoint_path, seed, dataset_path, function_bank_path):
+    def __init__(self, gpu_id, checkpoint_path, seed, dataset_path, function_bank_path, grpo_k, grpo_k_word):
         super().__init__(
             gpu_id=gpu_id,
             checkpoint_path=checkpoint_path,
             seed=seed,
             dataset_info=self.dataset_info,
             dataset_path=dataset_path,
-            summary_prompt=self.summary_prompt,
+            summary_prompt=None,
+            pipeline_prompt=self.pipeline_prompt,
             task_details=self.task_details,
             function_bank_path=function_bank_path,
-            pipeline_metrics_info=self.pipeline_metrics_info
+            pipeline_metrics_info=self.pipeline_metrics_info,
+            grpo_k=grpo_k,
+            grpo_k_word=grpo_k_word,
         )
     
     def run_pipeline_prompt(self) -> str:
-        return self.pipeline_prompt.format(gpu_id=self.gpu_id, checkpoint_path=self.checkpoint_path, seed=self.seed, data_path=self.dataset_path)
+        prompt = super().run_pipeline_prompt()
+        return prompt.format(checkpoint_path=self.checkpoint_path)
     
     def save_function_prompt(self) -> str:
-        return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path)
+        return super().save_function_prompt()
+
+    def task_details_prompt(self) -> str:
+        return super().task_details_prompt()

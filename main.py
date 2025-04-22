@@ -139,7 +139,7 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     return sample
 
-def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts):
+def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts, k: int):
 
     prompt_pipeline_optimization = f"""
 
@@ -147,13 +147,13 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     {prompts.dataset_info}
 
     ## Task Details:
-    {prompts.task_details}
+    {prompts.task_details_prompt()}
 
     ## Task Metrics Details:
     {prompts.pipeline_metrics_info}
     
-    ## Function bank path:
-    {function_bank_path}
+    ## Most recent {k} functions from the function bank (note: be sure to pay close attention to the advantages of these functions to inform how to write your new functions):
+    {pretty_print_list(last_n(function_bank_path, n=k))}
 
     ## OpenCV Function APIs:
     {opencv_APIs}
@@ -256,15 +256,15 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
     if args.experiment_name == "spot_detection":
         from prompts.spot_detection_prompts import SpotDetectionPrompts
         prompt_class = SpotDetectionPrompts
-        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank, grpo_k_word=args.grpo_k_word, grpo_k=args.grpo_k)
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts
         prompt_class = CellposeSegmentationPrompts
-        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank, grpo_k_word=args.grpo_k_word, grpo_k=args.grpo_k)
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
         prompt_class = MedSAMSegmentationPrompts
-        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank, checkpoint_path=checkpoint_path)
+        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank, checkpoint_path=checkpoint_path, grpo_k_word=args.grpo_k_word, grpo_k=args.grpo_k)
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
 
@@ -310,7 +310,7 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts)}"
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, args.grpo_k)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
                                             summary_args={"summary_prompt": prompts.summary_prompt},
@@ -370,6 +370,22 @@ if __name__ == "__main__":
         required=True,
         help="The working directory for the agent to access source code."
     )
+
+    parser.add_argument(
+        "--grpo_k",
+        type=int,
+        default=5,
+        required=False,
+        help="Group size for GRPO."
+    )
+
+    parser.add_argument(
+        "--grpo_k_word",
+        type=str,
+        default="five",
+        required=False,
+        help="Group size in English for GRPO."
+    )
     
     args = parser.parse_args()
 
@@ -378,9 +394,14 @@ if __name__ == "__main__":
         work_dir = args.output
     else:
         work_dir = args.work_dir
+
+    # Check that grpo word and int were both set
+    if args.grpo_k == 5 and args.grpo_k_word != "five" or args.grpo_k != 5 and args.grpo_k_word == "five":
+        raise ValueError("grpo_k and grpo_k_word must be set to the same value.")
+
     # server = LocalJupyterServer(log_file=os.path.join("..", args.output, "jupyter_gateway.log"))
     # server = LocalJupyterServer(log_file=None)
     # executor = JupyterCodeExecutor(server, output_dir=args.output, timeout=300) # very high timeout for long running tasks
-    executor = LocalCommandLineCodeExecutor(work_dir=work_dir, timeout=300)
+    executor = LocalCommandLineCodeExecutor(work_dir=work_dir, timeout=300 * args.grpo_k)
         
     main(args, executor) 

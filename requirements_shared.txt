@@ -4,7 +4,7 @@ pyyaml
 tqdm
 jupyter_kernel_gateway
 PyWavelets
-numpy
+numpy==1.23.5
 zarr
 torch
 ag2[openai]

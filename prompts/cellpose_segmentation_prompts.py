@@ -10,53 +10,13 @@ class CellposeSegmentationPrompts(TaskPrompts):
         ```
     """
     
-    summary_prompt = """
-        Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
-        Follow the format:
-        {
-        "average_precision": ...,
-        "bce_loss": ...,
-        "preprocessing_function": "
-            ```python
-            YOUR_CODE_HERE
-            ```
-            ",
-        }
-        """
-    
     pipeline_metrics_info = """
+        The advantage quantifies how much better this function performs than average (if positive) or how much worse than average (if negative).
         The following metrics are used to evaluate the performance of the pipeline: average_precision, bce_loss
         The average_precision is the average precision score of the pipeline at different IoU thresholds: [0.5, 0.75, 0.9].
         The bce_loss is the binary cross entropy loss of the pipeline for the foreground and background classes (whether a cell is present or not).
-        We want to increase the average_precision (especially at 0.5) and decrease the bce_loss.
+        We want to maximize the advantage, increase the average_precision (especially at 0.5), and decrease the bce_loss.
     """
-
-
-    save_to_function_bank_prompt = """
-        ```python
-        import inspect
-        import json
-
-        def write_results(preprocessing_fn, metrics_dict):
-            '''
-            Write the results of evaluation to the function bank JSON.
-            
-            Requires:
-            preprocessing_fn: the function
-            metrics_dict: the metrics dictionary
-            '''
-            
-            with open('{function_bank_path}', 'r') as file:
-                json_array = json.load(file)
-
-            with open('{function_bank_path}', 'w') as file:
-                json_data = metrics_dict
-                json_data["preprocessing_function"] = inspect.getsource(preprocessing_fn)
-                json_array.append(json_data)
-                json.dump(json_array, file)
-        ```
-    """
-
 
     pipeline_prompt = """
         ```python
@@ -98,66 +58,81 @@ class CellposeSegmentationPrompts(TaskPrompts):
 
             
             images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
-
-            # TODO: add your preprocessing function here
-            # def preprocess_images(images: ImageData) -> ImageData:
-            #   YOUR CODE HERE
-
-            images = preprocess_images(images)
-
-            # Run segmenter
-            pred_masks= segmenter.predict(images, batch_size=images.batch_size)
-
-            # Calculate metrics
-            metrics, losses = segmenter.evaluate(pred_masks, gt_masks)
-
-            overall_metrics = {}
-            for key, value in metrics.items():
-                if isinstance(value, np.ndarray):
-                    overall_metrics[key] = value.tolist()
-                else:
-                    overall_metrics[key] = value
-            for key, value in losses.items():
-                if isinstance(value, np.ndarray):
-                    overall_metrics[key] = value.tolist()
-                else:
-                    overall_metrics[key] = value
-            logger.info("Overall metrics: ", overall_metrics)
+            
+            
+            # TODO: fill in your {k_word} preprocessing functions below
+            {functions}
+            
+            preprocessing_fns = [{function_names}]
+            
+            metrics = []
+            
+            for preprocessing_fn in preprocessing_fns:
+            
+                # Apply preprocessing function to images
+                images = preprocessing_fn(images)
+            
+                # Run segmenter
+                pred_masks= segmenter.predict(images, batch_size=images.batch_size)
+    
+                # Calculate metrics
+                fn_metrics, fn_losses = segmenter.evaluate(pred_masks, gt_masks)
+    
+                overall_metrics = {}
+                for key, value in fn_metrics.items():
+                    if isinstance(value, np.ndarray):
+                        overall_metrics[key] = value.tolist()
+                    else:
+                        overall_metrics[key] = value
+                for key, value in fn_losses.items():
+                    if isinstance(value, np.ndarray):
+                        overall_metrics[key] = value.tolist()
+                    else:
+                        overall_metrics[key] = value
+                metrics.append(overall_metrics)
+                logger.info(f"Overall metrics of function {preprocessing_fn.__name__}: ", overall_metrics)
+            
+            compute_reward = lambda m: -m["bce_loss"]
+            
+            group_baseline = np.mean(list(map(compute_reward, metrics)))
+            
+            metrics = [{{**m, "advantage": compute_reward(m) - group_baseline}} for m in metrics]
+           
             ```
     """
 
     task_details = """
-    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
-    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
-    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
+    All of you should work together to write {k_word} preprocessing functions to improve segmentation performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their respective advantages (provided below), suggest {k_word} new unique preprocessing functions that maximize the advantages using OpenCV functions (APIs provided below). Remember, the bigger the advantage for a particular function, the better it performed than average.
+    2. Plug each of the {k_word} preprocessing functions into the pipeline and run the segmenter to calculate the performance metrics and advantages of each one, using the provided code snippet.
+    3. Save the {k_word} newly proposed preprocessing functions, their performance metrics, and their advantages in the function bank, using the provided script.
     4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
-    6. Do not terminate the conversation until the new preprocessing function is evaluated.
-    7. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND it must be written to the function bank by calling the write_results function.
+    6. Do not terminate the conversation until the new preprocessing functions are evaluated.
+    7. Extremely important: Do not terminate the conversation until the new preprocessing functions are evaluated AND they must be written to the function bank by calling the write_results function.
     8. Recall, this is not a stateful kernel, so all functions, imports, etc. must be provided in the script to be executed.
     """
 
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, grpo_k, grpo_k_word):
         super().__init__(
             gpu_id=gpu_id,
             seed=seed,
             dataset_info=self.dataset_info,
             dataset_path=dataset_path,
-            summary_prompt=self.summary_prompt,
+            summary_prompt=None,
+            pipeline_prompt=self.pipeline_prompt,
             task_details=self.task_details,
             function_bank_path=function_bank_path,
-            pipeline_metrics_info=self.pipeline_metrics_info
+            pipeline_metrics_info=self.pipeline_metrics_info,
+            grpo_k=grpo_k,
+            grpo_k_word=grpo_k_word,
         )
     
     def run_pipeline_prompt(self) -> str:
         # Create a copy of the pipeline_prompt string
-        prompt = self.pipeline_prompt
+        prompt = super().run_pipeline_prompt()
         
         # Replace placeholders manually
-        prompt = prompt.replace("{gpu_id}", str(self.gpu_id))
-        prompt = prompt.replace("{seed}", str(self.seed))
-        prompt = prompt.replace("{data_path}", str(self.dataset_path))
         prompt = prompt.replace("{function_bank_path}", str(self.function_bank_path))
         prompt = prompt.replace("{output_dir}", '/'.join(self.function_bank_path.split('/')[:-1]))
         
@@ -165,3 +140,6 @@ class CellposeSegmentationPrompts(TaskPrompts):
     
     def save_function_prompt(self) -> str:
         return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path, output_dir = '/'.join(self.function_bank_path.split('/')[:-1]))
+
+    def task_details_prompt(self) -> str:
+        return super().task_details_prompt()
