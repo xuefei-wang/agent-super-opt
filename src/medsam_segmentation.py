@@ -21,27 +21,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import pickle
 
-
-def preprocess_stage2(resized_imgs, medsam_model, device):
-    print("\nInside preprocess_stage2()")
-    # Convert to tensor batch
-    img_batch = torch.stack([
-        torch.tensor(img).float().permute(2, 0, 1)  # (3, H, W)
-        for img in resized_imgs
-    ]).to(device)  # (B, 3, H, W)
-    
-    batch_size = 8
-    all_embeddings = []
-    with torch.no_grad():
-        for i in range(0, img_batch.size(0), batch_size):
-            print(f"Processing batch {i // batch_size + 1}...")
-            batch = img_batch[i:i+batch_size]
-            image_embeddings = medsam_model.image_encoder(batch)  # (b, 256, 64, 64)
-            all_embeddings.append(image_embeddings)
-
-    # Concatenate all the batch outputs into a single tensor
-    return torch.cat(all_embeddings, dim=0)  # (B, 256, 64, 64)
-
 def medsam_batch(medsam_model, img_embed, box_torch, H, W):
     print("\nInside medsam_batch()")
     batch_size = 8
@@ -110,7 +89,21 @@ class MedSAMTool():
                     img_1024.max() - img_1024.min(), a_min=1e-8, a_max=None
                 )
 
-        image_embeddings = preprocess_stage2(resized_imgs, medsam_model, device=self.device)
+        img_batch = torch.stack([
+            torch.tensor(img).float().permute(2, 0, 1)  # (3, H, W)
+            for img in resized_imgs
+        ]).to(self.device)  # (B, 3, H, W)
+        
+        batch_size = 8
+        all_embeddings = []
+        with torch.no_grad():
+            for i in range(0, img_batch.size(0), batch_size):
+                print(f"Processing batch {i // batch_size + 1}...")
+                batch = img_batch[i:i+batch_size]
+                temp_image_embedding = medsam_model.image_encoder(batch)  # (B, 256, 64, 64)
+                all_embeddings.append(temp_image_embedding)
+
+        image_embeddings = torch.cat(all_embeddings, dim=0)  # (B, 256, 64, 64)
 
         scaled_boxes = np.array(scaled_boxes)
         scaled_boxes = torch.tensor(scaled_boxes).float()
