@@ -9,20 +9,6 @@ class SpotDetectionPrompts(TaskPrompts):
         ```
     """
     
-    summary_prompt = """
-        Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
-        Follow the format:
-        {
-        "class_loss": ...,
-        "regress_loss": ...,
-        "preprocessing_function": "
-            ```python
-            YOUR_CODE_HERE
-            ```
-            ",
-        }
-        """
-    
     save_to_function_bank_prompt = """
         ```python
         import inspect
@@ -60,18 +46,16 @@ class SpotDetectionPrompts(TaskPrompts):
 
             load_dotenv()
 
-            spots_data = np.load("{data_path}", allow_pickle=True)
-
-            images = ImageData(raw = spots_data['X'], batch_size = spots_data['X'].shape[0], image_ids = [i for i in range(spots_data['X'].shape[0])])
-            spots_truth = spots_data['y']
-
-            # TODO: add your preprocessing function here
+            # TODO: Add your preprocessing function here
             # def preprocess_images(images: ImageData) -> ImageData:
-            #     # YOUR CODE HERE
+                return ImageData(raw=images.raw, batch_size=images.raw.shape[0], image_ids=[i for i in range(images.raw.shape[0])])
+
+            
+            deepcell_spot_detector = DeepcellSpotsDetector()
+
+            images, spots_truth = deepcell_spot_detector.prepare_images({data_path})
 
             images = preprocess_images(images)
-
-            deepcell_spot_detector = DeepcellSpotsDetector()
 
             # Predict spots
             pred = deepcell_spot_detector.predict(images)
@@ -88,6 +72,7 @@ class SpotDetectionPrompts(TaskPrompts):
     3. Plug the preprocessing function into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
     4. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script. Do not terminate until you can verify the output of the code. 
     Make sure that the entire pipeline runs to end-to-end with the new preprocessing function and computes metrics before saving to function bank.
+    Write the results regardless of whether the output metrics are good or bad.
 
     """
 
@@ -95,6 +80,9 @@ class SpotDetectionPrompts(TaskPrompts):
     {
     class_loss: loss from one-hot encoded 2D matrix, where 1 is a spot and 0 is not a spot
     regress_loss: loss 2D matrix where each entry is distance from a predicted spot
+    precision: precision of the predicted spots
+    recall: recall of the predicted spots
+    F1: f1 score of the predicted spots
     }
     """
 
@@ -105,7 +93,7 @@ class SpotDetectionPrompts(TaskPrompts):
             seed=seed,
             dataset_info=self.dataset_info,
             dataset_path=dataset_path,
-            summary_prompt=self.summary_prompt,
+            summary_prompt=None,
             task_details=self.task_details,
             function_bank_path=function_bank_path,
             pipeline_metrics_info=self.pipeline_metrics_info
