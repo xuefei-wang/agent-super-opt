@@ -13,9 +13,8 @@ except ImportError:
 
 from segment_anything import build_sam_vit_b
 
-def medsam_inference(medsam_model, img_embed, box_torch, H, W):
+def medsam_inference(medsam_model, img_embed, box_torch, H, W, batch_size):
     print("\nInside medsam_inference()")
-    batch_size = 8
     all_predictions = []
 
     for i in range(0, img_embed.size(0), batch_size):
@@ -86,7 +85,7 @@ class MedSAMTool():
             for img in resized_imgs
         ]).to(self.device)  # (B, 3, H, W)
         
-        batch_size = 8
+        batch_size = images.batch_size
         all_embeddings = []
         with torch.no_grad():
             for i in range(0, img_batch.size(0), batch_size):
@@ -102,7 +101,7 @@ class MedSAMTool():
         scaled_boxes = scaled_boxes.to(self.device)
 
         torch.cuda.empty_cache()
-        medsam_seg = medsam_inference(medsam_model, image_embeddings, scaled_boxes, 512, 512)
+        medsam_seg = medsam_inference(medsam_model, image_embeddings, scaled_boxes, 512, 512, images.batch_size)
         return medsam_seg
     
     def evaluate(self, pred_masks: List[np.ndarray], gt_masks: List[np.ndarray]) -> Tuple[Dict[str, float], Dict[str, float]]:
