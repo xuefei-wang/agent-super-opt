@@ -1,4 +1,7 @@
 from prompts.task_prompts import TaskPrompts
+_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTION_INSERT ---"
+import textwrap
+import os
 
 class CellposeSegmentationPrompts(TaskPrompts):
     """Task prompts for cell segmentation analysis."""
@@ -165,3 +168,109 @@ class CellposeSegmentationPrompts(TaskPrompts):
     
     def save_function_prompt(self) -> str:
         return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path, output_dir = '/'.join(self.function_bank_path.split('/')[:-1]))
+    
+
+class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
+    """Task prompts for cell segmentation analysis. Skeletonized version."""
+
+    # --- Define these as CLASS attributes ---
+    dataset_info = """
+    ```markdown
+    This is a three-channel image dataset for biological segmentation, consisting of images from different experiments and different settings - a heterogenous dataset of many different object types.  There is a particular focus on biological microscopy images, including cells, sometimes with nuclei labeled in a separate channel.
+    The images have pixel values between 0 and 1 and are in float32 format.
+    Channel[0] is the nucleus, channel[1] is the cytoplasm, and channel[2] is empty, however not all images have any nuclear data.
+    Because many images lack nuclear data, preprocessing functions should be designed with particular focus on the cytoplasm channel.
+    Our goal is to improve the segmentation performance of the neural network by using OpenCV preprocessing functions to improve the quality of the images for downstream segmentation.
+    We want to increase the neural network tool's performance at segmenting cells with cell perimeter masks that have high Intersection over Union (IoU) with the ground truth masks.
+    The cell images have dimensions (B, L, W, C) = (batch, length, width, channel). To correctly predict masks, the images provided must be in the format of standard ImageData object and must maintain channel dimensions and ordering.
+    Successful preprocessing functions will typically normalize as the final step.  You can use clever approaches to normalize images.
+    """
+
+    task_details = """
+    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions (APIs provided).
+    It might make sense to start the process with small preprocessing functions, and then build up to more complex functions depending on the performance of the previous functions.
+
+    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below). Successful strategies can include improving upon high performing functions (including tuning the parameters of the function), or exploring the image processing space for novel or different image processing approaches. You can feel free to combine OpenCV functions or suggest novel combinations that can lead to improvements, or modify the parameters of the existing extremely successful functions.
+    2. Remember, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged.
+    3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing function.
+    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
+    5. Do not terminate the conversation until the new preprocessing function is evaluated and the numerical performance metrics are logged.
+    6. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND its results are written to the function bank.
+    7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
+    8. Do not write any code outside of the preprocessing function.
+    9. Do not modify the masks under any circumstances.  
+    10. The preprocessing function written must return an ImageData object with each image in the batch having the same image resolution (H,W) as the original image.
+    """
+
+    pipeline_metrics_info = """
+        The following metrics are used to evaluate the performance of the pipeline: average_precision.
+        The average_precision is the average precision score of the pipeline at an Intersection over Union (IoU) threshold of 0.5.
+        Our ultimate goal is to increase the average_precision as much as possible (0.95 is the target).
+        """
+
+    summary_prompt = """
+    Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
+    Follow the format:
+    {
+    "average_precision": ...,
+    "preprocessing_function": "
+        ```python
+        YOUR_CODE_HERE
+        ```
+        ",
+    }
+    """
+    # --- End of CLASS attributes ---
+
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
+        # Call super using the class attributes
+        super().__init__(
+            gpu_id=gpu_id,
+            seed=seed,
+            dataset_info=self.dataset_info, # Access class attribute
+            dataset_path=dataset_path,
+            summary_prompt=self.summary_prompt, # Access class attribute
+            task_details=self.task_details,     # Access class attribute
+            function_bank_path=function_bank_path,
+            pipeline_metrics_info=self.pipeline_metrics_info # Access class attribute
+        )
+        # Assign instance attributes
+        self.gpu_id = gpu_id
+        self.seed = seed
+        self.dataset_path = dataset_path
+        self.function_bank_path = function_bank_path
+
+    def run_pipeline_prompt(self) -> str:
+        """
+        Reads the template script from a file, replaces configuration
+        placeholders, DEDENTS and STRIPS the result, and returns the
+        script string containing the function placeholder.
+        """
+        template_file_path = os.path.join(os.path.dirname(__file__), "cellpose_segmentation_execution-template.py.txt")
+
+        try:
+            with open(template_file_path, 'r') as f:
+                template_content = f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Execution template file not found at: {template_file_path}")
+        except Exception as e:
+            raise RuntimeError(f"Error reading execution template file: {e}")
+
+        replacement_values = {
+            "gpu_id": str(self.gpu_id),
+            "seed": str(self.seed),
+            "dataset_path": self.dataset_path.replace("\\", "/"),
+            "function_bank_path": self.function_bank_path.replace("\\", "/"),
+            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
+        }
+
+        script_with_config = template_content
+        for key, value in replacement_values.items():
+            placeholder_tag = "{" + key + "}"
+            script_with_config = script_with_config.replace(placeholder_tag, value)
+
+        # --- FIX: Apply dedent and strip before returning ---
+        dedented_script = textwrap.dedent(script_with_config)
+        return dedented_script.strip()
+    
+    

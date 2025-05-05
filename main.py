@@ -4,9 +4,11 @@ import torch
 import json
 import argparse
 import uuid
+import random
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock, CodeExecutor, DockerCommandLineCodeExecutor, LocalCommandLineCodeExecutor
+from utils.executors import TemplatedLocalCommandLineCodeExecutor
 from autogen.coding.jupyter import (
     DockerJupyterServer,
     JupyterCodeExecutor,
@@ -29,7 +31,7 @@ load_dotenv()
 
 def set_up_agents(executor: CodeExecutor):
     ''' Prepare 3 agents and state transition'''
-    if isinstance(executor, JupyterCodeExecutor) or isinstance(executor, LocalCommandLineCodeExecutor):
+    if isinstance(executor, JupyterCodeExecutor) or isinstance(executor, LocalCommandLineCodeExecutor) or isinstance(executor, TemplatedLocalCommandLineCodeExecutor):
         code_writer_prompt = sys_prompt_code_writer
     else:
         raise ValueError(f"Executor type {type(executor)} not supported")
@@ -152,9 +154,6 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     ## Task Metrics Details:
     {prompts.pipeline_metrics_info}
     
-    ## Function bank path:
-    {function_bank_path}
-
     ## OpenCV Function APIs:
     {opencv_APIs}
 
@@ -210,12 +209,6 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
             Better suited for datasets using numpy arrays.
 
     ```
-    ## Function for saving the results:
-    {prompts.save_function_prompt()}
-
-    ## Code for running pipeline and calculating metrics:
-    {prompts.run_pipeline_prompt()}
-
     """
 
     return prompt_pipeline_optimization
@@ -228,15 +221,20 @@ def save_chat_history(chat_history, curr_iter, output_folder):
         for message in chat_history:
             file.write(f"{message['name']}: {message['content']}\n\n")
 
-def save_seed_list(n, file_path):
-    '''Saves the seed list to a file path and returns the seed list'''
-    uuids = [uuid.uuid4() for _ in range(n)]
+def save_seed_list(n, file_path, initial_seed):
+    """Generates a list of deterministic integer seeds, saves them, and returns the list."""
+    # Use Python's random module, seeded once, to generate other seeds
+    seed_generator = random.Random(initial_seed)
+    # Generate a list of n integers within a reasonable range
+    int_seeds = [seed_generator.randint(0, 2**32 - 1) for _ in range(n)]
 
     with open(file_path, "w") as file:
-        for uid in uuids:
-            file.write(f"{uid}\n")
+        for seed_val in int_seeds:
+            file.write(f"{seed_val}\n") # Save integer seeds
 
-    print(f"Saved {n} seeds to {file_path}")
+    print(f"Saved {n} integer seeds based on initial seed {initial_seed} to {file_path}")
+
+    return int_seeds # Return the list of integers
     
     return uuids
     
@@ -248,7 +246,7 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
     my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = args.random_seed # Random seed for reproducibility
-    num_optim_iter = 50 # Number of optimization iterations
+    num_optim_iter = 2#50 # Number of optimization iterations
     max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
     
@@ -258,9 +256,9 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
         prompt_class = SpotDetectionPrompts
         prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
     elif args.experiment_name == "cellpose_segmentation":
-        from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts
-        prompt_class = CellposeSegmentationPrompts
-        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
+        prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
+        # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
         prompt_class = MedSAMSegmentationPrompts
@@ -273,7 +271,7 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
     
     seed_list_file = os.path.join(args.output,"seed_list.txt")
     # Generate seed list
-    seed_list = save_seed_list(num_optim_iter, seed_list_file)
+    seed_list = save_seed_list(num_optim_iter, seed_list_file, args.random_seed)
 
     # Run pipeline development and optimization
     with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{args.output}/cache") as cache:
@@ -282,9 +280,25 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
 
         for i in range(num_optim_iter):
 
-            # Set up agents
-            code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents(executor)
+
+            prompts = prompt_class(
+                gpu_id=args.gpu_id,
+                seed=seed_list[i],
+                dataset_path=args.dataset,
+                function_bank_path=output_function_bank
+            )
             
+            executor_instance = TemplatedLocalCommandLineCodeExecutor(
+                template_script_func=prompts.run_pipeline_prompt,
+                placeholder=_PREPROCESSING_FUNCTION_PLACEHOLDER,
+                work_dir=work_dir,
+                timeout=300
+            )
+
+            # Set up agents
+            code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents(executor_instance)
+            
+
             group_chat = GroupChat(
                 agents=[
                     code_executor_agent,
@@ -367,7 +381,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--work_dir",
         type=str,
-        required=True,
+        required=False,
         help="The working directory for the agent to access source code."
     )
     
@@ -381,6 +395,21 @@ if __name__ == "__main__":
     # server = LocalJupyterServer(log_file=os.path.join("..", args.output, "jupyter_gateway.log"))
     # server = LocalJupyterServer(log_file=None)
     # executor = JupyterCodeExecutor(server, output_dir=args.output, timeout=300) # very high timeout for long running tasks
-    executor = LocalCommandLineCodeExecutor(work_dir=work_dir, timeout=300)
+    # executor = LocalCommandLineCodeExecutor(work_dir=work_dir, timeout=300)
+
+    if args.experiment_name == "spot_detection":
+        from prompts.spot_detection_prompts import SpotDetectionPrompts
+        prompt_class = SpotDetectionPrompts
+    elif args.experiment_name == "cellpose_segmentation":
+        from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
+        prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
+    elif args.experiment_name == "medSAM_segmentation":
+        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
+        prompt_class = MedSAMSegmentationPrompts
+    else:
+        raise ValueError(f"Experiment name {args.experiment_name} not supported")    
+    
+    executor = TemplatedLocalCommandLineCodeExecutor(template_script_func=prompt_class, placeholder=_PREPROCESSING_FUNCTION_PLACEHOLDER, work_dir=work_dir, timeout=300)
+
         
     main(args, executor) 
