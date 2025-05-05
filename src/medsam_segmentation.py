@@ -1,12 +1,9 @@
-import os
 from typing import Dict, Tuple, List
 import numpy as np
 import torch
-import glob
 from monai.metrics import DiceMetric
 from monai.metrics import compute_surface_dice
 from skimage import transform
-import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
 try:
@@ -15,14 +12,9 @@ except ImportError:
     from src.data_io import ImageData
 
 from segment_anything import build_sam_vit_b
-from cv2 import imread
 
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import pickle
-
-def medsam_batch(medsam_model, img_embed, box_torch, H, W):
-    print("\nInside medsam_batch()")
+def medsam_inference(medsam_model, img_embed, box_torch, H, W):
+    print("\nInside medsam_inference()")
     batch_size = 8
     all_predictions = []
 
@@ -77,7 +69,7 @@ class MedSAMTool():
             
         self.kwargs = kwargs
     
-    def saved_new_predict(self, images: ImageData, scaled_boxes, used_for_baseline) -> np.ndarray:
+    def predict(self, images: ImageData, scaled_boxes, used_for_baseline) -> np.ndarray:
         medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
         medsam_model.to(self.device)
         medsam_model.eval()
@@ -110,10 +102,10 @@ class MedSAMTool():
         scaled_boxes = scaled_boxes.to(self.device)
 
         torch.cuda.empty_cache()
-        medsam_seg = medsam_batch(medsam_model, image_embeddings, scaled_boxes, 512, 512)
+        medsam_seg = medsam_inference(medsam_model, image_embeddings, scaled_boxes, 512, 512)
         return medsam_seg
     
-    def new_evaluate(self, pred_masks: List[np.ndarray], gt_masks: List[np.ndarray]) -> Tuple[Dict[str, float], Dict[str, float]]:
+    def evaluate(self, pred_masks: List[np.ndarray], gt_masks: List[np.ndarray]) -> Tuple[Dict[str, float], Dict[str, float]]:
         resized_preds = []
         for i in range(len(pred_masks)):
             H, W = gt_masks[i].shape
@@ -146,6 +138,5 @@ class MedSAMTool():
         return {"dsc_metric": total_dsc.item() / len(pred_masks),
                 "nsd_metric": total_nsd.item() / len(pred_masks)}
     
-
     def preprocess(self, image_data: ImageData) -> ImageData:
         return image_data
