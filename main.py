@@ -246,8 +246,8 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
     my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = args.random_seed # Random seed for reproducibility
-    num_optim_iter = 2#50 # Number of optimization iterations
-    max_round = 100  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
+    num_optim_iter = 30 # Number of optimization iterations
+    max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
     
     # Load task prompts
