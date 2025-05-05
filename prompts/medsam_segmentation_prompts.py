@@ -6,10 +6,8 @@ class MedSAMSegmentationPrompts(TaskPrompts):
     dataset_info = """
         ```markdown
 
-        This is large-scale medical image segmentation dataset, covering a 
-        variety of imaging modalities and cancer types. Modalities include
-        X-ray, CT, and MRI, while cancer types include lung, breast, and brain. 
-        The images have dimensions (H, W, C) = (height, width, channel).
+        This is large-scale medical image segmentation dataset covering the 
+        microscopy modality. The images have dimensions (H, W, C) = (height, width, channel).
         ```
     """
     
