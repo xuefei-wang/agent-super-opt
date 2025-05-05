@@ -11,7 +11,6 @@ from monai.metrics import compute_surface_dice
 from skimage import transform
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
-import time
 
 try:
     from data_io import ImageData
@@ -33,49 +32,44 @@ import pickle
 import psutil
 
 def preprocess_stage1(images, boxes):
-        """ images and boxes args are scraped from the npz files. """
-        print("Inside preprocess_stage1...")
-        
-        resized_imgs = []
-        scaled_boxes = []
+    print("\nInside preprocess_stage1()")
+    
+    resized_imgs = []
+    scaled_boxes = []
+    for i, (img_np, box_str) in enumerate(zip(images, boxes)):
+        print("Resizing image", i)
+        if len(img_np.shape) == 2:
+            img_3c = np.repeat(img_np[:, :, None], 3, axis=-1)
+        else:
+            img_3c = img_np
 
-        for i, (img_np, box_str) in enumerate(zip(images, boxes)):
-            print("Resizing image", i)
-            if len(img_np.shape) == 2:
-                img_3c = np.repeat(img_np[:, :, None], 3, axis=-1)
-            else:
-                img_3c = img_np
+        H, W, _ = img_3c.shape
 
-            H, W, _ = img_3c.shape
+        # Resize image to 1024x1024
+        img_1024 = transform.resize(
+            img_3c, (1024, 1024), order=3, preserve_range=True, anti_aliasing=True
+        ).astype(np.uint8)
 
-            # Resize image to 1024x1024
-            img_1024 = transform.resize(
-                img_3c, (1024, 1024), order=3, preserve_range=True, anti_aliasing=True
-            ).astype(np.uint8)
+        img_1024 = img_1024 / 255.0
+        resized_imgs.append(img_1024)
 
-            img_1024 = img_1024 / 255.0
-            resized_imgs.append(img_1024)
+        # Scale box to 1024x1024
+        box_np = np.array([[int(x) for x in box_str[1:-1].split(',')]])
+        box_scaled = box_np / np.array([W, H, W, H]) * 1024
+        scaled_boxes.append(box_scaled)
 
-            # Scale box to 1024x1024
-            box_np = np.array([[int(x) for x in box_str[1:-1].split(',')]])
-            box_scaled = box_np / np.array([W, H, W, H]) * 1024
-            scaled_boxes.append(box_scaled)
-
-        return resized_imgs, scaled_boxes
+    return resized_imgs, scaled_boxes
 
 def preprocess_stage2(resized_imgs, medsam_model, device):
-    print("\nInside preprocess_stage2")
+    print("\nInside preprocess_stage2()")
     # Convert to tensor batch
     img_batch = torch.stack([
         torch.tensor(img).float().permute(2, 0, 1)  # (3, H, W)
         for img in resized_imgs
     ]).to(device)  # (B, 3, H, W)
-    print("Image batch shape:", img_batch.shape)
     
     batch_size = 8
-    print("Using batch size:", batch_size)
     all_embeddings = []
-
     with torch.no_grad():
         for i in range(0, img_batch.size(0), batch_size):
             print(f"Processing batch {i // batch_size + 1}...")
@@ -87,18 +81,15 @@ def preprocess_stage2(resized_imgs, medsam_model, device):
     return torch.cat(all_embeddings, dim=0)  # (B, 256, 64, 64)
 
 def medsam_batch(medsam_model, img_embed, box_torch, H, W):
-    print("\nInside medsam_batch")
-    print("img_embed shape:", img_embed.shape)
-
+    print("\nInside medsam_batch()")
     batch_size = 8
     all_predictions = []
 
     for i in range(0, img_embed.size(0), batch_size):
         print(f"Processing batch {i // batch_size + 1}...")
 
-        # Slice batch
-        img_embed_batch = img_embed[i:i + batch_size]            # (B, 256, 64, 64)
-        box_torch_batch = box_torch[i:i + batch_size]            # Should match expected shape
+        img_embed_batch = img_embed[i:i + batch_size]
+        box_torch_batch = box_torch[i:i + batch_size]
 
         sparse_embeddings, dense_embeddings = medsam_model.prompt_encoder(
             points=None,
@@ -113,6 +104,7 @@ def medsam_batch(medsam_model, img_embed, box_torch, H, W):
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=False,
         )
+
         low_res_pred = torch.sigmoid(low_res_logits)  # (B, 1, 256, 256)
 
         low_res_pred = F.interpolate(
@@ -122,15 +114,12 @@ def medsam_batch(medsam_model, img_embed, box_torch, H, W):
             align_corners=False,
         )  # (B, 1, H, W)
         
-
-        # Process each prediction in batch
         for j in range(low_res_pred.shape[0]):
             pred = low_res_pred[j].squeeze().detach().cpu().numpy()  # (H, W)
             medsam_seg = (pred > 0.5).astype(np.uint8)
-            all_predictions.append(torch.from_numpy(medsam_seg).unsqueeze(0))  # add channel dim
+            all_predictions.append(torch.from_numpy(medsam_seg).unsqueeze(0))
 
     return torch.cat(all_predictions, dim=0)  # (N, H, W)
-
 
 class MedSAMTool():
     """
@@ -172,50 +161,33 @@ class MedSAMTool():
 
         raw_imgs = images.raw
         raw_boxes = [self._get_bounding_box(mask_np) for mask_np in images.predicted_masks]
-        start_time_predict = time.time()
         resized_imgs, scaled_boxes = preprocess_stage1(images.raw, raw_boxes)
         with open(save_path, "wb") as f:
             pickle.dump((resized_imgs, scaled_boxes), f)
     
     def saved_new_predict(self, images: ImageData, scaled_boxes, used_for_baseline) -> np.ndarray:
-        print("used for baseline", used_for_baseline)
         medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
         medsam_model.to(self.device)
         medsam_model.eval()
        
         resized_imgs = images.raw
         if used_for_baseline:   # also run min-max normalization
-            start_time_predict = time.time()
             for i, img_1024 in enumerate(resized_imgs):
                 resized_imgs[i] = (img_1024 - img_1024.min()) / np.clip(
                     img_1024.max() - img_1024.min(), a_min=1e-8, a_max=None
                 )
-            end_time_predict = time.time()
-            print(f"baseline minmax normalization time: {end_time_predict - start_time_predict:.4f} seconds")
 
-        start_time_predict = time.time()
         image_embeddings = preprocess_stage2(resized_imgs, medsam_model, device=self.device)
-        end_time_predict = time.time()
-        print(f"preprocess stage2 time: {end_time_predict - start_time_predict:.4f} seconds")
 
         scaled_boxes = np.array(scaled_boxes)
         scaled_boxes = torch.tensor(scaled_boxes).float()
-        # move this to device
         scaled_boxes = scaled_boxes.to(self.device)
 
         torch.cuda.empty_cache()
-        print("Emptied cache")
-
-        start_time_predict = time.time()
         medsam_seg = medsam_batch(medsam_model, image_embeddings, scaled_boxes, 512, 512)
-        end_time_predict = time.time()
-        print(f"medsam batch time: {end_time_predict - start_time_predict:.4f} seconds")
         return medsam_seg
     
     def new_evaluate(self, pred_masks: List[np.ndarray], gt_masks: List[np.ndarray]) -> Tuple[Dict[str, float], Dict[str, float]]:
-        start_time_predict = time.time()
-        print("\nResizing before starting evaluation for batched predictions...")
-        
         resized_preds = []
         for i in range(len(pred_masks)):
             H, W = gt_masks[i].shape
@@ -223,9 +195,6 @@ class MedSAMTool():
                 pred_masks[i].cpu().numpy(), (H, W), order=3, preserve_range=True, anti_aliasing=True
             ).astype(np.uint8)
             resized_preds.append(resized_pred)
-        
-        end_time_predict = time.time()
-        print(f"Resizing time: {end_time_predict - start_time_predict:.4f} seconds")
             
         print("Evaluating predictions...")
         spacing= (1.0, 1.0)  # Assuming isotropic spacing for simplicity
