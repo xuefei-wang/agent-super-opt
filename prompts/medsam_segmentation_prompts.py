@@ -91,8 +91,8 @@ class MedSAMSegmentationPrompts(TaskPrompts):
             torch.manual_seed(seed)
 
             # Load data
-            unpacked_info_path = os.path.join({data_path}, unpacked_info.pkl)
-            resized_imgs_path = os.path.join({data_path}, resized_imgs.pkl)
+            unpacked_info_path = os.path.join({data_path}, "unpacked_info.pkl")
+            resized_imgs_path = os.path.join({data_path}, "resized_imgs.pkl")
 
             with open(unpacked_info_path, "rb") as f:
                 used_val_raw_imgs, used_val_raw_boxes, used_val_raw_gts = pickle.load(f)
