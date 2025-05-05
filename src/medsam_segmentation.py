@@ -32,18 +32,6 @@ import pickle
 
 import psutil
 
-def print_memory(stage_desc, device=None):
-    pid = os.getpid()
-    process = psutil.Process(pid)
-
-    print(f"\n--- {stage_desc} ---")
-    print(f"CPU RAM usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
-
-    if device and torch.cuda.is_available():
-        allocated = torch.cuda.memory_allocated(device) / 1024 ** 2
-        reserved = torch.cuda.memory_reserved(device) / 1024 ** 2
-        print(f"GPU {device} - Allocated: {allocated:.2f} MB | Reserved: {reserved:.2f} MB")
-
 def preprocess_stage1(images, boxes):
         """ images and boxes args are scraped from the npz files. """
         print("Inside preprocess_stage1...")
@@ -112,15 +100,12 @@ def medsam_batch(medsam_model, img_embed, box_torch, H, W):
         img_embed_batch = img_embed[i:i + batch_size]            # (B, 256, 64, 64)
         box_torch_batch = box_torch[i:i + batch_size]            # Should match expected shape
 
-        # print_memory("Before prompt_encoder", device=medsam_model.device)
         sparse_embeddings, dense_embeddings = medsam_model.prompt_encoder(
             points=None,
             boxes=box_torch_batch,
             masks=None,
         )
-        # print_memory("After prompt_encoder", device=medsam_model.device)
 
-        # print_memory("Before mask_decoder", device=medsam_model.device)
         low_res_logits, _ = medsam_model.mask_decoder(
             image_embeddings=img_embed_batch,
             image_pe=medsam_model.prompt_encoder.get_dense_pe(),
@@ -128,18 +113,15 @@ def medsam_batch(medsam_model, img_embed, box_torch, H, W):
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=False,
         )
-        # print_memory("After mask_decoder", device=medsam_model.device)
-
         low_res_pred = torch.sigmoid(low_res_logits)  # (B, 1, 256, 256)
 
-        # print_memory("Before interpolation", device=medsam_model.device)
         low_res_pred = F.interpolate(
             low_res_pred,
             size=(H, W),
             mode="bilinear",
             align_corners=False,
         )  # (B, 1, H, W)
-        # print_memory("After interpolation", device=medsam_model.device)
+        
 
         # Process each prediction in batch
         for j in range(low_res_pred.shape[0]):
@@ -147,8 +129,6 @@ def medsam_batch(medsam_model, img_embed, box_torch, H, W):
             medsam_seg = (pred > 0.5).astype(np.uint8)
             all_predictions.append(torch.from_numpy(medsam_seg).unsqueeze(0))  # add channel dim
 
-    # print("LENGTH", len(all_predictions))
-    # print("INDIVIDUAL SHAPE", all_predictions[0].shape)
     return torch.cat(all_predictions, dim=0)  # (N, H, W)
 
 
@@ -192,7 +172,6 @@ class MedSAMTool():
 
         raw_imgs = images.raw
         raw_boxes = [self._get_bounding_box(mask_np) for mask_np in images.predicted_masks]
-        # resized_imgs (B=S, 3, 1024, 1024) --> (B, 3, 1024, 1024)
         start_time_predict = time.time()
         resized_imgs, scaled_boxes = preprocess_stage1(images.raw, raw_boxes)
         with open(save_path, "wb") as f:
@@ -200,17 +179,12 @@ class MedSAMTool():
     
     def saved_new_predict(self, images: ImageData, scaled_boxes, used_for_baseline) -> np.ndarray:
         print("used for baseline", used_for_baseline)
-        # print("Running batched predictions...")
         medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
         medsam_model.to(self.device)
         medsam_model.eval()
        
-        # with open(saved_path, "rb") as f:
-        #     resized_imgs, scaled_boxes = pickle.load(f)
-
         resized_imgs = images.raw
         if used_for_baseline:   # also run min-max normalization
-            # print_memory("Before min-max normalization", device=self.device)
             start_time_predict = time.time()
             for i, img_1024 in enumerate(resized_imgs):
                 resized_imgs[i] = (img_1024 - img_1024.min()) / np.clip(
@@ -218,12 +192,9 @@ class MedSAMTool():
                 )
             end_time_predict = time.time()
             print(f"baseline minmax normalization time: {end_time_predict - start_time_predict:.4f} seconds")
-            # print_memory("After min-max normalization", device=self.device)
 
         start_time_predict = time.time()
-        # print_memory("Before preprocess_stage2", device=self.device)
         image_embeddings = preprocess_stage2(resized_imgs, medsam_model, device=self.device)
-        # print_memory("After preprocess_stage2", device=self.device)
         end_time_predict = time.time()
         print(f"preprocess stage2 time: {end_time_predict - start_time_predict:.4f} seconds")
 
@@ -236,9 +207,7 @@ class MedSAMTool():
         print("Emptied cache")
 
         start_time_predict = time.time()
-        print_memory("Before medsam_batch", device=self.device)
         medsam_seg = medsam_batch(medsam_model, image_embeddings, scaled_boxes, 512, 512)
-        print_memory("After medsam_batch", device=self.device)
         end_time_predict = time.time()
         print(f"medsam batch time: {end_time_predict - start_time_predict:.4f} seconds")
         return medsam_seg
