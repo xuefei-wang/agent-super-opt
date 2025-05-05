@@ -1,11 +1,8 @@
 import os
-from typing import Optional, Dict, Any, Tuple, List
-from abc import ABC, abstractmethod
+from typing import Dict, Tuple, List
 import numpy as np
 import torch
-from torch import nn
 import glob
-import monai
 from monai.metrics import DiceMetric
 from monai.metrics import compute_surface_dice
 from skimage import transform
@@ -17,11 +14,6 @@ try:
 except ImportError:
     from src.data_io import ImageData
 
-try:
-    from utils import set_gpu_device
-except ImportError:
-    from src.utils import set_gpu_device
-
 from segment_anything import build_sam_vit_b
 from cv2 import imread
 
@@ -29,36 +21,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import pickle
 
-import psutil
-
-def preprocess_stage1(images, boxes):
-    print("\nInside preprocess_stage1()")
-    
-    resized_imgs = []
-    scaled_boxes = []
-    for i, (img_np, box_str) in enumerate(zip(images, boxes)):
-        print("Resizing image", i)
-        if len(img_np.shape) == 2:
-            img_3c = np.repeat(img_np[:, :, None], 3, axis=-1)
-        else:
-            img_3c = img_np
-
-        H, W, _ = img_3c.shape
-
-        # Resize image to 1024x1024
-        img_1024 = transform.resize(
-            img_3c, (1024, 1024), order=3, preserve_range=True, anti_aliasing=True
-        ).astype(np.uint8)
-
-        img_1024 = img_1024 / 255.0
-        resized_imgs.append(img_1024)
-
-        # Scale box to 1024x1024
-        box_np = np.array([[int(x) for x in box_str[1:-1].split(',')]])
-        box_scaled = box_np / np.array([W, H, W, H]) * 1024
-        scaled_boxes.append(box_scaled)
-
-    return resized_imgs, scaled_boxes
 
 def preprocess_stage2(resized_imgs, medsam_model, device):
     print("\nInside preprocess_stage2()")
@@ -196,7 +158,7 @@ class MedSAMTool():
             ).astype(np.uint8)
             resized_preds.append(resized_pred)
             
-        print("Evaluating predictions...")
+        print("\nEvaluating predictions...")
         spacing= (1.0, 1.0)  # Assuming isotropic spacing for simplicity
         tolerance = 2.0
         
