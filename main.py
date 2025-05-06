@@ -284,7 +284,8 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
                 gpu_id=args.gpu_id,
                 seed=seed_list[i],
                 dataset_path=args.dataset,
-                function_bank_path=output_function_bank
+                function_bank_path=output_function_bank,
+                checkpoint_path=args.checkpoint_path
             )
             
             executor_instance = TemplatedLocalCommandLineCodeExecutor(
@@ -404,7 +405,7 @@ if __name__ == "__main__":
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
-        prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
+        prompt_class = MedSAMSegmentationPromptsWithSkeleton
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")    
     

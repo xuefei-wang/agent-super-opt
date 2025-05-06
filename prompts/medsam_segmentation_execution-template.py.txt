@@ -11,7 +11,7 @@ import cv2 as cv
 # --- Dependency Imports ---
 try:
     from src.data_io import ImageData
-    # from src.cellpose_segmentation import CellposeTool # Change this to your tool
+    from src.medsam_segmentation import MedSAMTool
 except ImportError as import_err:
     print(f"FATAL ERROR: Failed to import required modules (ImageData, Tool): {import_err}")
     print(traceback.format_exc())
@@ -124,15 +124,19 @@ try:
     if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
 
     # --- Initialize segmenter tool ---
-    logger.info("Initializing CellposeTool...")
-    # segmenter = CellposeTool(model_name="cyto3", device=gpu_id) # INSTANTIATE YOUR TOOL HERE
+    logger.info("Initializing MedSAMTool...")
+    segmenter = MedSAMTool(gpu_id=gpu_id, checkpoint_path=checkpoint_path)
     logger.info(f"Loading data from {data_path}...")
-    #raw_images, gt_masks = segmenter.loadData(data_path) # LOAD YOUR DATA HERE
+    raw_images, boxes, masks = segmenter.loadData(data_path)
     logger.info(f"Data loaded: {len(raw_images)} images.")
 
     # --- Prepare ImageData ---
-    batch_size = YOUR_BATCH_SIZE # Set this here
-    images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
+    batch_size = 16
+    images = ImageData(raw=raw_images,
+                batch_size=batch_size,
+                image_ids=[i for i in range(len(raw_images))],
+                masks=masks,
+                predicted_masks=masks)
 
     # --- Apply Preprocessing ---
     logger.info("Applying preprocess_images function...")
@@ -151,14 +155,14 @@ try:
     # --- Run Segmenter ---
     logger.info("Running segmentation prediction...")
     prediction_start_time = time.time()
-    #pred_masks = segmenter.predict(images, batch_size=images.batch_size) # RUN YOUR TOOL PREDICTIONS HERE
+    pred_masks = segmenter.predict(images, boxes, used_for_baseline=False)
     prediction_time = time.time() - prediction_start_time
     logger.info(f"Segmentation prediction finished in {prediction_time:.2f} seconds.")
 
     # --- Calculate Metrics ---
     logger.info("Calculating metrics...")
     metrics_start_time = time.time()
-    # overall_metrics = segmenter.evaluate(pred_masks, gt_masks) # CALCULATE YOUR METRICS HERE
+    overall_metrics = segmenter.evaluate(pred_masks, images.masks)
     metrics_time = time.time() - metrics_start_time
     logger.info(f"Metrics calculation finished in {metrics_time:.2f} seconds.")
 
