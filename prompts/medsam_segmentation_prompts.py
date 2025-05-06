@@ -191,47 +191,40 @@ class MedSAMSegmentationPrompts(TaskPrompts):
         return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path)
 
 class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
-    """Task prompts for cell segmentation analysis. Skeletonized version."""
+    """Task prompts for MedSAM segmentation analysis. Skeletonized version."""
 
     # --- Define these as CLASS attributes ---
     dataset_info = """
-    ```markdown
-    This is a three-channel image dataset for biological segmentation, consisting of images from different experiments and different settings - a heterogenous dataset of many different object types.  There is a particular focus on biological microscopy images, including cells, sometimes with nuclei labeled in a separate channel.
-    The images have pixel values between 0 and 1 and are in float32 format.
-    Channel[0] is the nucleus, channel[1] is the cytoplasm, and channel[2] is empty, however not all images have any nuclear data.
-    Because many images lack nuclear data, preprocessing functions should be designed with particular focus on the cytoplasm channel.
-    Our goal is to improve the segmentation performance of the neural network by using OpenCV preprocessing functions to improve the quality of the images for downstream segmentation.
-    We want to increase the neural network tool's performance at segmenting cells with cell perimeter masks that have high Intersection over Union (IoU) with the ground truth masks.
-    The cell images have dimensions (B, L, W, C) = (batch, length, width, channel). To correctly predict masks, the images provided must be in the format of standard ImageData object and must maintain channel dimensions and ordering.
-    Successful preprocessing functions will typically normalize as the final step.  You can use clever approaches to normalize images.
+        ```markdown
+
+        This is large-scale medical image segmentation dataset covering the 
+        microscopy modality. The images have dimensions (H, W, C) = (height, width, channel).
+        ```
     """
 
     task_details = """
-    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions (APIs provided).
-    It might make sense to start the process with small preprocessing functions, and then build up to more complex functions depending on the performance of the previous functions.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below). Successful strategies can include improving upon high performing functions (including tuning the parameters of the function), or exploring the image processing space for novel or different image processing approaches. You can feel free to combine OpenCV functions or suggest novel combinations that can lead to improvements, or modify the parameters of the existing extremely successful functions.
-    2. Remember, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged.
-    3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing function.
+    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
+    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
+    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
     4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
-    5. Do not terminate the conversation until the new preprocessing function is evaluated and the numerical performance metrics are logged.
-    6. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND its results are written to the function bank.
-    7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
-    8. Do not write any code outside of the preprocessing function.
-    9. Do not modify the masks under any circumstances.  
-    10. The preprocessing function written must return an ImageData object with each image in the batch having the same image resolution (H,W) as the original image.
+    6. Do not terminate the conversation until the new preprocessing function is evaluated.
+    7. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND it must be written to the function bank by calling the write_results function.
+    8. Recall, this is not a stateful kernel, so all functions, imports, etc. must be provided in the script to be executed.
     """
 
     pipeline_metrics_info = """
-        The following metrics are used to evaluate the performance of the pipeline: average_precision.
-        The average_precision is the average precision score of the pipeline at an Intersection over Union (IoU) threshold of 0.5.
-        Our ultimate goal is to increase the average_precision as much as possible (0.95 is the target).
-        """
+        The following metrics are used to evaluate the performance of the pipeline: dsc_metric, nsd_metric.
+        - The `dsc_metric` is the dice similarity coefficient (DSC) score of the pipeline and is similar to IoU, measuring the overlap between predicted and ground truth masks.
+        - The `nsd_metric` is the normalized surface distance (NSD) score and is more sensitive to distance and boundary calculations.
+    """
 
     summary_prompt = """
     Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
     Follow the format:
     {
-    "average_precision": ...,
+    "dsc_metric": ...,
+    "nsd_metric": ...,
     "preprocessing_function": "
         ```python
         YOUR_CODE_HERE
