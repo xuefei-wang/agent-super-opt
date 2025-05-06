@@ -260,7 +260,7 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         placeholders, DEDENTS and STRIPS the result, and returns the
         script string containing the function placeholder.
         """
-        template_file_path = os.path.join(os.path.dirname(__file__), "cellpose_segmentation_execution-template.py.txt")
+        template_file_path = os.path.join(os.path.dirname(__file__), "medsam_segmentation_execution-template.py.txt")
 
         try:
             with open(template_file_path, 'r') as f:
@@ -275,6 +275,7 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
+            "checkpoint_path": self.checkpoint_path.replace("\\", "/"),
             "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
         }
 
