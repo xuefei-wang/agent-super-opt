@@ -404,8 +404,8 @@ if __name__ == "__main__":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
     elif args.experiment_name == "medSAM_segmentation":
-        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
-        prompt_class = MedSAMSegmentationPrompts
+        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
+        prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")    
     
