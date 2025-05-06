@@ -260,9 +260,8 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
     elif args.experiment_name == "medSAM_segmentation":
-        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
-        prompt_class = MedSAMSegmentationPrompts
-        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank, checkpoint_path=checkpoint_path)
+        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
+        prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
 
