@@ -6,6 +6,15 @@ import torch
 from torch import nn
 import glob
 import monai
+from monai.metrics import DiceMetric
+from monai.metrics import compute_surface_dice
+from skimage import transform
+import matplotlib.pyplot as plt
+import torch.nn.functional as F
+import time
+
+
+from MedSAM.medsam.MedSAM_Inference import medsam_inference, preprocess, preprocess_and_inference
 
 try:
     from data_io import ImageData
@@ -17,12 +26,136 @@ try:
 except ImportError:
     from src.utils import set_gpu_device
 
-from medsam import medsam_inference, show_box, show_mask, preprocess, visualize_results
+# from medsam import medsam_inference, show_box, show_mask, preprocess, visualize_results
 from segment_anything import build_sam_vit_b
 from cv2 import imread
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import pickle
+
+import psutil
+
+def print_memory(stage_desc, device=None):
+    pid = os.getpid()
+    process = psutil.Process(pid)
+
+    print(f"\n--- {stage_desc} ---")
+    print(f"CPU RAM usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
+
+    if device and torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated(device) / 1024 ** 2
+        reserved = torch.cuda.memory_reserved(device) / 1024 ** 2
+        print(f"GPU {device} - Allocated: {allocated:.2f} MB | Reserved: {reserved:.2f} MB")
+
+
+def preprocess_stage1(images, boxes):
+        """ images and boxes args are scraped from the npz files. """
+        print("Inside preprocess_stage1...")
+        
+        resized_imgs = []
+        scaled_boxes = []
+
+        for i, (img_np, box_str) in enumerate(zip(images, boxes)):
+            print("Resizing image", i)
+            if len(img_np.shape) == 2:
+                img_3c = np.repeat(img_np[:, :, None], 3, axis=-1)
+            else:
+                img_3c = img_np
+
+            H, W, _ = img_3c.shape
+
+            # Resize image to 1024x1024
+            img_1024 = transform.resize(
+                img_3c, (1024, 1024), order=3, preserve_range=True, anti_aliasing=True
+            ).astype(np.uint8)
+
+            img_1024 = img_1024 / 255.0
+            resized_imgs.append(img_1024)
+
+            # Scale box to 1024x1024
+            box_np = np.array([[int(x) for x in box_str[1:-1].split(',')]])
+            box_scaled = box_np / np.array([W, H, W, H]) * 1024
+            scaled_boxes.append(box_scaled)
+
+        return resized_imgs, scaled_boxes
+
+def preprocess_stage2(resized_imgs, medsam_model, device):
+    print("\nInside preprocess_stage2")
+    # Convert to tensor batch
+    img_batch = torch.stack([
+        torch.tensor(img).float().permute(2, 0, 1)  # (3, H, W)
+        for img in resized_imgs
+    ]).to(device)  # (B, 3, H, W)
+    print("Image batch shape:", img_batch.shape)
+    
+    batch_size = 8
+    print("Using batch size:", batch_size)
+    all_embeddings = []
+
+    with torch.no_grad():
+        for i in range(0, img_batch.size(0), batch_size):
+            print(f"Processing batch {i // batch_size + 1}...")
+            batch = img_batch[i:i+batch_size]
+            image_embeddings = medsam_model.image_encoder(batch)  # (b, 256, 64, 64)
+            all_embeddings.append(image_embeddings)
+
+    # Concatenate all the batch outputs into a single tensor
+    return torch.cat(all_embeddings, dim=0)  # (B, 256, 64, 64)
+
+def medsam_batch(medsam_model, img_embed, box_torch, H, W):
+    print("\nInside medsam_batch")
+    print("img_embed shape:", img_embed.shape)
+
+    batch_size = 8
+    all_predictions = []
+
+    for i in range(0, img_embed.size(0), batch_size):
+        print(f"Processing batch {i // batch_size + 1}...")
+
+        # Slice batch
+        img_embed_batch = img_embed[i:i + batch_size]            # (B, 256, 64, 64)
+        box_torch_batch = box_torch[i:i + batch_size]            # Should match expected shape
+
+        # print_memory("Before prompt_encoder", device=medsam_model.device)
+        sparse_embeddings, dense_embeddings = medsam_model.prompt_encoder(
+            points=None,
+            boxes=box_torch_batch,
+            masks=None,
+        )
+        # print_memory("After prompt_encoder", device=medsam_model.device)
+
+        # print_memory("Before mask_decoder", device=medsam_model.device)
+        low_res_logits, _ = medsam_model.mask_decoder(
+            image_embeddings=img_embed_batch,
+            image_pe=medsam_model.prompt_encoder.get_dense_pe(),
+            sparse_prompt_embeddings=sparse_embeddings,
+            dense_prompt_embeddings=dense_embeddings,
+            multimask_output=False,
+        )
+        # print_memory("After mask_decoder", device=medsam_model.device)
+
+        low_res_pred = torch.sigmoid(low_res_logits)  # (B, 1, 256, 256)
+
+        # print_memory("Before interpolation", device=medsam_model.device)
+        low_res_pred = F.interpolate(
+            low_res_pred,
+            size=(H, W),
+            mode="bilinear",
+            align_corners=False,
+        )  # (B, 1, H, W)
+        # print_memory("After interpolation", device=medsam_model.device)
+
+        # Process each prediction in batch
+        for j in range(low_res_pred.shape[0]):
+            pred = low_res_pred[j].squeeze().detach().cpu().numpy()  # (H, W)
+            medsam_seg = (pred > 0.5).astype(np.uint8)
+            all_predictions.append(torch.from_numpy(medsam_seg).unsqueeze(0))  # add channel dim
+
+    # print("LENGTH", len(all_predictions))
+    # print("INDIVIDUAL SHAPE", all_predictions[0].shape)
+    return torch.cat(all_predictions, dim=0)  # (N, H, W)
+
 
 class MedSAMTool():
     """
@@ -71,18 +204,157 @@ class MedSAMTool():
             List[np.ndarray]: A list of binary masks corresponding to each of 
                 the input images.
         """
+        print("Running MedSAM tool predictions...\n")
         medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
         medsam_model.to(self.device)
         medsam_model.eval()
 
+        # Split up data into batches
+        # img_list, box_list = images.raw, [self._get_bounding_box(mask_np) for mask_np in images.masks]
+        # if images.bounding_boxes:
+        #     img_list, box_list = images.raw, images.bounding_boxes
+        # else:
+        img_list, box_list = images.raw, [self._get_bounding_box(mask_np) for mask_np in images.predicted_masks]
+
+        batch_size = images.batch_size
+        batched_imgs = [img_list[i:i + batch_size] for i in range(0, len(img_list), batch_size)]
+        batched_boxes = [box_list[i:i + batch_size] for i in range(0, len(box_list), batch_size)]
+
         all_masks = []
-        for img_np, mask_np in zip(images.raw, images.masks):
-            # preprocess
-            box = self._get_bounding_box(mask_np)
-            image_embedding, box_1024, H, W, _, _ = preprocess(medsam_model, img_np, box, device=self.device)
-            _, mask = medsam_inference(medsam_model, image_embedding, box_1024, H, W)   
-            all_masks.append(mask)   
+        for batch_imgs, batch_boxes in zip(batched_imgs, batched_boxes):
+            print(f"\nProcessing images {len(all_masks) + 1} to {len(all_masks) + len(batch_imgs)}...")
+            masks = preprocess_and_inference(medsam_model, batch_imgs, batch_boxes, device=self.device)
+            all_masks += masks
         return all_masks
+    
+
+    def new_predict(self, images: ImageData) -> np.ndarray:
+        print("\nRunning batched predictions...")
+        medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
+        medsam_model.to(self.device)
+        medsam_model.eval()
+
+        raw_imgs = images.raw
+        raw_boxes = [self._get_bounding_box(mask_np) for mask_np in images.predicted_masks]
+        # resized_imgs (B=S, 3, 1024, 1024) --> (B, 3, 1024, 1024)
+        start_time_predict = time.time()
+        resized_imgs, scaled_boxes = preprocess_stage1(images.raw, raw_boxes)
+        end_time_predict = time.time()
+        print(f"preprocess stage1 time: {end_time_predict - start_time_predict:.4f} seconds")
+
+        start_time_predict = time.time()
+        image_embeddings = preprocess_stage2(resized_imgs, medsam_model, device=self.device)
+        end_time_predict = time.time()
+        print(f"preprocess stage2 time: {end_time_predict - start_time_predict:.4f} seconds")
+
+        scaled_boxes = np.array(scaled_boxes)
+        scaled_boxes = torch.tensor(scaled_boxes).float()
+        # move this to device
+        scaled_boxes = scaled_boxes.to(self.device)
+
+        start_time_predict = time.time()
+        medsam_seg = medsam_batch(medsam_model, image_embeddings, scaled_boxes, 512, 512)
+        end_time_predict = time.time()
+        print(f"medsam batch time: {end_time_predict - start_time_predict:.4f} seconds")
+        return medsam_seg
+
+    def save_resized_imgs(self, images: ImageData, save_path) -> List[np.ndarray]:
+        print("Inside save_resized_images...")
+        medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
+        medsam_model.to(self.device)
+        medsam_model.eval()
+
+        raw_imgs = images.raw
+        raw_boxes = [self._get_bounding_box(mask_np) for mask_np in images.predicted_masks]
+        # resized_imgs (B=S, 3, 1024, 1024) --> (B, 3, 1024, 1024)
+        start_time_predict = time.time()
+        resized_imgs, scaled_boxes = preprocess_stage1(images.raw, raw_boxes)
+        with open(save_path, "wb") as f:
+            pickle.dump((resized_imgs, scaled_boxes), f)
+    
+    def saved_new_predict(self, images: ImageData, scaled_boxes, used_for_baseline) -> np.ndarray:
+        print("used for baseline", used_for_baseline)
+        # print("Running batched predictions...")
+        medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
+        medsam_model.to(self.device)
+        medsam_model.eval()
+       
+        # with open(saved_path, "rb") as f:
+        #     resized_imgs, scaled_boxes = pickle.load(f)
+
+        resized_imgs = images.raw
+        if used_for_baseline:   # also run min-max normalization
+            # print_memory("Before min-max normalization", device=self.device)
+            start_time_predict = time.time()
+            for i, img_1024 in enumerate(resized_imgs):
+                resized_imgs[i] = (img_1024 - img_1024.min()) / np.clip(
+                    img_1024.max() - img_1024.min(), a_min=1e-8, a_max=None
+                )
+            end_time_predict = time.time()
+            print(f"baseline minmax normalization time: {end_time_predict - start_time_predict:.4f} seconds")
+            # print_memory("After min-max normalization", device=self.device)
+
+        start_time_predict = time.time()
+        # print_memory("Before preprocess_stage2", device=self.device)
+        image_embeddings = preprocess_stage2(resized_imgs, medsam_model, device=self.device)
+        # print_memory("After preprocess_stage2", device=self.device)
+        end_time_predict = time.time()
+        print(f"preprocess stage2 time: {end_time_predict - start_time_predict:.4f} seconds")
+
+        scaled_boxes = np.array(scaled_boxes)
+        scaled_boxes = torch.tensor(scaled_boxes).float()
+        # move this to device
+        scaled_boxes = scaled_boxes.to(self.device)
+
+        torch.cuda.empty_cache()
+        print("Emptied cache")
+
+        start_time_predict = time.time()
+        print_memory("Before medsam_batch", device=self.device)
+        medsam_seg = medsam_batch(medsam_model, image_embeddings, scaled_boxes, 512, 512)
+        print_memory("After medsam_batch", device=self.device)
+        end_time_predict = time.time()
+        print(f"medsam batch time: {end_time_predict - start_time_predict:.4f} seconds")
+        return medsam_seg
+    
+    def new_evaluate(self, pred_masks: List[np.ndarray], gt_masks: List[np.ndarray]) -> Tuple[Dict[str, float], Dict[str, float]]:
+        start_time_predict = time.time()
+        print("\nResizing before starting evaluation for batched predictions...")
+        
+        resized_preds = []
+        for i in range(len(pred_masks)):
+            H, W = gt_masks[i].shape
+            resized_pred = transform.resize(
+                pred_masks[i].cpu().numpy(), (H, W), order=3, preserve_range=True, anti_aliasing=True
+            ).astype(np.uint8)
+            resized_preds.append(resized_pred)
+        
+        end_time_predict = time.time()
+        print(f"Resizing time: {end_time_predict - start_time_predict:.4f} seconds")
+            
+        print("Evaluating predictions...")
+        spacing= (1.0, 1.0)  # Assuming isotropic spacing for simplicity
+        tolerance = 2.0
+        
+        total_dsc, total_nsd = 0, 0
+        for i, (pred, gt) in enumerate(zip(resized_preds, gt_masks)):
+            gt_tensor = torch.tensor(gt).unsqueeze(0).unsqueeze(0)  # -> (1, 1, H, W)
+            pred_tensor = torch.tensor(pred).unsqueeze(0).unsqueeze(0)  # -> (1, 1, H, W)
+
+            dice_metric = DiceMetric(include_background=False, reduction="mean")
+            immediate_dsc_metric = dice_metric(pred_tensor, gt_tensor)
+
+            immediate_nsd_metric = compute_surface_dice(pred_tensor, gt_tensor, class_thresholds=[tolerance], spacing=spacing)
+            print(f"{i} | DSC: {round(immediate_dsc_metric.item(), 6)} | NSD: {round(immediate_nsd_metric.item(), 6)}")
+            
+            total_dsc += immediate_dsc_metric
+            total_nsd += immediate_nsd_metric
+
+        print("\n=======================")
+        print(f"Average DSC metric: {round(total_dsc.item() / len(pred_masks), 6)}")
+        print(f"Average NSD metric: {round(total_nsd.item() / len(pred_masks), 6)}")
+        return {"dsc_metric": total_dsc.item() / len(pred_masks),
+                "nsd_metric": total_nsd.item() / len(pred_masks)}
     
     def evaluate(self, pred_masks: List[np.ndarray], gt_masks: List[np.ndarray]) -> Tuple[Dict[str, float], Dict[str, float]]:
         """
@@ -94,19 +366,33 @@ class MedSAMTool():
         
         Returns:
             Dict[str, float]: A dictionary containing the evaluation metrics.
-                - dice_loss: the dice similarity coefficient (DSC) score
+                - dsc_metric: the dice similarity coefficient (DSC) score
+                - nsd_metric: the normalized surface distance (NSD) score
         """
-        total_dice_loss = 0
-        for pred, gt in zip(pred_masks, gt_masks):
-            pred_tensor = torch.tensor(pred, dtype=torch.float32)
-            gt_tensor = torch.tensor(gt / 255.0, dtype=torch.float32)
-
-            dice_loss = monai.losses.DiceLoss(sigmoid=True, squared_pred=True, reduction='mean')
-            immediate_loss = dice_loss(pred_tensor, gt_tensor)
-            print("immediate_loss", immediate_loss)
-            total_dice_loss += immediate_loss
+        print("\n=======================")
+        print("Evaluating predictions...")
+        spacing= (1.0, 1.0)  # Assuming isotropic spacing for simplicity
+        tolerance = 2.0
         
-        return {"dice_loss": total_dice_loss.item() / len(pred_masks)}
+        total_dsc, total_nsd = 0, 0
+        for i, (pred, gt) in enumerate(zip(pred_masks, gt_masks)):
+            gt_tensor = torch.tensor(gt).unsqueeze(0).unsqueeze(0)  # -> (1, 1, H, W)
+            pred_tensor = torch.tensor(pred).unsqueeze(0).unsqueeze(0)  # -> (1, 1, H, W)
+
+            dice_metric = DiceMetric(include_background=False, reduction="mean")
+            immediate_dsc_metric = dice_metric(pred_tensor, gt_tensor)
+
+            immediate_nsd_metric = compute_surface_dice(pred_tensor, gt_tensor, class_thresholds=[tolerance], spacing=spacing)
+            print(f"{i} | DSC: {round(immediate_dsc_metric.item(), 6)} | NSD: {round(immediate_nsd_metric.item(), 6)}")
+            
+            total_dsc += immediate_dsc_metric
+            total_nsd += immediate_nsd_metric
+
+        print("\n=======================")
+        print(f"Average DSC metric: {round(total_dsc.item() / len(pred_masks), 6)}")
+        print(f"Average NSD metric: {round(total_nsd.item() / len(pred_masks), 6)}")
+        return {"dsc_metric": total_dsc.item() / len(pred_masks),
+                "nsd_metric": total_nsd.item() / len(pred_masks)}
 
     def preprocess(self, image_data: ImageData) -> ImageData:
         return image_data
