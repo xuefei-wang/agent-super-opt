@@ -92,7 +92,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
             torch.manual_seed(seed)
 
             # Initialize segmenter
-            segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path={checkpoint_path})
+            segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path="workspace/data/medsam_vit_b.pth")
 
             # Load data
             imgs, boxes, masks = segmenter.loadData({data_path})
@@ -136,7 +136,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
     def __init__(self, gpu_id, checkpoint_path, seed, dataset_path, function_bank_path):
         super().__init__(
             gpu_id=gpu_id,
-            checkpoint_path=checkpoint_path,
+            checkpoint_path="workspace/data/medsam_vit_b.pth",
             seed=seed,
             dataset_info=self.dataset_info,
             dataset_path=dataset_path,
@@ -207,14 +207,14 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
             pipeline_metrics_info=self.pipeline_metrics_info, # Access class attribute
-            checkpoint_path=checkpoint_path,
+            checkpoint_path="/workspace/data/medsam_vit_b.pth",
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
         self.seed = seed
         self.dataset_path = dataset_path
         self.function_bank_path = function_bank_path
-        self.checkpoint_path = checkpoint_path
+        self.checkpoint_path = "workspace/data/medsam_vit_b.pth"
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -237,7 +237,7 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
-            "checkpoint_path": self.checkpoint_path.replace("\\", "/"),
+            "checkpoint_path": "workspace/data/medsam_vit_b.pth",
             "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
         }
 
