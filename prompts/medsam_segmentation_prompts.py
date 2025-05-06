@@ -1,4 +1,7 @@
 from prompts.task_prompts import TaskPrompts
+_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTION_INSERT ---"
+import textwrap
+import os
 
 class MedSAMSegmentationPrompts(TaskPrompts):
     """Task prompts for cell segmentation analysis."""
@@ -44,10 +47,10 @@ class MedSAMSegmentationPrompts(TaskPrompts):
             metrics_dict: the metrics dictionary
             '''
             
-            with open('/workspace/output/preprocessing_func_bank.json', 'r') as file:
+            with open('{function_bank_path}', 'r') as file:
                 json_array = json.load(file)
 
-            with open('/workspace/output/preprocessing_func_bank.json', 'w') as file:
+            with open('{function_bank_path}', 'w') as file:
                 json_data = metrics_dict
                 json_data["preprocessing_function"] = inspect.getsource(preprocessing_fn)
                 json_array.append(json_data)
@@ -182,7 +185,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
         )
     
     def run_pipeline_prompt(self) -> str:
-        return self.pipeline_prompt.format(gpu_id=self.gpu_id, checkpoint_path=self.checkpoint_path, seed=self.seed, data_path=self.dataset_path)
+        return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path, output_dir = '/'.join(self.function_bank_path.split('/')[:-1]))
     
     def save_function_prompt(self) -> str:
         return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path)
