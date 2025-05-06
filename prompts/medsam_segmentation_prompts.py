@@ -88,21 +88,17 @@ class MedSAMSegmentationPrompts(TaskPrompts):
             np.random.seed(seed)
             torch.manual_seed(seed)
 
+            # Initialize segmenter
+            segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path={checkpoint_path})
+
             # Load data
-            unpacked_info_path = os.path.join({data_path}, "unpacked_info.pkl")
-            resized_imgs_path = os.path.join({data_path}, "resized_imgs.pkl")
-
-            with open(unpacked_info_path, "rb") as f:
-                used_val_raw_imgs, used_val_raw_boxes, used_val_raw_gts = pickle.load(f)
-
-            with open(resized_imgs_path, "rb") as f:
-                imgs, boxes = pickle.load(f)
+            imgs, boxes, masks = segmenter.loadData({data_path})
 
             images = ImageData(raw=imgs,
-                batch_size=1,
+                batch_size=8,
                 image_ids=[i for i in range(len(imgs))],
-                masks=used_val_raw_gts,
-                predicted_masks=used_val_raw_gts)
+                masks=masks,
+                predicted_masks=masks)
 
             # TODO: add your preprocessing function here
             # def preprocess_images(images: ImageData) -> ImageData:
@@ -110,18 +106,15 @@ class MedSAMSegmentationPrompts(TaskPrompts):
 
             images = preprocess_images(images)
             
-            # Initialize segmenter
-            segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path={checkpoint_path})
-
             # Run segmenter
-            pred_masks = segmenter.saved_new_predict(images, boxes, used_for_baseline=False)
+            pred_masks = segmenter.predict(images, boxes, used_for_baseline=False)
 
             # Calculate Metrics
-            losses = segmenter.new_evaluate(pred_masks, images.masks)
+            metrics = segmenter.evaluate(pred_masks, images.masks)
 
-            df = pd.DataFrame([losses])
-            overall_losses = df.mean().to_dict()
-            logger.info("Overall losses %s", overall_losses)
+            df = pd.DataFrame([metrics])
+            overall_metrics = df.mean().to_dict()
+            logger.info("Overall metrics %s", overall_metrics)
             ```
     """
 
