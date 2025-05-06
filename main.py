@@ -111,22 +111,50 @@ notes_pipeline_optimization = f"""
 
 """
 
-def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_last: int, sorting_function: callable):
-    ''' Returns a sample of the function bank '''
+def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_last: int, sorting_function: callable, current_iteration: int, history_threshold: int=0, total_iterations: int=30, maximize = True):
+    ''' Returns a sample of the function bank 
+    
+    Args:
+        function_bank_path (str): Path to the function bank
+        n_top (int): Number of top performing functions to return
+        n_worst (int): Number of worst performing functions to return
+        n_last (int): Number of last executed functions to return
+        sorting_function (callable): Function to sort the function bank
+        current_iteration (int): Current iteration of the pipeline
+        history_threshold (int): Threshold for showing the function bank history
+        total_iterations (int): Total number of iterations for the pipeline
+        maximize (bool): Whether to maximize or minimize the metric
+    Returns:
+        str: Inlined samples of the function bank
+    
+    
+    Example:
+    ```python
+    function_bank_sample(function_bank_path, n_top=100, n_worst=0, n_last=0, sorting_function=lambda x: x["F1"])
+    ```
+    Usage: Return all elements of the function bank, set n_top to a high number
+    and n_worst to 0, and n_last to 0.
+    
+    """
+    
+    '''
+    
+    if current_iteration < history_threshold:
+        return f"Function bank history will be shown after iteration {history_threshold}, you are currently on iteration {current_iteration} of {total_iterations}"
 
     sample = ""
 
     if(n_top > 0):
         sample += f"""
     ## Top {n_top} performing functions from function bank:
-    {pretty_print_list(top_n(function_bank_path, n = n_top, sorting_function=sorting_function))}
+    {pretty_print_list(top_n(function_bank_path, n = n_top, sorting_function=sorting_function, maximize=maximize))}
 
         """
     
     if(n_worst > 0):
         sample += f"""
     ## Worst {n_worst} performing functions from the function bank:
-    {pretty_print_list(worst_n(function_bank_path, n = n_worst, sorting_function=sorting_function))}
+    {pretty_print_list(worst_n(function_bank_path, n = n_worst, sorting_function=sorting_function, maximize=maximize))}
 
         """
 
@@ -139,7 +167,7 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     return sample
 
-def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts):
+def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts, sampling_function: callable, current_iteration: int, history_threshold: int=0, total_iterations: int=30, maximize = True):
 
     prompt_pipeline_optimization = f"""
 
@@ -152,8 +180,8 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     ## Task Metrics Details:
     {prompts.pipeline_metrics_info}
     
-    ## Function bank path:
-    {function_bank_path}
+    ## Function bank sample:
+    {function_bank_sample(function_bank_path, n_top=5, n_worst=5, n_last=5, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations)}
 
     ## OpenCV Function APIs:
     {opencv_APIs}
@@ -257,14 +285,17 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
         from prompts.spot_detection_prompts import SpotDetectionPrompts
         prompt_class = SpotDetectionPrompts
         prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        sampling_function = lambda x: x['class_loss'] + x['regress_loss']
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts
         prompt_class = CellposeSegmentationPrompts
         prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        sampling_function = lambda x: x["average_precision"]
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
         prompt_class = MedSAMSegmentationPrompts
         prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank, checkpoint_path=checkpoint_path)
+        sampling_function = lambda x: x['dsc_metric'] + x['nsd_metric']
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
 
@@ -310,7 +341,7 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts)}"
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=5, total_iterations=num_optim_iter)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
                                             summary_args={"summary_prompt": prompts.summary_prompt},
