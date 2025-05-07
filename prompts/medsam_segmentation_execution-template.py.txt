@@ -125,7 +125,7 @@ try:
 
     # --- Initialize segmenter tool ---
     logger.info("Initializing MedSAMTool...")
-    segmenter = MedSAMTool(gpu_id=1, checkpoint_path="/workspace/data/medsam_vit_b.pth")
+    segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path="/workspace/data/medsam_vit_b.pth")
     logger.info(f"Loading data from {data_path}...")
     raw_images, boxes, masks = segmenter.loadData(data_path)
     logger.info(f"Data loaded: {len(raw_images)} images.")
