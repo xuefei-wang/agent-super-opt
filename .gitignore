@@ -3,6 +3,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Temporary code files
+tmp_code_*.py
+# experiment results
+cellpose_segmentation/
+medSAM_segmentation/
+spot_detection/
+
 # C extensions
 *.so
 
