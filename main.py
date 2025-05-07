@@ -285,7 +285,6 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
                 seed=seed_list[i],
                 dataset_path=args.dataset,
                 function_bank_path=output_function_bank,
-                checkpoint_path=args.checkpoint_path
             )
             
             executor_instance = TemplatedLocalCommandLineCodeExecutor(

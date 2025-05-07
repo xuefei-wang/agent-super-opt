@@ -196,7 +196,7 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
     """
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -207,14 +207,12 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
             pipeline_metrics_info=self.pipeline_metrics_info, # Access class attribute
-            checkpoint_path="/workspace/data/medsam_vit_b.pth",
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
         self.seed = seed
         self.dataset_path = dataset_path
         self.function_bank_path = function_bank_path
-        self.checkpoint_path = "workspace/data/medsam_vit_b.pth"
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -237,7 +235,6 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
-            "checkpoint_path": "workspace/data/medsam_vit_b.pth",
             "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
         }
 
