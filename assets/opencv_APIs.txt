@@ -63,3 +63,57 @@ Calculates the normalized sum of squares of the pixel values overlapping the fil
 
 cv.stackBlur(src, ksize[, dst]) ->dst
 Blurs an image using the stackBlur.
+ 
+cv.Canny(image, threshold1, threshold2[, edges[, apertureSize[, L2gradient]]]) -> edges
+Finds edges in an image using the Canny algorithm.
+
+cv.cornerEigenValsAndVecs(src, blockSize, ksize[, dst[, borderType]]) -> dst
+Calculates eigenvalues and eigenvectors of image blocks for corner detection.
+
+cv.cornerHarris(src, blockSize, ksize, k[, dst[, borderType]]) -> dst
+Harris corner detector.
+
+cv.cornerMinEigenVal(src, blockSize[, dst[, ksize[, borderType]]]) -> dst
+Calculates the minimal eigenvalue of gradient matrices for corner detection.
+
+cv.cornerSubPix(image, corners, winSize, zeroZone, criteria) -> corners
+Refines the corner locations.
+
+cv.goodFeaturesToTrack(image, maxCorners, qualityLevel, minDistance[, corners[, mask[, blockSize[, useHarrisDetector[, k]]]]]) -> corners
+Determines strong corners on an image.
+
+cv.HoughCircles(image, method, dp, minDist[, circles[, param1[, param2[, minRadius[, maxRadius]]]]]) -> circles
+Finds circles in a grayscale image using the Hough transform.
+
+cv.HoughLines(image, rho, theta, threshold[, lines[, srn[, stn[, min_theta[, max_theta]]]]]) -> lines
+Finds lines in a binary image using the standard Hough transform.
+
+cv.HoughLinesP(image, rho, theta, threshold[, lines[, minLineLength[, maxLineGap]]]) -> lines
+Finds line segments in a binary image using the probabilistic Hough transform.
+
+cv.HoughLinesPointSet(point, lines_max, threshold, min_rho, max_rho, rho_step, min_theta, max_theta, theta_step[, lines]) -> lines
+Finds lines in a set of points using the standard Hough transform.
+
+cv.preCornerDetect(src, ksize[, dst[, borderType]]) -> dst
+Calculates a feature map for corner detection.
+
+cv.calcBackProject(images, channels, hist, ranges[, backProject[, scale[, uniform]]]) -> backProject
+Calculates the back projection of a histogram.
+
+cv.calcHist(images, channels, mask, histSize, ranges[, hist[, accumulate[, uniform]]]) -> hist
+Calculates a histogram of a set of arrays.
+
+cv.compareHist(H1, H2, method) -> retval
+Compares two histograms.
+
+cv.createCLAHE([clipLimit[, tileGridSize]]) -> retval
+Creates a smart pointer to a cv.CLAHE object and initializes it.
+
+cv.equalizeHist(src) -> dst
+Equalizes the histogram of a grayscale image.
+
+cv.addWeighted(src1, alpha, src2, beta, gamma[, dst[, dtype]]) -> dst
+Calculates the weighted sum of two arrays.
+
+cv.normalize(src, dst[, alpha[, beta[, norm_type[, dtype[, mask]]]]]) -> dst
+Normalizes the norm or value range of an array.
