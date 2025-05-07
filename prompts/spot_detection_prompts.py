@@ -155,7 +155,7 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
             seed=seed,
             dataset_info=self.dataset_info, # Access class attribute
             dataset_path=dataset_path,
-            summary_prompt=None, # Access class attribute
+            # summary_prompt=None, # Access class attribute
             task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
             pipeline_metrics_info=self.pipeline_metrics_info # Access class attribute

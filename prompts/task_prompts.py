@@ -14,7 +14,7 @@ class TaskPrompts:
     dataset_path : str
 
     dataset_info : str
-    summary_prompt : str
+    # summary_prompt : str
     task_details : str
     pipeline_metrics_info : str
     checkpoint_path : Optional[str] = None

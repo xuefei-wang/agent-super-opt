@@ -208,18 +208,6 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
         Our ultimate goal is to increase the average_precision as much as possible (0.95 is the target).
         """
 
-    summary_prompt = """
-    Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
-    Follow the format:
-    {
-    "average_precision": ...,
-    "preprocessing_function": "
-        ```python
-        YOUR_CODE_HERE
-        ```
-        ",
-    }
-    """
     # --- End of CLASS attributes ---
 
     def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
@@ -229,7 +217,7 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             seed=seed,
             dataset_info=self.dataset_info, # Access class attribute
             dataset_path=dataset_path,
-            summary_prompt=self.summary_prompt, # Access class attribute
+            # summary_prompt=self.summary_prompt, # Access class attribute
             task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
             pipeline_metrics_info=self.pipeline_metrics_info # Access class attribute

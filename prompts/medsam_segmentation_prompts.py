@@ -183,19 +183,19 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         - The `nsd_metric` is the normalized surface distance (NSD) score and is more sensitive to distance and boundary calculations.
     """
 
-    summary_prompt = """
-    Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
-    Follow the format:
-    {
-    "dsc_metric": ...,
-    "nsd_metric": ...,
-    "preprocessing_function": "
-        ```python
-        YOUR_CODE_HERE
-        ```
-        ",
-    }
-    """
+    # summary_prompt = """
+    # Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
+    # Follow the format:
+    # {
+    # "dsc_metric": ...,
+    # "nsd_metric": ...,
+    # "preprocessing_function": "
+    #     ```python
+    #     YOUR_CODE_HERE
+    #     ```
+    #     ",
+    # }
+    # """
     # --- End of CLASS attributes ---
 
     def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
@@ -205,7 +205,7 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             seed=seed,
             dataset_info=self.dataset_info, # Access class attribute
             dataset_path=dataset_path,
-            summary_prompt=self.summary_prompt, # Access class attribute
+            # summary_prompt=self.summary_prompt, # Access class attribute
             task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
             pipeline_metrics_info=self.pipeline_metrics_info, # Access class attribute
