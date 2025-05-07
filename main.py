@@ -238,7 +238,7 @@ def save_seed_list(n, file_path, initial_seed):
     
     return uuids
     
-def main(args: argparse.Namespace, executor: CodeExecutor):
+def main(args: argparse.Namespace):
     
     output_function_bank = os.path.join(args.output,"preprocessing_func_bank.json")
     
@@ -252,9 +252,9 @@ def main(args: argparse.Namespace, executor: CodeExecutor):
     
     # Load task prompts
     if args.experiment_name == "spot_detection":
-        from prompts.spot_detection_prompts import SpotDetectionPrompts
-        prompt_class = SpotDetectionPrompts
-        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        from prompts.spot_detection_prompts import SpotDetectionPrompts, SpotDetectionPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
+        prompt_class = SpotDetectionPromptsWithSkeleton
+        # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
@@ -397,19 +397,19 @@ if __name__ == "__main__":
     # executor = JupyterCodeExecutor(server, output_dir=args.output, timeout=300) # very high timeout for long running tasks
     # executor = LocalCommandLineCodeExecutor(work_dir=work_dir, timeout=300)
 
-    if args.experiment_name == "spot_detection":
-        from prompts.spot_detection_prompts import SpotDetectionPrompts
-        prompt_class = SpotDetectionPrompts
-    elif args.experiment_name == "cellpose_segmentation":
-        from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
-        prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
-    elif args.experiment_name == "medSAM_segmentation":
-        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
-        prompt_class = MedSAMSegmentationPrompts
-    else:
-        raise ValueError(f"Experiment name {args.experiment_name} not supported")    
-    
-    executor = TemplatedLocalCommandLineCodeExecutor(template_script_func=prompt_class, placeholder=_PREPROCESSING_FUNCTION_PLACEHOLDER, work_dir=work_dir, timeout=300)
+    # if args.experiment_name == "spot_detection":
+    #     from prompts.spot_detection_prompts import SpotDetectionPrompts
+    #     prompt_class = SpotDetectionPrompts
+    # elif args.experiment_name == "cellpose_segmentation":
+    #     from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
+    #     prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
+    # elif args.experiment_name == "medSAM_segmentation":
+    #     from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
+    #     prompt_class = MedSAMSegmentationPrompts
+    # else:
+    #     raise ValueError(f"Experiment name {args.experiment_name} not supported")
 
-        
-    main(args, executor) 
+    # executor = TemplatedLocalCommandLineCodeExecutor(template_script_func=prompt_class, placeholder=_PREPROCESSING_FUNCTION_PLACEHOLDER, work_dir=work_dir, timeout=300)
+
+
+    main(args)
