@@ -20,7 +20,7 @@ from prompts.task_prompts import TaskPrompts
 from src.utils import set_gpu_device
 from prompts.agent_prompts import (
     sys_prompt_code_writer,
-    sys_prompt_code_verifier,
+    # sys_prompt_code_verifier,
 )
 
 from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
@@ -56,17 +56,17 @@ def set_up_agents(executor: CodeExecutor):
         code_execution_config=False,  # Turn off code execution for this agent.
         human_input_mode="NEVER",
     )
-    code_verifier_agent = ConversableAgent(
-        "code_verifier",
-        system_message=sys_prompt_code_verifier,
-        llm_config={
-            "config_list": [
-                {"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}
-            ]
-        },
-        code_execution_config=False,  # Turn off code execution for
-        human_input_mode="NEVER",
-    )
+    # code_verifier_agent = ConversableAgent(
+    #     "code_verifier",
+    #     system_message=sys_prompt_code_verifier,
+    #     llm_config={
+    #         "config_list": [
+    #             {"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}
+    #         ]
+    #     },
+    #     code_execution_config=False,  # Turn off code execution for
+    #     human_input_mode="NEVER",
+    # )
     
     def state_transition(last_speaker, groupchat):
         ''' Transition between speakers in an agent groupchat '''
@@ -76,16 +76,18 @@ def set_up_agents(executor: CodeExecutor):
             return code_writer_agent
 
         if last_speaker is code_writer_agent:
-            return code_verifier_agent
-        elif last_speaker is code_verifier_agent:
-            return code_executor_agent
+            return code_executor_agent #code_verifier_agent
+        # elif last_speaker is code_verifier_agent:
+        #     return code_executor_agent
         elif last_speaker is code_executor_agent:
             if "exitcode: 1" in messages[-1]["content"]:
                 return code_writer_agent
             else:
                 return code_writer_agent
     
-    return code_executor_agent, code_writer_agent, code_verifier_agent, state_transition
+    # return code_executor_agent, code_writer_agent, code_verifier_agent, state_transition
+    return code_executor_agent, code_writer_agent, state_transition
+
 
 # Load documentation and dataset information
 # with open("artifacts/docs.md", "r") as file:
@@ -194,10 +196,17 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
 
     ## Preprocessing Function API:
     ```python
-    from src.data_io import ImageData
+    # Necessary imports for the function logic (if any)
+    import cv2 as cv
     def preprocess_images(images: ImageData) -> ImageData:
-        # YOUR CODE HERE
-        return preprocessed_images
+        # Function logic here
+        processed_images_list = []
+        for img_array in images.raw:
+            img_array = np.copy(img_array) # Make a copy of the image array to avoid modifying the original
+            processed_img = img_array # Replace with actual processing
+            processed_images_list.append(processed_img)
+        output_data = ImageData(raw=processed_images_list, batch_size=images.batch_size)
+        return output_data
     ```
 
     ## Documentation on the `ImageData` class:
@@ -286,22 +295,25 @@ def main(args: argparse.Namespace):
         from prompts.spot_detection_prompts import SpotDetectionPrompts, SpotDetectionPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = SpotDetectionPromptsWithSkeleton
         sampling_function = lambda x: x['class_loss'] + x['regress_loss']
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         sampling_function = lambda x: x["average_precision"]
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
         sampling_function = lambda x: x['dsc_metric'] + x['nsd_metric']
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path}
 
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
 
     # Set GPU device
-    set_gpu_device(my_gpu_id)
+    # set_gpu_device(my_gpu_id)
     
     seed_list_file = os.path.join(args.output,"seed_list.txt")
     # Generate seed list
@@ -314,13 +326,8 @@ def main(args: argparse.Namespace):
 
         for i in range(num_optim_iter):
 
-
-            prompts = prompt_class(
-                gpu_id=args.gpu_id,
-                seed=seed_list[i],
-                dataset_path=args.dataset,
-                function_bank_path=output_function_bank,
-            )
+            kwargs_for_prompt_class["seed"] = seed_list[i]
+            prompts = prompt_class(**kwargs_for_prompt_class)
             
             executor_instance = TemplatedLocalCommandLineCodeExecutor(
                 template_script_func=prompts.run_pipeline_prompt,
@@ -330,14 +337,16 @@ def main(args: argparse.Namespace):
             )
 
             # Set up agents
-            code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents(executor_instance)
+            # code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents(executor_instance)
+            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance)
+
             
 
             group_chat = GroupChat(
                 agents=[
                     code_executor_agent,
                     code_writer_agent,
-                    code_verifier_agent,
+                    # code_verifier_agent,
                 ],
                 messages=[],
                 max_round=max_round,
@@ -360,8 +369,8 @@ def main(args: argparse.Namespace):
 
             prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=5, total_iterations=num_optim_iter)}"
             
-            chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method="reflection_with_llm",
-                                            summary_args={"summary_prompt": prompts.summary_prompt},
+            chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
+                                            # summary_args={"summary_prompt": prompts.summary_prompt},
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, args.output)
 
