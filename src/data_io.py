@@ -166,10 +166,6 @@ class ImageData:
                 # Ensure mask has either 2D or 3D shape
                 if not (len(mask.shape) == 2 or (len(mask.shape) == 3 and mask.shape[2] == 1)):
                     raise ValueError(f"Mask at index {i} has invalid shape {mask.shape}, expected (H,W) or (H,W,1)")
-                
-                # Check spatial dimensions match
-                if mask.shape[:2] != img.shape[:2]:
-                    raise ValueError(f"Mask shape {mask.shape[:2]} does not match image {i} dimensions {img.shape[:2]}")
         
         # Similar handling for predicted_masks
         if self.predicted_masks is not None:
@@ -192,10 +188,6 @@ class ImageData:
                 # Ensure mask has either 2D or 3D shape
                 if not (len(pmask.shape) == 2 or (len(pmask.shape) == 3 and pmask.shape[2] == 1)):
                     raise ValueError(f"Predicted mask at index {i} has invalid shape {pmask.shape}, expected (H,W) or (H,W,1)")
-                
-                # Check spatial dimensions match
-                if pmask.shape[:2] != img.shape[:2]:
-                    raise ValueError(f"Predicted mask shape {pmask.shape[:2]} doesn't match image {i} dimensions {img.shape[:2]}")
 
 
         # Validate channel_names
@@ -700,4 +692,3 @@ class NpzDataset(BaseDataset):
         """Get list of sequential image IDs."""
         with np.load(self.path) as data:
             return list(range(len(data["X"])))
-
