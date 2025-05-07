@@ -1,4 +1,7 @@
 from prompts.task_prompts import TaskPrompts
+_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTION_INSERT ---"
+import textwrap
+import os
 
 class SpotDetectionPrompts(TaskPrompts):
     """Task prompts for biological cell spot detection."""
@@ -116,3 +119,82 @@ class SpotDetectionPrompts(TaskPrompts):
     
     def save_function_prompt(self) -> str:
         return self.save_to_function_bank_prompt.format(function_bank_path=self.function_bank_path)
+
+
+class SpotDetectionPromptsWithSkeleton(TaskPrompts):
+    """Task prompts for cell spot detection. Skeletonized version."""
+
+    # --- Define these as CLASS attributes ---
+    dataset_info = """
+    ```markdown
+    This is a single-channel cell spot detection dataset. IMPORTANT: The cell images have dimensions (B, L, W, C) = (batch, length, width, channel).
+    ```
+    """
+
+    task_details = """
+    You will work together to complete the following instructions in order:
+    1. View the function bank provided in the prompt to see previous preprocessing functions and their performance metrics.
+    2. Based on previous evaluations, suggest a new unique preprocessing function that may improve the performance metrics of the spot detector.
+    3. Plug the preprocessing function into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
+    4. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script. Do not terminate until you can verify the output of the code. 
+    Make sure that the entire pipeline runs to end-to-end with the new preprocessing function and computes metrics before saving to function bank.
+    """
+
+    pipeline_metrics_info = """
+    {
+    class_loss: loss from one-hot encoded 2D matrix, where 1 is a spot and 0 is not a spot
+    regress_loss: loss 2D matrix where each entry is distance from a predicted spot
+    }
+    """
+    # --- End of CLASS attributes ---
+
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
+        # Call super using the class attributes
+        super().__init__(
+            gpu_id=gpu_id,
+            seed=seed,
+            dataset_info=self.dataset_info, # Access class attribute
+            dataset_path=dataset_path,
+            summary_prompt=None, # Access class attribute
+            task_details=self.task_details,     # Access class attribute
+            function_bank_path=function_bank_path,
+            pipeline_metrics_info=self.pipeline_metrics_info # Access class attribute
+        )
+        # Assign instance attributes
+        self.gpu_id = gpu_id
+        self.seed = seed
+        self.dataset_path = dataset_path
+        self.function_bank_path = function_bank_path
+
+    def run_pipeline_prompt(self) -> str:
+        """
+        Reads the template script from a file, replaces configuration
+        placeholders, DEDENTS and STRIPS the result, and returns the
+        script string containing the function placeholder.
+        """
+        template_file_path = os.path.join(os.path.dirname(__file__), "spot_detection_execution-template.py.txt")
+
+        try:
+            with open(template_file_path, 'r') as f:
+                template_content = f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Execution template file not found at: {template_file_path}")
+        except Exception as e:
+            raise RuntimeError(f"Error reading execution template file: {e}")
+
+        replacement_values = {
+            "gpu_id": str(self.gpu_id),
+            "seed": str(self.seed),
+            "dataset_path": self.dataset_path.replace("\\", "/"),
+            "function_bank_path": self.function_bank_path.replace("\\", "/"),
+            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
+        }
+
+        script_with_config = template_content
+        for key, value in replacement_values.items():
+            placeholder_tag = "{" + key + "}"
+            script_with_config = script_with_config.replace(placeholder_tag, value)
+
+        # --- FIX: Apply dedent and strip before returning ---
+        dedented_script = textwrap.dedent(script_with_config)
+        return dedented_script.strip()

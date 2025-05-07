@@ -115,7 +115,8 @@ class CellposeTool(BaseSegmenter):
                 total_loss += mask_loss.item()
 
             losses["bce_loss"] = total_loss / len(pred_masks)
-        return metrics, losses
+        return {"average_precision": metrics["average_precision"][0].item()}
+        # return metrics, losses
 
     def preprocess(self, image_data: ImageData) -> ImageData:
         """We don't need to preprocess the images for Cellpose"""
@@ -123,8 +124,9 @@ class CellposeTool(BaseSegmenter):
 
     def loadData(self, data_path: str) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """Load the data from the data path and return a tuple of lists of raw images and gt masks, each as numpy arrays"""
+        max_val = 65535 # 16-bit images
         files = sorted(glob.glob(data_path + '*_img.png'))
-        raw_images = [imread(f) for f in files]
+        raw_images = [(imread(f)).astype(np.float32)/max_val for f in files]
         gt_masks = [imread(f.split('.')[0][:-3] + 'masks' + '.' + f.split('.')[1]) for f in files]
         gt_masks = [np.expand_dims(mask, axis=2) for mask in gt_masks]
         return raw_images, gt_masks

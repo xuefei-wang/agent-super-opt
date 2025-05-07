@@ -5,6 +5,9 @@ from monai.metrics import DiceMetric
 from monai.metrics import compute_surface_dice
 from skimage import transform
 import torch.nn.functional as F
+import os
+import pickle
+
 
 try:
     from data_io import ImageData
@@ -58,8 +61,8 @@ class MedSAMTool():
     MedSAMTool is a class that provides a simple interface for the MedSAM model
     """
 
-    def __init__(self, checkpoint_path, model_name='medsam', gpu_id: int = 0, **kwargs):
-        self.checkpoint_path = checkpoint_path
+    def __init__(self, checkpoint_path="/workspace/data/medsam_vit_b.pth", model_name='medsam', gpu_id: int = 0, **kwargs):
+        self.checkpoint_path = "/workspace/data/medsam_vit_b.pth"
         if torch.cuda.is_available() and gpu_id < torch.cuda.device_count():
             self.device = torch.device(f"cuda:{gpu_id}")
         else:
@@ -139,3 +142,17 @@ class MedSAMTool():
     
     def preprocess(self, image_data: ImageData) -> ImageData:
         return image_data
+    
+    def loadData(self, data_path: str) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        # Load data
+        unpacked_info_path = os.path.join(data_path, "unpacked_info.pkl")
+        resized_imgs_path = os.path.join(data_path, "resized_imgs.pkl")
+
+        with open(unpacked_info_path, "rb") as f:
+            _, _, masks = pickle.load(f)
+
+        with open(resized_imgs_path, "rb") as f:
+            imgs, boxes = pickle.load(f)
+
+        return imgs, boxes, masks
+
