@@ -260,9 +260,8 @@ def main(args: argparse.Namespace):
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
     elif args.experiment_name == "medSAM_segmentation":
-        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
-        prompt_class = MedSAMSegmentationPrompts
-        prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank, checkpoint_path=checkpoint_path)
+        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
+        prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
 
@@ -285,7 +284,7 @@ def main(args: argparse.Namespace):
                 gpu_id=args.gpu_id,
                 seed=seed_list[i],
                 dataset_path=args.dataset,
-                function_bank_path=output_function_bank
+                function_bank_path=output_function_bank,
             )
             
             executor_instance = TemplatedLocalCommandLineCodeExecutor(
@@ -397,6 +396,7 @@ if __name__ == "__main__":
     # executor = JupyterCodeExecutor(server, output_dir=args.output, timeout=300) # very high timeout for long running tasks
     # executor = LocalCommandLineCodeExecutor(work_dir=work_dir, timeout=300)
 
+
     # if args.experiment_name == "spot_detection":
     #     from prompts.spot_detection_prompts import SpotDetectionPrompts
     #     prompt_class = SpotDetectionPrompts
@@ -404,8 +404,8 @@ if __name__ == "__main__":
     #     from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
     #     prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
     # elif args.experiment_name == "medSAM_segmentation":
-    #     from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts
-    #     prompt_class = MedSAMSegmentationPrompts
+    #     from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
+    #     prompt_class = MedSAMSegmentationPromptsWithSkeleton
     # else:
     #     raise ValueError(f"Experiment name {args.experiment_name} not supported")
 

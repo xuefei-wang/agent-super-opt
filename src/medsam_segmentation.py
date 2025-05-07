@@ -1,36 +1,67 @@
-import os
-from typing import Optional, Dict, Any, Tuple, List
-from abc import ABC, abstractmethod
+from typing import Dict, Tuple, List
 import numpy as np
 import torch
-from torch import nn
-import glob
-import monai
+from monai.metrics import DiceMetric
+from monai.metrics import compute_surface_dice
+from skimage import transform
+import torch.nn.functional as F
+import os
+import pickle
 
 try:
     from data_io import ImageData
 except ImportError:
     from src.data_io import ImageData
 
-try:
-    from utils import set_gpu_device
-except ImportError:
-    from src.utils import set_gpu_device
-
-from medsam import medsam_inference, show_box, show_mask, preprocess, visualize_results
 from segment_anything import build_sam_vit_b
-from cv2 import imread
 
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
+def medsam_inference(medsam_model, img_embed, box_torch, H, W, batch_size):
+    print("\nInside medsam_inference()")
+    all_predictions = []
+
+    for i in range(0, img_embed.size(0), batch_size):
+        print(f"Processing batch {i // batch_size + 1}...")
+
+        img_embed_batch = img_embed[i:i + batch_size]
+        box_torch_batch = box_torch[i:i + batch_size]
+
+        sparse_embeddings, dense_embeddings = medsam_model.prompt_encoder(
+            points=None,
+            boxes=box_torch_batch,
+            masks=None,
+        )
+
+        low_res_logits, _ = medsam_model.mask_decoder(
+            image_embeddings=img_embed_batch,
+            image_pe=medsam_model.prompt_encoder.get_dense_pe(),
+            sparse_prompt_embeddings=sparse_embeddings,
+            dense_prompt_embeddings=dense_embeddings,
+            multimask_output=False,
+        )
+
+        low_res_pred = torch.sigmoid(low_res_logits)  # (B, 1, 256, 256)
+
+        low_res_pred = F.interpolate(
+            low_res_pred,
+            size=(H, W),
+            mode="bilinear",
+            align_corners=False,
+        )  # (B, 1, H, W)
+        
+        for j in range(low_res_pred.shape[0]):
+            pred = low_res_pred[j].squeeze().detach().cpu().numpy()  # (H, W)
+            medsam_seg = (pred > 0.5).astype(np.uint8)
+            all_predictions.append(torch.from_numpy(medsam_seg).unsqueeze(0))
+
+    return torch.cat(all_predictions, dim=0)  # (N, H, W)
 
 class MedSAMTool():
     """
     MedSAMTool is a class that provides a simple interface for the MedSAM model
     """
 
-    def __init__(self, checkpoint_path, model_name='medsam', gpu_id: int = 0, **kwargs):
-        self.checkpoint_path = checkpoint_path
+    def __init__(self, checkpoint_path="/workspace/data/medsam_vit_b.pth", model_name='medsam', gpu_id: int = 0, **kwargs):
+        self.checkpoint_path = "/workspace/data/medsam_vit_b.pth"
         if torch.cuda.is_available() and gpu_id < torch.cuda.device_count():
             self.device = torch.device(f"cuda:{gpu_id}")
         else:
@@ -38,202 +69,88 @@ class MedSAMTool():
             self.device = torch.device("cpu")
             
         self.kwargs = kwargs
-        
-    def _get_bounding_box(self, mask):
-        """
-        Calculate the bounding box from the ground truth mask.
-        
-        Args:
-            mask (numpy.ndarray): Ground truth mask with shape (H, W).
-            
-        Returns:
-            str: Bounding box in the format "[x_min, y_min, x_max, y_max]".
-        """
-        rows, cols = np.where(mask > 0)
-        
-        y_min, y_max = rows.min(), rows.max()
-        x_min, x_max = cols.min(), cols.max()
-        
-        return f"[{x_min},{y_min},{x_max},{y_max}]"
-
-    def predict(self, images: ImageData) -> np.ndarray:
-        """
-        Predict masks for a batch of images. According to the MedSAM paper,
-        the MedSAM model requires that input is resized to a uniform size
-        of 1024 x 1024 x 3.
-
-        Args:
-            images: ImageData object containing a batch of images. Contains 
-                'raw' and 'masks' attributes in the format of standard 
-                ImageData object [B, H, W, C].
-            
-        Returns:
-            List[np.ndarray]: A list of binary masks corresponding to each of 
-                the input images.
-        """
+    
+    def predict(self, images: ImageData, scaled_boxes, used_for_baseline) -> np.ndarray:
         medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
         medsam_model.to(self.device)
         medsam_model.eval()
+       
+        resized_imgs = images.raw
+        if used_for_baseline:   # also run min-max normalization
+            for i, img_1024 in enumerate(resized_imgs):
+                resized_imgs[i] = (img_1024 - img_1024.min()) / np.clip(
+                    img_1024.max() - img_1024.min(), a_min=1e-8, a_max=None
+                )
 
-        all_masks = []
-        for img_np, mask_np in zip(images.raw, images.masks):
-            # preprocess
-            box = self._get_bounding_box(mask_np)
-            image_embedding, box_1024, H, W, _, _ = preprocess(medsam_model, img_np, box, device=self.device)
-            _, mask = medsam_inference(medsam_model, image_embedding, box_1024, H, W)   
-            all_masks.append(mask)   
-        return all_masks
+        img_batch = torch.stack([
+            torch.tensor(img).float().permute(2, 0, 1)  # (3, H, W)
+            for img in resized_imgs
+        ]).to(self.device)  # (B, 3, H, W)
+        
+        batch_size = images.batch_size
+        all_embeddings = []
+        with torch.no_grad():
+            for i in range(0, img_batch.size(0), batch_size):
+                print(f"Processing batch {i // batch_size + 1}...")
+                batch = img_batch[i:i+batch_size]
+                temp_image_embedding = medsam_model.image_encoder(batch)  # (B, 256, 64, 64)
+                all_embeddings.append(temp_image_embedding)
+
+        image_embeddings = torch.cat(all_embeddings, dim=0)  # (B, 256, 64, 64)
+
+        scaled_boxes = np.array(scaled_boxes)
+        scaled_boxes = torch.tensor(scaled_boxes).float()
+        scaled_boxes = scaled_boxes.to(self.device)
+
+        torch.cuda.empty_cache()
+        medsam_seg = medsam_inference(medsam_model, image_embeddings, scaled_boxes, 512, 512, images.batch_size)
+        return medsam_seg
     
     def evaluate(self, pred_masks: List[np.ndarray], gt_masks: List[np.ndarray]) -> Tuple[Dict[str, float], Dict[str, float]]:
-        """
-        Evaluate detections against ground truth using the model output.
-
-        Args:
-            pred_masks: ndarray, predicted masks
-            gt_masks: ndarray, binary ground truth masks
+        resized_preds = []
+        for i in range(len(pred_masks)):
+            H, W = gt_masks[i].shape
+            resized_pred = transform.resize(
+                pred_masks[i].cpu().numpy(), (H, W), order=3, preserve_range=True, anti_aliasing=True
+            ).astype(np.uint8)
+            resized_preds.append(resized_pred)
+            
+        print("\nEvaluating predictions...")
+        spacing= (1.0, 1.0)  # Assuming isotropic spacing for simplicity
+        tolerance = 2.0
         
-        Returns:
-            Dict[str, float]: A dictionary containing the evaluation metrics.
-                - dice_loss: the dice similarity coefficient (DSC) score
-        """
-        total_dice_loss = 0
-        for pred, gt in zip(pred_masks, gt_masks):
-            pred_tensor = torch.tensor(pred, dtype=torch.float32)
-            gt_tensor = torch.tensor(gt / 255.0, dtype=torch.float32)
+        total_dsc, total_nsd = 0, 0
+        for i, (pred, gt) in enumerate(zip(resized_preds, gt_masks)):
+            gt_tensor = torch.tensor(gt).unsqueeze(0).unsqueeze(0)  # -> (1, 1, H, W)
+            pred_tensor = torch.tensor(pred).unsqueeze(0).unsqueeze(0)  # -> (1, 1, H, W)
 
-            dice_loss = monai.losses.DiceLoss(sigmoid=True, squared_pred=True, reduction='mean')
-            immediate_loss = dice_loss(pred_tensor, gt_tensor)
-            print("immediate_loss", immediate_loss)
-            total_dice_loss += immediate_loss
-        
-        return {"dice_loss": total_dice_loss.item() / len(pred_masks)}
+            dice_metric = DiceMetric(include_background=False, reduction="mean")
+            immediate_dsc_metric = dice_metric(pred_tensor, gt_tensor)
 
+            immediate_nsd_metric = compute_surface_dice(pred_tensor, gt_tensor, class_thresholds=[tolerance], spacing=spacing)
+            print(f"{i} | DSC: {round(immediate_dsc_metric.item(), 6)} | NSD: {round(immediate_nsd_metric.item(), 6)}")
+            
+            total_dsc += immediate_dsc_metric
+            total_nsd += immediate_nsd_metric
+
+        print("\n=======================")
+        print(f"Average DSC metric: {round(total_dsc.item() / len(pred_masks), 6)}")
+        print(f"Average NSD metric: {round(total_nsd.item() / len(pred_masks), 6)}")
+        return {"dsc_metric": total_dsc.item() / len(pred_masks),
+                "nsd_metric": total_nsd.item() / len(pred_masks)}
+    
     def preprocess(self, image_data: ImageData) -> ImageData:
         return image_data
-
-    def visualize(self, image_data, pred_masks, gt_masks):
-        _, axes = plt.subplots(3, 2, figsize=(24, 24))
-        for i, (image, pred_mask, gt_mask) in enumerate(zip(image_data.raw, pred_masks, gt_masks)):
-            # Plot predicted mask
-            ax = axes[i, 0]
-            ax.imshow(image)
-            ax.imshow(pred_mask, alpha=0.5, cmap='gray')
-           
-           # Plot bounding box
-            box_string = self._get_bounding_box(gt_mask)
-            x1, y1, x2, y2 = map(int, box_string.strip('[]').split(','))
-            width, height = x2 - x1, y2 - y1
-            rect_pred = patches.Rectangle((x1, y1), width, height, linewidth=2, edgecolor='r', facecolor='none')
-            ax.add_patch(rect_pred)
-            ax.set_title(f"Image {i+1}: Predicted Mask")
-            ax.axis('off')
-
-            # Plot ground truth mask
-            ax = axes[i, 1]
-            ax.imshow(image)
-            ax.imshow(gt_mask, alpha=0.5, cmap='gray')
-            rect_gt = patches.Rectangle((x1, y1), width, height, linewidth=2, edgecolor='r', facecolor='none')
-            ax.add_patch(rect_gt)
-            ax.set_title(f"Image {i+1}: Ground Truth Mask")
-            ax.axis('off')
-
-        plt.tight_layout()
-        plt.show()
-
-def _get_binary_masks(nonbinary_mask):
-        """ 
-        Given nonbinary mask which encodes N masks, return N binary masks which
-        should encode the same information.
-        
-        Parameters:
-            - nonbinary_mask: ndarray of shape (H, W)
-        Returns:
-            - binary_masks: ndarray of shape (N, H, W)
-        """
-        binary_masks = []
-        for i in np.unique(nonbinary_mask)[1:]:
-            binary_mask = (nonbinary_mask == i).astype(np.uint8)
-            binary_masks.append(binary_mask.copy())
-        binary_masks = np.stack(binary_masks, axis=0)
-        return binary_masks
-
-def prepare_image_data(data_path, num_files, batch_size=8) -> ImageData:
-    """
-    Construct an ImageData object from the MedSAM dataset with NPZ format.
-
-    Args:
-        data_path: str, path to the dataset which includes image and mask
-            directories.
-        num_files: int, number of files to load
-        batch_size: int, batch size for the ImageData object
     
-    Returns:
-        ImageData object containing the images and masks
-    """
-    img_path = os.path.join(data_path, 'imgs')
-    mask_path = os.path.join(data_path, 'gts')
+    def loadData(self, data_path: str) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        # Load data
+        unpacked_info_path = os.path.join(data_path, "unpacked_info.pkl")
+        resized_imgs_path = os.path.join(data_path, "resized_imgs.pkl")
 
-    img_files = sorted(glob.glob(os.path.join(img_path, '*')))[:num_files]
-    mask_files = sorted(glob.glob(os.path.join(mask_path, '*')))[:num_files]
+        with open(unpacked_info_path, "rb") as f:
+            _, _, masks = pickle.load(f)
 
-    raw_images, raw_boxes, raw_masks = [], [], []
-    for img_npz_file, mask_npz_file in zip(img_files, mask_files):
-        img_data, mask_data = np.load(img_npz_file), np.load(mask_npz_file)  
-        
-        image, boxes, nonbinary_mask = img_data['imgs'], img_data["boxes"], mask_data['gts']
-        binary_masks = _get_binary_masks(nonbinary_mask)
-        
-        for box, mask in zip(boxes, binary_masks):
-            x1, y1, x2, y2 = box
-            box_string = f"[{x1},{y1},{x2},{y2}]"
-            
-            raw_images.append(image)
-            raw_boxes.append(box_string)
-            raw_masks.append(mask)
+        with open(resized_imgs_path, "rb") as f:
+            imgs, boxes = pickle.load(f)
 
-    images = ImageData(raw=raw_images,
-                    batch_size=batch_size,
-                    image_ids=[i for i in range(len(raw_images))],
-                    masks=raw_masks,
-                    predicted_masks=raw_masks)
-    return images
-
-
-def prepare_image_data_png(data_path, num_files, batch_size=8) -> ImageData:
-    """
-    Construct an ImageData object from the MedSAM dataset with PNG format.
-
-    Args:
-        data_path: str, path to the dataset which includes image and mask
-            directories.
-        num_files: int, number of files to load
-        batch_size: int, batch size for the ImageData object
-    
-    Returns:
-        ImageData object containing the images and masks
-    """
-    img_path = os.path.join(data_path, 'CXR_png')
-    mask_path = os.path.join(data_path, 'masks')
-
-    img_files = sorted(glob.glob(os.path.join(img_path, '*')))[:num_files]
-    mask_files = sorted(glob.glob(os.path.join(mask_path, '*')))[:num_files]
-
-    raw_images = [imread(f) for f in img_files]
-
-    raw_masks = [imread(f) for f in mask_files]
-    raw_masks = [mask[:, :, 0] if len(mask.shape) == 3 else mask for mask in raw_masks]
-
-    images = ImageData(raw=raw_images,
-                    batch_size=batch_size,
-                    image_ids=[i for i in range(num_files)],
-                    masks=raw_masks,
-                    predicted_masks=raw_masks)
-    return images
-
-if __name__ == "__main__":
-    medsam_tool = MedSAMTool()
-    images = prepare_image_data(data_path="data/medsam_data", num_files=2, batch_size=1)
-    pred_masks = medsam_tool.predict(images)
-    losses = medsam_tool.evaluate(pred_masks, images.masks)
-    print(losses)
-    print('done')
+        return imgs, boxes, masks
