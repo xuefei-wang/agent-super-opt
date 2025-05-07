@@ -103,6 +103,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
                 masks=masks,
                 predicted_masks=masks)
 
+
             # TODO: add your preprocessing function here
             # def preprocess_images(images: ImageData) -> ImageData:
             #   YOUR CODE HERE
@@ -114,6 +115,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
 
             # Calculate Metrics
             metrics = segmenter.evaluate(pred_masks, images.masks)
+
 
             df = pd.DataFrame([metrics])
             overall_metrics = df.mean().to_dict()

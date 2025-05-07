@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import os
 import pickle
 
+
 try:
     from data_io import ImageData
 except ImportError:
@@ -154,3 +155,4 @@ class MedSAMTool():
             imgs, boxes = pickle.load(f)
 
         return imgs, boxes, masks
+

@@ -170,6 +170,7 @@ class ImageData:
                 # Check spatial dimensions match
                 # if mask.shape[:2] != img.shape[:2]:
                 #     raise ValueError(f"Mask shape {mask.shape[:2]} does not match image {i} dimensions {img.shape[:2]}")
+
         
         # Similar handling for predicted_masks
         if self.predicted_masks is not None:
@@ -196,6 +197,7 @@ class ImageData:
                 # Check spatial dimensions match
                 # if pmask.shape[:2] != img.shape[:2]:
                 #     raise ValueError(f"Predicted mask shape {pmask.shape[:2]} doesn't match image {i} dimensions {img.shape[:2]}")
+
 
 
         # Validate channel_names
