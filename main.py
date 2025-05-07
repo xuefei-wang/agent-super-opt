@@ -197,6 +197,7 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     ## Preprocessing Function API:
     ```python
     # Necessary imports for the function logic (if any)
+    # ImageData is already imported in the environment
     import cv2 as cv
     def preprocess_images(images: ImageData) -> ImageData:
         # Function logic here
