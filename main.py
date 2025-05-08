@@ -422,7 +422,7 @@ def main(args: argparse.Namespace):
     if args.experiment_name == "spot_detection":
         from prompts.spot_detection_prompts import SpotDetectionPrompts, SpotDetectionPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = SpotDetectionPromptsWithSkeleton
-        sampling_function = lambda x: x['overall_metrics']['class_loss'] + x['overall_metrics']['regress_loss']
+        sampling_function = lambda x: x['overall_metrics']['f1_score']
         kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/spot_detection_expert.py.txt"
@@ -480,7 +480,7 @@ def main(args: argparse.Namespace):
                 elif args.experiment_name == "medSAM_segmentation":
                     baseline_metric = "Expert DSC + NSD score: "
                 elif args.experiment_name == "spot_detection":
-                    baseline_metric = "Expert classification loss + regression loss score: "
+                    baseline_metric = "Expert F1 score: "
                 baseline_metric += str(sampling_function(last_n(output_function_bank, n=1)[0]))
                 with open(output_function_bank, "w") as file:
                     json.dump([], file)
