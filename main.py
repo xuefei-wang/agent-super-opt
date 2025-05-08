@@ -187,7 +187,6 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     import cv2 as cv
     def preprocess_images(images: ImageData) -> ImageData:
         # Function logic here
-        # You MUST comment {{gpu_id}} here
         processed_images_list = []
         for img_array in images.raw:
             img_array = np.copy(img_array) # Make a copy of the image array to avoid modifying the original
