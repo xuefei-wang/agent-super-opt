@@ -284,7 +284,7 @@ def save_seed_list(n, file_path, initial_seed):
     
     return uuids
 
-def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round, llm_model):
+def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round, llm_model, n_top, n_worst, n_last):
      """Save comprehensive information about the run configuration."""
      # Create a dictionary with all the run information
      run_info = {
@@ -296,6 +296,9 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "num_optimization_iterations": num_optim_iter,
          "max_rounds": max_round,
          "history_threshold": history_threshold,
+         "n_top": n_top,
+         "n_worst": n_worst,
+         "n_last": n_last,
          "llm_model": llm_model,
          "prompts_data": {
              "task_specific_prompts": {
@@ -374,7 +377,7 @@ def main(args: argparse.Namespace):
     my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = args.random_seed # Random seed for reproducibility
-    num_optim_iter = 10#30 # Number of optimization iterations
+    num_optim_iter = 30 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
     # history_threshold = 5
@@ -408,7 +411,7 @@ def main(args: argparse.Namespace):
     # set_gpu_device(my_gpu_id)
     
     initial_prompts = prompt_class(**kwargs_for_prompt_class)
-    save_run_info(args, run_output_dir, num_optim_iter, initial_prompts, cur_time, history_threshold=history_threshold, max_round=max_round, llm_model=llm_model)
+    save_run_info(args, run_output_dir, num_optim_iter, initial_prompts, cur_time, history_threshold=args.history_threshold, max_round=max_round, llm_model=llm_model, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last)
     create_latest_symlink(experiment_output_dir, run_output_dir)
     
     seed_list_file = os.path.join(args.output,"seed_list.txt")
