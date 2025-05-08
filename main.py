@@ -175,7 +175,7 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     return sample
 
-def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts, sampling_function: callable, current_iteration: int, history_threshold: int=0, total_iterations: int=30, maximize = True):
+def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts, sampling_function: callable, current_iteration: int, history_threshold: int=0, total_iterations: int=30, maximize = True, n_top: int=5, n_worst: int=5, n_last: int=5):
 
     prompt_pipeline_optimization = f"""
 
@@ -205,7 +205,7 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     {prompts.pipeline_metrics_info}
     
     ## Function bank sample:
-    {function_bank_sample(function_bank_path, n_top=5, n_worst=5, n_last=5, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations)}
+    {function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations)}
 
     ## OpenCV Function APIs:
     {opencv_APIs}
@@ -377,7 +377,7 @@ def main(args: argparse.Namespace):
     num_optim_iter = 10#30 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
-    history_threshold = 5
+    # history_threshold = 5
     llm_model = "gpt-4.1" # Do not modify this string
     # llm_model = "gemini-2.5-pro"
     # llm_model = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
@@ -463,7 +463,7 @@ def main(args: argparse.Namespace):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=history_threshold, total_iterations=num_optim_iter)}"
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             # summary_args={"summary_prompt": prompts.summary_prompt},
@@ -533,7 +533,35 @@ if __name__ == "__main__":
         required=False,
         help="The working directory for the agent to access source code."
     )
-    
+
+    parser.add_argument(
+        "--n_top",
+        type=int,
+        default=5,
+        help="Number of top functions to show in the function bank."
+    )
+
+    parser.add_argument(
+        "--n_worst",
+        type=int,
+        default=5,
+        help="Number of worst functions to show in the function bank."
+    )
+
+    parser.add_argument(
+        "--n_last",
+        type=int,
+        default=5,
+        help="Number of last functions to show in the function bank."
+    )
+
+    parser.add_argument(
+        "--history_threshold",
+        type=int,
+        default=5,
+        help="Number of history threshold to show in the function bank."
+    )
+
     args = parser.parse_args()
 
     # Work directory
