@@ -267,7 +267,26 @@ def save_seed_list(n, file_path, initial_seed):
 
     return int_seeds # Return the list of integers
     
-    return uuids
+def warm_start(function_definition_path: str, task_prompts: TaskPrompts, function_placeholder: str) -> str:
+    '''
+    Load the expert baseline function definition from a file and pass to the template executor.
+    '''
+
+    print("Performing warm start with expert baseline function")
+
+    with open(function_definition_path, "r") as file:
+        function_definition = file.read()
+    
+    executor = TemplatedLocalCommandLineCodeExecutor(
+        template_script_func=task_prompts.run_pipeline_prompt,
+        placeholder=function_placeholder,
+        work_dir=work_dir,
+        timeout=300
+    )
+
+    output = executor.execute_code_blocks([CodeBlock(code=function_definition, language="python")])
+
+    print(output)
     
 def main(args: argparse.Namespace):
     
@@ -287,15 +306,18 @@ def main(args: argparse.Namespace):
         prompt_class = SpotDetectionPromptsWithSkeleton
         sampling_function = lambda x: x['class_loss'] + x['regress_loss']
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        baseline_function_path = "prompts/spot_detection_expert.py.txt"
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         sampling_function = lambda x: x["average_precision"]
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        baseline_function_path = "prompts/cellpose_segmentation_expert.py.txt"
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
         sampling_function = lambda x: x['dsc_metric'] + x['nsd_metric']
+        baseline_function_path = "prompts/medsam_segmentation_expert.py.txt"
 
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
@@ -311,6 +333,19 @@ def main(args: argparse.Namespace):
     with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{args.output}/cache") as cache:
         
         notes_shared = prepare_notes_shared(my_gpu_id)
+
+        # Run baseline and insert to function bank first
+        if args.warm_start:
+            warm_start(
+                baseline_function_path,
+                prompt_class(
+                    gpu_id=args.gpu_id,
+                    seed=0,
+                    dataset_path=args.dataset,
+                    function_bank_path=output_function_bank,
+                ),
+                _PREPROCESSING_FUNCTION_PLACEHOLDER
+            )
 
         for i in range(num_optim_iter):
 
@@ -418,6 +453,12 @@ if __name__ == "__main__":
         required=False,
         help="The working directory for the agent to access source code."
     )
+
+    parser.add_argument(
+        "--warm_start",
+        action='store_true'
+    )
+    
     
     args = parser.parse_args()
 

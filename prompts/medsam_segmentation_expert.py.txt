@@ -1,0 +1,4 @@
+from src.data_io import ImageData
+
+def preprocess_images(images: ImageData) -> ImageData:
+    return images

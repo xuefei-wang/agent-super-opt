@@ -1,0 +1,37 @@
+import numpy as np
+from src.data_io import ImageData
+
+def preprocess_images(images: ImageData) -> ImageData:
+    lower=1
+    upper=99
+    downsample=False
+
+    normalized_raw = []
+
+    for img in images.raw:
+        img = img.astype(np.float32)
+
+        if downsample and img.size > 224 ** 3:
+            nskip = [max(1, img.shape[i] // 224) for i in range(img.ndim)]
+            if img.ndim == 3:
+                nskip[0] = max(1, img.shape[0] // 50)
+            slc = tuple(slice(0, img.shape[i], nskip[i]) for i in range(img.ndim))
+            img_sample = img[slc]
+        else:
+            img_sample = img
+
+        p_low = np.percentile(img_sample, lower)
+        p_high = np.percentile(img_sample, upper)
+
+        if p_high - p_low > 1e-3:
+            img = (img - p_low) / (p_high - p_low)
+        else:
+            img.fill(0.0)
+
+        normalized_raw.append(img)
+
+    return ImageData(
+        raw=normalized_raw,
+        batch_size=len(normalized_raw),
+        image_ids=[i for i in range(len(normalized_raw))]
+    )
