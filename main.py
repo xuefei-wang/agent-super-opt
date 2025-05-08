@@ -316,6 +316,23 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
      with open(os.path.join(run_output_dir, "run_info.json"), "w") as file:
          json.dump(run_info, file, indent=4)
 
+def update_run_info_with_end_timestamp(run_output_dir: str):
+    """Adds the end timestamp to the run_info.json file."""
+    end_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_info_path = os.path.join(run_output_dir, "run_info.json")
+
+    if os.path.exists(run_info_path):
+        with open(run_info_path, "r") as file:
+            run_info_data = json.load(file)
+        
+        run_info_data["timestamp_finish"] = end_time
+        
+        with open(run_info_path, "w") as file:
+            json.dump(run_info_data, file, indent=4)
+    else:
+        print(f"Warning: {run_info_path} not found. Cannot add end timestamp.")
+
+
 
 def create_latest_symlink(experiment_output_dir, run_output_dir):
      """Create a symlink to the latest run for easier access."""
@@ -453,7 +470,7 @@ def main(args: argparse.Namespace):
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, run_output_dir)
 
-
+    update_run_info_with_end_timestamp(run_output_dir)
     if args.experiment_name == "cellpose_segmentation":
         os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
     elif args.experiment_name == "medSAM_segmentation":
