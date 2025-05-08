@@ -175,7 +175,19 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     return sample
 
-def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts, sampling_function: callable, current_iteration: int, history_threshold: int=0, total_iterations: int=30, maximize = True, n_top: int=5, n_worst: int=5, n_last: int=5):
+def prepare_prompt_pipeline_optimization(
+        notes_shared: str, 
+        function_bank_path: str, 
+        prompts : TaskPrompts, 
+        sampling_function: callable, 
+        current_iteration: int, 
+        history_threshold: int=0, 
+        total_iterations: int=30, 
+        maximize = True, 
+        n_top: int=5,
+        n_worst: int=5, 
+        n_last: int=5,
+        baseline_metric: str = ""):
 
     prompt_pipeline_optimization = f"""
 
@@ -197,6 +209,7 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     ```
     ## About the dataset: 
     {prompts.dataset_info}
+    {baseline_metric}
 
     ## Task Details:
     {prompts.task_details}
@@ -282,7 +295,27 @@ def save_seed_list(n, file_path, initial_seed):
 
     return int_seeds # Return the list of integers
     
-    return uuids
+def warm_start(function_definition_path: str, task_prompts: TaskPrompts, function_placeholder: str) -> str:
+    '''
+    Load the expert baseline function definition from a file and pass to the template executor.
+    '''
+
+    print("Performing warm start with expert baseline function")
+
+    with open(function_definition_path, "r") as file:
+        function_definition = file.read()
+    
+    executor = TemplatedLocalCommandLineCodeExecutor(
+        template_script_func=task_prompts.run_pipeline_prompt,
+        placeholder=function_placeholder,
+        work_dir=work_dir,
+        timeout=300
+    )
+
+    output = executor.execute_code_blocks([CodeBlock(code=function_definition, language="python")])
+
+    print(output)
+    
 
 def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round, llm_model, n_top, n_worst, n_last):
      """Save comprehensive information about the run configuration."""
@@ -392,15 +425,18 @@ def main(args: argparse.Namespace):
         sampling_function = lambda x: x['overall_metrics']['class_loss'] + x['overall_metrics']['regress_loss']
         kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        baseline_function_path = "prompts/spot_detection_expert.py.txt"
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         sampling_function = lambda x: x['overall_metrics']['average_precision']
         kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
+        baseline_function_path = "prompts/cellpose_segmentation_expert.py.txt"
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
+        baseline_function_path = "prompts/medsam_segmentation_expert.py.txt"
         sampling_function = lambda x: x['overall_metrics']['dsc_metric'] + x['overall_metrics']['nsd_metric']
         kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path}
 
@@ -422,6 +458,32 @@ def main(args: argparse.Namespace):
     with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{args.output}/cache") as cache:
         
         notes_shared = prepare_notes_shared(my_gpu_id, max_rounds=max_round)
+
+        # Run baseline and insert to function bank first
+        baseline_metric = ""
+        if args.warm_start:
+            warm_start(
+                baseline_function_path,
+                prompt_class(
+                    gpu_id=args.gpu_id,
+                    seed=0,
+                    dataset_path=args.dataset,
+                    function_bank_path=output_function_bank,
+                ),
+                _PREPROCESSING_FUNCTION_PLACEHOLDER
+            )
+
+            if args.metric_only:
+                # Get baseline metric and reset function bank
+                if args.experiment_name == "cellpose_segmentation":
+                    baseline_metric = "Expert average precision score: "
+                elif args.experiment_name == "medSAM_segmentation":
+                    baseline_metric = "Expert DSC + NSD score: "
+                elif args.experiment_name == "spot_detection":
+                    baseline_metric = "Expert classification loss + regression loss score: "
+                baseline_metric += str(sampling_function(last_n(output_function_bank, n=1)[0]))
+                with open(output_function_bank, "w") as file:
+                    json.dump([], file)
 
         for i in range(num_optim_iter):
 
@@ -466,7 +528,7 @@ def main(args: argparse.Namespace):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last)}"
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             # summary_args={"summary_prompt": prompts.summary_prompt},
@@ -537,6 +599,16 @@ if __name__ == "__main__":
         help="The working directory for the agent to access source code."
     )
 
+    parser.add_argument(
+        "--warm_start",
+        action='store_true'
+    )
+
+    parser.add_argument(
+        "--metric_only",
+        action="store_true"
+    )
+    
     parser.add_argument(
         "--n_top",
         type=int,
