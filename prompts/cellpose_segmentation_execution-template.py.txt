@@ -175,6 +175,8 @@ try:
             'overall_metrics': overall_metrics, # Known to be not None here
             'seed': seed,
             'timestamp': script_start_time,
+            'gpu_id': gpu_id,
+            'timestamp_finish': time.time(),
             'preprocessing_time': preprocessing_time,
             'prediction_time': prediction_time,
             'metrics_time': metrics_time,

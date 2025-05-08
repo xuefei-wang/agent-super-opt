@@ -5,6 +5,8 @@ import json
 import argparse
 import uuid
 import random
+from datetime import datetime
+import os
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock, CodeExecutor, DockerCommandLineCodeExecutor, LocalCommandLineCodeExecutor
@@ -29,7 +31,7 @@ from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 load_dotenv()
 
 
-def set_up_agents(executor: CodeExecutor):
+def set_up_agents(executor: CodeExecutor, llm_model: str):
     ''' Prepare 3 agents and state transition'''
     if isinstance(executor, JupyterCodeExecutor) or isinstance(executor, LocalCommandLineCodeExecutor) or isinstance(executor, TemplatedLocalCommandLineCodeExecutor):
         code_writer_prompt = sys_prompt_code_writer
@@ -50,7 +52,8 @@ def set_up_agents(executor: CodeExecutor):
         system_message=code_writer_prompt,
         llm_config={
             "config_list": [
-                {"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}
+                # {"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}
+                {"model": llm_model, "api_key": os.environ["OPENAI_API_KEY"]}
             ]
         },
         code_execution_config=False,  # Turn off code execution for this agent.
@@ -100,10 +103,11 @@ with open("assets/opencv_APIs.txt", "r") as file:
 
 
 
-def prepare_notes_shared(my_gpu_id):
+def prepare_notes_shared(my_gpu_id, max_rounds):
     notes_shared = f"""
     - Always check the documentation for the available APIs before reinventing the wheel
     - Use GPU {my_gpu_id} for running the pipeline, set `cuda: {my_gpu_id}` in the code snippet!
+    - You only have {max_rounds} rounds of each conversation to optimize the preprocessing function.
     - Don't suggest trying larger models as the model size is fixed.
     """
     return notes_shared
@@ -171,7 +175,7 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     return sample
 
-def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts, sampling_function: callable, current_iteration: int, history_threshold: int=0, total_iterations: int=30, maximize = True):
+def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: str, prompts : TaskPrompts, sampling_function: callable, current_iteration: int, history_threshold: int=0, total_iterations: int=30, maximize = True, n_top: int=5, n_worst: int=5, n_last: int=5):
 
     prompt_pipeline_optimization = f"""
 
@@ -201,7 +205,7 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     {prompts.pipeline_metrics_info}
     
     ## Function bank sample:
-    {function_bank_sample(function_bank_path, n_top=5, n_worst=5, n_last=5, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations)}
+    {function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations)}
 
     ## OpenCV Function APIs:
     {opencv_APIs}
@@ -279,18 +283,104 @@ def save_seed_list(n, file_path, initial_seed):
     return int_seeds # Return the list of integers
     
     return uuids
-    
+
+def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round, llm_model):
+     """Save comprehensive information about the run configuration."""
+     # Create a dictionary with all the run information
+     run_info = {
+         "experiment_name": args.experiment_name,
+         "dataset_path": args.dataset,
+         "gpu_id": args.gpu_id,
+         "random_seed": args.random_seed,
+         "timestamp": cur_time,
+         "num_optimization_iterations": num_optim_iter,
+         "max_rounds": max_round,
+         "history_threshold": history_threshold,
+         "llm_model": llm_model,
+         "prompts_data": {
+             "task_specific_prompts": {
+                 "dataset_info": prompts_instance.dataset_info,
+                 "task_details": prompts_instance.task_details,
+                 "pipeline_metrics_info": prompts_instance.pipeline_metrics_info,
+                 # "summary_prompt": prompts_instance.summary_prompt if hasattr(prompts_instance, 'summary_prompt') else None,
+             },
+             "agent_system_prompts": {
+                 "code_writer": sys_prompt_code_writer,
+                 # "code_verifier": sys_prompt_code_verifier,
+             },
+             "executable_pipeline_script_template": prompts_instance.run_pipeline_prompt(), # Call the method to get the script string
+         }
+     }
+
+     # Write the run info to a JSON file
+     with open(os.path.join(run_output_dir, "run_info.json"), "w") as file:
+         json.dump(run_info, file, indent=4)
+
+def update_run_info_with_end_timestamp(run_output_dir: str):
+    """Adds the end timestamp to the run_info.json file."""
+    end_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_info_path = os.path.join(run_output_dir, "run_info.json")
+
+    if os.path.exists(run_info_path):
+        with open(run_info_path, "r") as file:
+            run_info_data = json.load(file)
+        
+        run_info_data["timestamp_finish"] = end_time
+        
+        with open(run_info_path, "w") as file:
+            json.dump(run_info_data, file, indent=4)
+    else:
+        print(f"Warning: {run_info_path} not found. Cannot add end timestamp.")
+
+
+
+def create_latest_symlink(experiment_output_dir, run_output_dir):
+     """Create a symlink to the latest run for easier access."""
+     latest_link = os.path.join(experiment_output_dir, "latest")
+
+     # Get just the directory name (timestamp) without the full path
+     run_dir_name = os.path.basename(run_output_dir)
+
+     # Remove existing symlink if it exists
+     if os.path.islink(latest_link):
+         os.unlink(latest_link)
+
+     # Create relative symlink using just the directory name
+     try:
+         os.symlink(run_dir_name, latest_link)
+         print(f"Created symlink: {latest_link} -> {run_dir_name}")
+     except Exception as e:
+         print(f"Failed to create symlink: {e}")
+
 def main(args: argparse.Namespace):
-    
-    output_function_bank = os.path.join(args.output,"preprocessing_func_bank.json")
-    
+    # Get current datetime once at the beginning
+    cur_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Create experiment-specific output directory
+    experiment_output_dir = os.path.join(args.output, args.experiment_name)
+    run_output_dir = os.path.join(experiment_output_dir, cur_time)
+    # Create directories if they don't exist
+    os.makedirs(run_output_dir, exist_ok=True)
+
+    # Update output paths to use the new directory structure
+    # output_function_bank = os.path.join(run_output_dir, "preprocessing_func_bank.json")
+    output_function_bank = os.path.abspath(os.path.join(run_output_dir, "preprocessing_func_bank.json"))
+    # Initialize function bank with empty list if it doesn't exist
+    if not os.path.exists(output_function_bank):
+        with open(output_function_bank, "w") as file:
+            json.dump([], file)
+
+
     # Configuration
     my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = args.random_seed # Random seed for reproducibility
-    num_optim_iter = 30 # Number of optimization iterations
+    num_optim_iter = 10#30 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
+    # history_threshold = 5
+    llm_model = "gpt-4.1" # Do not modify this string
+    # llm_model = "gemini-2.5-pro"
+    # llm_model = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
     
     # Load task prompts
     if args.experiment_name == "spot_detection":
@@ -317,6 +407,10 @@ def main(args: argparse.Namespace):
     # Set GPU device
     # set_gpu_device(my_gpu_id)
     
+    initial_prompts = prompt_class(**kwargs_for_prompt_class)
+    save_run_info(args, run_output_dir, num_optim_iter, initial_prompts, cur_time, history_threshold=history_threshold, max_round=max_round, llm_model=llm_model)
+    create_latest_symlink(experiment_output_dir, run_output_dir)
+    
     seed_list_file = os.path.join(args.output,"seed_list.txt")
     # Generate seed list
     seed_list = save_seed_list(num_optim_iter, seed_list_file, args.random_seed)
@@ -324,7 +418,7 @@ def main(args: argparse.Namespace):
     # Run pipeline development and optimization
     with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{args.output}/cache") as cache:
         
-        notes_shared = prepare_notes_shared(my_gpu_id)
+        notes_shared = prepare_notes_shared(my_gpu_id, max_rounds=max_round)
 
         for i in range(num_optim_iter):
 
@@ -340,7 +434,7 @@ def main(args: argparse.Namespace):
 
             # Set up agents
             # code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents(executor_instance)
-            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance)
+            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model)
 
             
 
@@ -369,12 +463,22 @@ def main(args: argparse.Namespace):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=5, total_iterations=num_optim_iter)}"
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             # summary_args={"summary_prompt": prompts.summary_prompt},
                                             cache=cache)
-            save_chat_history(chat_result.chat_history, i, args.output)
+            save_chat_history(chat_result.chat_history, i, run_output_dir)
+
+    update_run_info_with_end_timestamp(run_output_dir)
+    if args.experiment_name == "cellpose_segmentation":
+        os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
+    elif args.experiment_name == "medSAM_segmentation":
+        # os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
+        pass
+    elif args.experiment_name == "spot_detection":
+        # os.system(f"python figs/spot_detection_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
+        pass
 
 if __name__ == "__main__":
 
@@ -429,7 +533,35 @@ if __name__ == "__main__":
         required=False,
         help="The working directory for the agent to access source code."
     )
-    
+
+    parser.add_argument(
+        "--n_top",
+        type=int,
+        default=5,
+        help="Number of top functions to show in the function bank."
+    )
+
+    parser.add_argument(
+        "--n_worst",
+        type=int,
+        default=5,
+        help="Number of worst functions to show in the function bank."
+    )
+
+    parser.add_argument(
+        "--n_last",
+        type=int,
+        default=5,
+        help="Number of last functions to show in the function bank."
+    )
+
+    parser.add_argument(
+        "--history_threshold",
+        type=int,
+        default=5,
+        help="Number of history threshold to show in the function bank."
+    )
+
     args = parser.parse_args()
 
     # Work directory
