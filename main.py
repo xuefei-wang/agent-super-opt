@@ -6,6 +6,7 @@ import argparse
 import uuid
 import random
 from datetime import datetime
+import os
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock, CodeExecutor, DockerCommandLineCodeExecutor, LocalCommandLineCodeExecutor
@@ -51,7 +52,8 @@ def set_up_agents(executor: CodeExecutor):
         system_message=code_writer_prompt,
         llm_config={
             "config_list": [
-                {"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}
+                # {"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}
+                {"model": "gpt-4.1", "api_key": os.environ["OPENAI_API_KEY"]}
             ]
         },
         code_execution_config=False,  # Turn off code execution for this agent.
@@ -185,6 +187,7 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     import cv2 as cv
     def preprocess_images(images: ImageData) -> ImageData:
         # Function logic here
+        # You MUST comment {{gpu_id}} here
         processed_images_list = []
         for img_array in images.raw:
             img_array = np.copy(img_array) # Make a copy of the image array to avoid modifying the original
@@ -282,7 +285,7 @@ def save_seed_list(n, file_path, initial_seed):
     
     return uuids
 
-def save_run_info(args, run_output_dir, num_optim_iter, prompts, cur_time):
+def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round):
      """Save comprehensive information about the run configuration."""
      # Create a dictionary with all the run information
      run_info = {
@@ -290,17 +293,29 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts, cur_time):
          "dataset_path": args.dataset,
          "gpu_id": args.gpu_id,
          "random_seed": args.random_seed,
-         "timestamp": cur_time.strftime("%Y-%m-%d %H:%M:%S"),
+         "timestamp": cur_time,
          "num_optimization_iterations": num_optim_iter,
-         "pipeline_prompt": prompts.run_pipeline_prompt,
-         "dataset_info": prompts.dataset_info,
-         "task_details": prompts.task_details,
-         "pipeline_metrics_info": prompts.pipeline_metrics_info
+         "max_rounds": max_round,
+         "history_threshold": history_threshold,
+         "prompts_data": {
+             "task_specific_prompts": {
+                 "dataset_info": prompts_instance.dataset_info,
+                 "task_details": prompts_instance.task_details,
+                 "pipeline_metrics_info": prompts_instance.pipeline_metrics_info,
+                 # "summary_prompt": prompts_instance.summary_prompt if hasattr(prompts_instance, 'summary_prompt') else None,
+             },
+             "agent_system_prompts": {
+                 "code_writer": sys_prompt_code_writer,
+                 # "code_verifier": sys_prompt_code_verifier,
+             },
+             "executable_pipeline_script_template": prompts_instance.run_pipeline_prompt(), # Call the method to get the script string
+         }
      }
 
      # Write the run info to a JSON file
      with open(os.path.join(run_output_dir, "run_info.json"), "w") as file:
          json.dump(run_info, file, indent=4)
+
 
 def create_latest_symlink(experiment_output_dir, run_output_dir):
      """Create a symlink to the latest run for easier access."""
@@ -342,10 +357,10 @@ def main(args: argparse.Namespace):
     my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = args.random_seed # Random seed for reproducibility
-    num_optim_iter = 30 # Number of optimization iterations
+    num_optim_iter = 3#30 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
-    
+    history_threshold = 5
     # Load task prompts
     if args.experiment_name == "spot_detection":
         from prompts.spot_detection_prompts import SpotDetectionPrompts, SpotDetectionPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
@@ -370,8 +385,9 @@ def main(args: argparse.Namespace):
 
     # Set GPU device
     # set_gpu_device(my_gpu_id)
-
-    save_run_info(args, run_output_dir, num_optim_iter, prompts, cur_time)
+    
+    initial_prompts = prompt_class(**kwargs_for_prompt_class)
+    save_run_info(args, run_output_dir, num_optim_iter, initial_prompts, cur_time, history_threshold=history_threshold, max_round=max_round)
     create_latest_symlink(experiment_output_dir, run_output_dir)
     
     seed_list_file = os.path.join(args.output,"seed_list.txt")
@@ -426,12 +442,16 @@ def main(args: argparse.Namespace):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=5, total_iterations=num_optim_iter)}"
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=history_threshold, total_iterations=num_optim_iter)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             # summary_args={"summary_prompt": prompts.summary_prompt},
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, run_output_dir)
+
+
+    if args.experiment_name == "cellpose_segmentation":
+        os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset}")
 
 if __name__ == "__main__":
 
