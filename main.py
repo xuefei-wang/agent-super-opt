@@ -175,6 +175,22 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
 
     prompt_pipeline_optimization = f"""
 
+    
+    ## Preprocessing Function API:
+    ```python
+    # Necessary imports for the function logic (if any)
+    # Do not import ImageData in the function, it is already imported in the environment
+    import cv2 as cv
+    def preprocess_images(images: ImageData) -> ImageData:
+        # Function logic here
+        processed_images_list = []
+        for img_array in images.raw:
+            img_array = np.copy(img_array) # Make a copy of the image array to avoid modifying the original
+            processed_img = img_array # Replace with actual processing
+            processed_images_list.append(processed_img)
+        output_data = ImageData(raw=processed_images_list, batch_size=images.batch_size)
+        return output_data
+    ```
     ## About the dataset: 
     {prompts.dataset_info}
 
@@ -194,21 +210,6 @@ def prepare_prompt_pipeline_optimization(notes_shared: str, function_bank_path: 
     {notes_shared}
     {notes_pipeline_optimization}
 
-    ## Preprocessing Function API:
-    ```python
-    # Necessary imports for the function logic (if any)
-    # ImageData is already imported in the environment
-    import cv2 as cv
-    def preprocess_images(images: ImageData) -> ImageData:
-        # Function logic here
-        processed_images_list = []
-        for img_array in images.raw:
-            img_array = np.copy(img_array) # Make a copy of the image array to avoid modifying the original
-            processed_img = img_array # Replace with actual processing
-            processed_images_list.append(processed_img)
-        output_data = ImageData(raw=processed_images_list, batch_size=images.batch_size)
-        return output_data
-    ```
 
     ## Documentation on the `ImageData` class:
     ```markdown
