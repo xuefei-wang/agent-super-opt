@@ -1,10 +1,12 @@
+import os 
+import sys
 import json
 import numpy as np
 from typing import List, Dict, Callable
 import argparse
 import matplotlib.pyplot as plt
-from src.cellpose_segmentation import CellposeTool
-from src.data_io import ImageData
+# from src.cellpose_segmentation import CellposeTool
+# from src.data_io import ImageData
 import cv2 as cv
 import logging
 import sys
@@ -16,20 +18,33 @@ import torch
 from torch import nn
 import glob
 
-try:
-    from data_io import ImageData
-except ImportError:
-    from src.data_io import ImageData
+# try:
+#     from data_io import ImageData
+# except ImportError:
+#     from src.data_io import ImageData
 
-try:
-    from tools import BaseSegmenter
-except ImportError:
-    from src.tools import BaseSegmenter
+# try:
+#     from tools import BaseSegmenter
+# except ImportError:
+#     from src.tools import BaseSegmenter
 
-try:
-    from utils import set_gpu_device
-except ImportError:
-    from src.utils import set_gpu_device
+# try:
+#     from utils import set_gpu_device
+# except ImportError:
+#     from src.utils import set_gpu_device
+
+# Dynamically add the project root to sys.path
+# This allows Python to find the 'src' module correctly
+_CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_CURRENT_SCRIPT_DIR)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+# Project-specific imports from 'src'
+from src.cellpose_segmentation import CellposeTool
+from src.data_io import ImageData
+from src.tools import BaseSegmenter # Added direct import
+from src.utils import set_gpu_device # Added direct import
 
 from cellpose import models, denoise
 from cellpose.io import imread
