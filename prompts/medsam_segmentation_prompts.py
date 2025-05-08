@@ -14,20 +14,6 @@ class MedSAMSegmentationPrompts(TaskPrompts):
         ```
     """
     
-    summary_prompt = """
-        Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
-        Follow the format:
-        {
-        "dsc_metric": ...,
-        "nsd_metric": ...,
-        "preprocessing_function": "
-            ```python
-            YOUR_CODE_HERE
-            ```
-            ",
-        }
-        """
-    
     pipeline_metrics_info = """
         The following metrics are used to evaluate the performance of the pipeline: dsc_metric, nsd_metric.
         - The `dsc_metric` is the dice similarity coefficient (DSC) score of the pipeline and is similar to IoU, measuring the overlap between predicted and ground truth masks.
@@ -92,7 +78,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
             torch.manual_seed(seed)
 
             # Initialize segmenter
-            segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path="workspace/data/medsam_vit_b.pth")
+            segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path={checkpoint_path})
 
             # Load data
             imgs, boxes, masks = segmenter.loadData({data_path})
@@ -116,7 +102,6 @@ class MedSAMSegmentationPrompts(TaskPrompts):
             # Calculate Metrics
             metrics = segmenter.evaluate(pred_masks, images.masks)
 
-
             df = pd.DataFrame([metrics])
             overall_metrics = df.mean().to_dict()
             logger.info("Overall metrics %s", overall_metrics)
@@ -138,7 +123,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
     def __init__(self, gpu_id, checkpoint_path, seed, dataset_path, function_bank_path):
         super().__init__(
             gpu_id=gpu_id,
-            checkpoint_path="workspace/data/medsam_vit_b.pth",
+            checkpoint_path=checkpoint_path,
             seed=seed,
             dataset_info=self.dataset_info,
             dataset_path=dataset_path,
@@ -183,38 +168,24 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         - The `nsd_metric` is the normalized surface distance (NSD) score and is more sensitive to distance and boundary calculations.
     """
 
-    # summary_prompt = """
-    # Summarize the results as a python dictionary, including the newly proposed preprocessing function and its average performance metrics.
-    # Follow the format:
-    # {
-    # "dsc_metric": ...,
-    # "nsd_metric": ...,
-    # "preprocessing_function": "
-    #     ```python
-    #     YOUR_CODE_HERE
-    #     ```
-    #     ",
-    # }
-    # """
-    # --- End of CLASS attributes ---
-
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
             seed=seed,
             dataset_info=self.dataset_info, # Access class attribute
             dataset_path=dataset_path,
-            # summary_prompt=self.summary_prompt, # Access class attribute
             task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
             pipeline_metrics_info=self.pipeline_metrics_info, # Access class attribute
+            checkpoint_path=checkpoint_path
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
         self.seed = seed
         self.dataset_path = dataset_path
         self.function_bank_path = function_bank_path
+        self.checkpoint_path = checkpoint_path
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -237,7 +208,8 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
-            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
+            "checkpoint_path": f'"{self.checkpoint_path.replace("\\", "/")}"',
+            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
         }
 
         script_with_config = template_content
