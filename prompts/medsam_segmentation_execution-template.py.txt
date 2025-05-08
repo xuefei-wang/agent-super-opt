@@ -24,6 +24,7 @@ seed = {seed} # Seed is now an integer, no quotes needed
 data_path = r"{dataset_path}"
 function_bank_path = r"{function_bank_path}"
 script_start_time = time.time()
+checkpoint_path = {checkpoint_path}
 
 # --- Saving Function Definition ---
 def save_results_to_json(file_path, results_dict):
@@ -125,7 +126,7 @@ try:
 
     # --- Initialize segmenter tool ---
     logger.info("Initializing MedSAMTool...")
-    segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path="/workspace/data/medsam_vit_b.pth")
+    segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path={checkpoint_path})
     logger.info(f"Loading data from {data_path}...")
     raw_images, boxes, masks = segmenter.loadData(data_path)
     logger.info(f"Data loaded: {len(raw_images)} images.")
@@ -180,6 +181,8 @@ try:
             'overall_metrics': overall_metrics, # Known to be not None here
             'seed': seed,
             'timestamp': script_start_time,
+            'gpu_id': gpu_id,
+            'timestamp_finish': time.time(),
             'preprocessing_time': preprocessing_time,
             'prediction_time': prediction_time,
             'metrics_time': metrics_time,

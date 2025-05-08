@@ -61,9 +61,9 @@ class MedSAMTool():
     MedSAMTool is a class that provides a simple interface for the MedSAM model
     """
 
-    def __init__(self, checkpoint_path="/workspace/data/medsam_vit_b.pth", model_name='medsam', gpu_id: int = 0, **kwargs):
-        self.checkpoint_path = "/workspace/data/medsam_vit_b.pth"
-        if torch.cuda.is_available() and gpu_id < torch.cuda.device_count():
+    def __init__(self, checkpoint_path, model_name='medsam', gpu_id: int = 0, **kwargs):
+        self.checkpoint_path = checkpoint_path
+        if torch.cuda.is_available():
             self.device = torch.device(f"cuda:{gpu_id}")
         else:
             print(f"Warning: GPU ID {gpu_id} is not available. Falling back to CPU.")
@@ -155,4 +155,3 @@ class MedSAMTool():
             imgs, boxes = pickle.load(f)
 
         return imgs, boxes, masks
-

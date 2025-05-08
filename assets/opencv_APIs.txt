@@ -55,6 +55,9 @@ Applies a separable linear filter to an image.
 cv.Sobel(src, ddepth, dx, dy[, dst[, ksize[, scale[, delta[, borderType]]]]]) ->dst
 Calculates the first, second, third, or mixed image derivatives using an extended Sobel operator.
 
+cv.morphologyEx(src, op, kernel[, dst[, anchor[, iterations[, borderType[, borderValue]]]]]) -> dst
+Performs advanced morphological transformations.
+
 cv.spatialGradient(src[, dx[, dy[, ksize[, borderType]]]]) ->dx, dy
 Calculates the first order image derivative in both x and y using a Sobel operator.
 
@@ -63,3 +66,94 @@ Calculates the normalized sum of squares of the pixel values overlapping the fil
 
 cv.stackBlur(src, ksize[, dst]) ->dst
 Blurs an image using the stackBlur.
+ 
+cv.Canny(image, threshold1, threshold2[, edges[, apertureSize[, L2gradient]]]) -> edges
+Finds edges in an image using the Canny algorithm.
+
+cv.cornerEigenValsAndVecs(src, blockSize, ksize[, dst[, borderType]]) -> dst
+Calculates eigenvalues and eigenvectors of image blocks for corner detection.
+
+cv.cornerHarris(src, blockSize, ksize, k[, dst[, borderType]]) -> dst
+Harris corner detector.
+
+cv.cornerMinEigenVal(src, blockSize[, dst[, ksize[, borderType]]]) -> dst
+Calculates the minimal eigenvalue of gradient matrices for corner detection.
+
+cv.cornerSubPix(image, corners, winSize, zeroZone, criteria) -> corners
+Refines the corner locations.
+
+cv.goodFeaturesToTrack(image, maxCorners, qualityLevel, minDistance[, corners[, mask[, blockSize[, useHarrisDetector[, k]]]]]) -> corners
+Determines strong corners on an image.
+
+cv.HoughCircles(image, method, dp, minDist[, circles[, param1[, param2[, minRadius[, maxRadius]]]]]) -> circles
+Finds circles in a grayscale image using the Hough transform.
+
+cv.HoughLines(image, rho, theta, threshold[, lines[, srn[, stn[, min_theta[, max_theta]]]]]) -> lines
+Finds lines in a binary image using the standard Hough transform.
+
+cv.HoughLinesP(image, rho, theta, threshold[, lines[, minLineLength[, maxLineGap]]]) -> lines
+Finds line segments in a binary image using the probabilistic Hough transform.
+
+cv.HoughLinesPointSet(point, lines_max, threshold, min_rho, max_rho, rho_step, min_theta, max_theta, theta_step[, lines]) -> lines
+Finds lines in a set of points using the standard Hough transform.
+
+cv.preCornerDetect(src, ksize[, dst[, borderType]]) -> dst
+Calculates a feature map for corner detection.
+
+cv.calcBackProject(images, channels, hist, ranges[, backProject[, scale[, uniform]]]) -> backProject
+Calculates the back projection of a histogram.
+
+cv.calcHist(images, channels, mask, histSize, ranges[, hist[, accumulate[, uniform]]]) -> hist
+Calculates a histogram of a set of arrays.
+
+cv.compareHist(H1, H2, method) -> retval
+Compares two histograms.
+
+cv.createCLAHE([clipLimit[, tileGridSize]]) -> retval
+Creates a smart pointer to a cv.CLAHE object and initializes it.
+
+cv.equalizeHist(src) -> dst
+Equalizes the histogram of a grayscale image.
+
+cv.addWeighted(src1, alpha, src2, beta, gamma[, dst[, dtype]]) -> dst
+Calculates the weighted sum of two arrays.
+
+cv.normalize(src, dst[, alpha[, beta[, norm_type[, dtype[, mask]]]]]) -> dst
+Normalizes the norm or value range of an array.
+
+cv.adaptiveThreshold(src, maxValue, adaptiveMethod, thresholdType, blockSize, C[, dst]) -> dst
+Applies an adaptive threshold to an array.
+
+cv.blendLinear(src1, src2, weights1, weights2[, dst]) -> dst
+Performs linear blending of two arrays using specified weights.
+
+cv.distanceTransform(src, distanceType, maskSize[, dst[, dstType]]) -> dst
+Calculates the distance to the closest zero pixel for each pixel of the source image.
+
+cv.floodFill(image, seedPoint, newVal[, loDiff[, upDiff[, flags[, mask[, rect]]]]]) -> retval, rect
+Fills a connected component with the given color.
+
+cv.integral(src[, sum[, sdepth]]) -> sum
+Calculates the integral image.
+
+cv.integral2(src[, sum[, sqsum[, sdepth[, sqdepth]]]]) -> sum, sqsum
+Calculates the integral and squared integral images.
+
+cv.integral3(src[, sum[, sqsum[, tilted[, sdepth[, sqdepth]]]]]) -> sum, sqsum, tilted
+Calculates the integral, squared integral, and tilted integral images.
+
+cv.threshold(src, thresh, maxval, type[, dst]) -> retval, dst
+Applies a fixed-level threshold to each array element.
+
+cv.fastNlMeansDenoising(src[, dst[, h[, templateWindowSize[, searchWindowSize]]]]) -> dst
+Perform image denoising using Non-local Means Denoising algorithm.
+
+cv.fastNlMeansDenoisingColored(src[, dst[, h[, hColor[, templateWindowSize[, searchWindowSize]]]]]) -> dst
+Modification of fastNlMeansDenoising function for colored images.
+
+cv.cvtColor(src, code[, dst[, dstCn]]) -> dst
+Converts an image from one color space to another.
+
+cv.merge(mv[, dst]) -> dst
+Creates one multi-channel array out of several single-channel ones.
+
