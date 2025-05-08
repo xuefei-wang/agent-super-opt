@@ -10,7 +10,7 @@ x = 3  # Code example
 ```
 
 Notes:
-- CRITICAL: You may only define a single function, and it must be named `preprocess_images` and follow the provided Preprocessing Function API.  All operations must be performed within this function.
+- CRITICAL: You may only define a single function, and it must be named `preprocess_images` and follow the provided Preprocessing Function API.  All operations must be performed within this function, and no inner functions should be defined (construct all operations within the function).
 - Code outputs will be returned to you
 - Feel free to document your thought process and exploration steps.
 - Remember that all images processed by your written `preprocessing_function` will directly be converted into ImageData objects. So, double-check that the preprocessed image dimensions align with the dimension requirements listed in the ImageData API documentation
