@@ -5,6 +5,7 @@ import json
 import argparse
 import uuid
 import random
+from datetime import datetime
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock, CodeExecutor, DockerCommandLineCodeExecutor, LocalCommandLineCodeExecutor
@@ -100,10 +101,11 @@ with open("assets/opencv_APIs.txt", "r") as file:
 
 
 
-def prepare_notes_shared(my_gpu_id):
+def prepare_notes_shared(my_gpu_id, max_rounds):
     notes_shared = f"""
     - Always check the documentation for the available APIs before reinventing the wheel
     - Use GPU {my_gpu_id} for running the pipeline, set `cuda: {my_gpu_id}` in the code snippet!
+    - You only have {max_rounds} rounds of each conversation to optimize the preprocessing function.
     - Don't suggest trying larger models as the model size is fixed.
     """
     return notes_shared
@@ -279,11 +281,63 @@ def save_seed_list(n, file_path, initial_seed):
     return int_seeds # Return the list of integers
     
     return uuids
-    
+
+def save_run_info(args, run_output_dir, num_optim_iter, prompts, cur_time):
+     """Save comprehensive information about the run configuration."""
+     # Create a dictionary with all the run information
+     run_info = {
+         "experiment_name": args.experiment_name,
+         "dataset_path": args.dataset,
+         "gpu_id": args.gpu_id,
+         "random_seed": args.random_seed,
+         "timestamp": cur_time.strftime("%Y-%m-%d %H:%M:%S"),
+         "num_optimization_iterations": num_optim_iter,
+         "pipeline_prompt": prompts.run_pipeline_prompt,
+         "dataset_info": prompts.dataset_info,
+         "task_details": prompts.task_details,
+         "pipeline_metrics_info": prompts.pipeline_metrics_info
+     }
+
+     # Write the run info to a JSON file
+     with open(os.path.join(run_output_dir, "run_info.json"), "w") as file:
+         json.dump(run_info, file, indent=4)
+
+def create_latest_symlink(experiment_output_dir, run_output_dir):
+     """Create a symlink to the latest run for easier access."""
+     latest_link = os.path.join(experiment_output_dir, "latest")
+
+     # Get just the directory name (timestamp) without the full path
+     run_dir_name = os.path.basename(run_output_dir)
+
+     # Remove existing symlink if it exists
+     if os.path.islink(latest_link):
+         os.unlink(latest_link)
+
+     # Create relative symlink using just the directory name
+     try:
+         os.symlink(run_dir_name, latest_link)
+         print(f"Created symlink: {latest_link} -> {run_dir_name}")
+     except Exception as e:
+         print(f"Failed to create symlink: {e}")
+
 def main(args: argparse.Namespace):
-    
-    output_function_bank = os.path.join(args.output,"preprocessing_func_bank.json")
-    
+    # Get current datetime once at the beginning
+    cur_time = datetime.now().strftime("%Y%m%d-%H%M%S")
+    # Create experiment-specific output directory
+    experiment_output_dir = os.path.join(args.output, args.experiment_name)
+    run_output_dir = os.path.join(experiment_output_dir, cur_time)
+    # Create directories if they don't exist
+    os.makedirs(run_output_dir, exist_ok=True)
+
+    # Update output paths to use the new directory structure
+    # output_function_bank = os.path.join(run_output_dir, "preprocessing_func_bank.json")
+    output_function_bank = os.path.abspath(os.path.join(run_output_dir, "preprocessing_func_bank.json"))
+    # Initialize function bank with empty list if it doesn't exist
+    if not os.path.exists(output_function_bank):
+        with open(output_function_bank, "w") as file:
+            json.dump([], file)
+
+
     # Configuration
     my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
@@ -316,6 +370,9 @@ def main(args: argparse.Namespace):
 
     # Set GPU device
     # set_gpu_device(my_gpu_id)
+
+    save_run_info(args, run_output_dir, num_optim_iter, prompts, cur_time)
+    create_latest_symlink(experiment_output_dir, run_output_dir)
     
     seed_list_file = os.path.join(args.output,"seed_list.txt")
     # Generate seed list
@@ -324,7 +381,7 @@ def main(args: argparse.Namespace):
     # Run pipeline development and optimization
     with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{args.output}/cache") as cache:
         
-        notes_shared = prepare_notes_shared(my_gpu_id)
+        notes_shared = prepare_notes_shared(my_gpu_id, max_rounds=max_round)
 
         for i in range(num_optim_iter):
 
@@ -374,7 +431,7 @@ def main(args: argparse.Namespace):
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             # summary_args={"summary_prompt": prompts.summary_prompt},
                                             cache=cache)
-            save_chat_history(chat_result.chat_history, i, args.output)
+            save_chat_history(chat_result.chat_history, i, run_output_dir)
 
 if __name__ == "__main__":
 
