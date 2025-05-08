@@ -31,7 +31,7 @@ from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 load_dotenv()
 
 
-def set_up_agents(executor: CodeExecutor):
+def set_up_agents(executor: CodeExecutor, llm_model: str):
     ''' Prepare 3 agents and state transition'''
     if isinstance(executor, JupyterCodeExecutor) or isinstance(executor, LocalCommandLineCodeExecutor) or isinstance(executor, TemplatedLocalCommandLineCodeExecutor):
         code_writer_prompt = sys_prompt_code_writer
@@ -53,7 +53,7 @@ def set_up_agents(executor: CodeExecutor):
         llm_config={
             "config_list": [
                 # {"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}
-                {"model": "gpt-4.1", "api_key": os.environ["OPENAI_API_KEY"]}
+                {"model": llm_model, "api_key": os.environ["OPENAI_API_KEY"]}
             ]
         },
         code_execution_config=False,  # Turn off code execution for this agent.
@@ -285,7 +285,7 @@ def save_seed_list(n, file_path, initial_seed):
     
     return uuids
 
-def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round):
+def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round, llm_model):
      """Save comprehensive information about the run configuration."""
      # Create a dictionary with all the run information
      run_info = {
@@ -297,6 +297,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "num_optimization_iterations": num_optim_iter,
          "max_rounds": max_round,
          "history_threshold": history_threshold,
+         "llm_model": llm_model,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
@@ -357,10 +358,14 @@ def main(args: argparse.Namespace):
     my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = args.random_seed # Random seed for reproducibility
-    num_optim_iter = 3#30 # Number of optimization iterations
+    num_optim_iter = 10#30 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
     history_threshold = 5
+    llm_model = "gpt-4.1" # Do not modify this string
+    # llm_model = "gemini-2.5-pro"
+    # llm_model = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+    
     # Load task prompts
     if args.experiment_name == "spot_detection":
         from prompts.spot_detection_prompts import SpotDetectionPrompts, SpotDetectionPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
@@ -387,7 +392,7 @@ def main(args: argparse.Namespace):
     # set_gpu_device(my_gpu_id)
     
     initial_prompts = prompt_class(**kwargs_for_prompt_class)
-    save_run_info(args, run_output_dir, num_optim_iter, initial_prompts, cur_time, history_threshold=history_threshold, max_round=max_round)
+    save_run_info(args, run_output_dir, num_optim_iter, initial_prompts, cur_time, history_threshold=history_threshold, max_round=max_round, llm_model=llm_model)
     create_latest_symlink(experiment_output_dir, run_output_dir)
     
     seed_list_file = os.path.join(args.output,"seed_list.txt")
@@ -413,7 +418,7 @@ def main(args: argparse.Namespace):
 
             # Set up agents
             # code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents(executor_instance)
-            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance)
+            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model)
 
             
 
@@ -451,7 +456,13 @@ def main(args: argparse.Namespace):
 
 
     if args.experiment_name == "cellpose_segmentation":
-        os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset}")
+        os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
+    elif args.experiment_name == "medSAM_segmentation":
+        # os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
+        pass
+    elif args.experiment_name == "spot_detection":
+        # os.system(f"python figs/spot_detection_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
+        pass
 
 if __name__ == "__main__":
 
