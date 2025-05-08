@@ -222,7 +222,7 @@ def convert_string_to_function(func_str, func_name):
 
     
 
-def main(json_path: str, data_path: str, output_dir: str, precision_index: int = 0):
+def main(json_path: str, data_path: str, output_dir: str, precision_index: int = 0, device: int = 0):
     # Let's save these results into a new subfolder of output_dir
     output_dir = os.path.join(output_dir, 'analysis_results')
     os.makedirs(output_dir, exist_ok=True)
@@ -231,7 +231,7 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
         json_array = json.load(file)
 
     # First evaluate the baseline of no preprocessing
-    segmenter = CellposeTool(model_name="cyto3", device=3)
+    segmenter = CellposeTool(model_name="cyto3", device=device)
     raw_images, gt_masks = segmenter.loadData(os.path.join(data_path, 'val_set/'))
     raw_images, gt_masks = raw_images, gt_masks
     images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
@@ -241,7 +241,7 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     no_preprocess = metrics_val
 
     # Use priviliged CellposeTool to get "best" results, to_normalize=True
-    priviliged_segmenter = PriviligedCellposeTool(model_name="cyto3", device=3, channels=[2,1], to_normalize=True)
+    priviliged_segmenter = PriviligedCellposeTool(model_name="cyto3", device=device, channels=[2,1], to_normalize=True)
 
     raw_images_val, gt_masks_val = priviliged_segmenter.loadData(os.path.join(data_path, 'val_set/'))
     images = ImageData(raw=raw_images_val, batch_size=16, image_ids=[i for i in range(len(raw_images_val))])
@@ -306,7 +306,7 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
 
     # Now let's get images with and without preprocessing
     # First evaluate the baseline of no preprocessing
-    segmenter = CellposeTool(model_name="cyto3", device=3)
+    segmenter = CellposeTool(model_name="cyto3", device=device)
     raw_images, gt_masks = segmenter.loadData(os.path.join(data_path, 'val_set/'))
     raw_images, gt_masks = raw_images, gt_masks
     images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
@@ -327,7 +327,7 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     # Now let's do test set evaluation
 
     # # First, the baseline (to_normalize=True)
-    priviliged_segmenter = PriviligedCellposeTool(model_name="cyto3", device=3, channels=[2,1], to_normalize=True)
+    priviliged_segmenter = PriviligedCellposeTool(model_name="cyto3", device=device, channels=[2,1], to_normalize=True)
     raw_images_test, gt_masks_test = priviliged_segmenter.loadData(os.path.join(data_path, 'test_set/'))
     images = ImageData(raw=raw_images_test, batch_size=8, image_ids=[i for i in range(len(raw_images_test))])
     pred_masks_test = priviliged_segmenter.predict(images, batch_size=8)
@@ -335,14 +335,14 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
 
     # Now let's do the other baseline (to_normalize=False)
     # no norm baseline
-    non_privileged_segmenter = CellposeTool(model_name="cyto3", device=3)
+    non_privileged_segmenter = CellposeTool(model_name="cyto3", device=device)
     pred_masks_test_no_norm = non_privileged_segmenter.predict(images, batch_size=8)
     metrics_test_baseline_no_norm = non_privileged_segmenter.evaluate(pred_masks_test_no_norm, gt_masks_test)
 
 
     best_preprocessed_images = best_preprocessing_function(images)
     # Our function, without to_normalize
-    non_privileged_segmenter = CellposeTool(model_name="cyto3", device=3)
+    non_privileged_segmenter = CellposeTool(model_name="cyto3", device=device)
     pred_masks_test = non_privileged_segmenter.predict(best_preprocessed_images, batch_size=8)
     metrics_test_our_function = non_privileged_segmenter.evaluate(pred_masks_test, gt_masks_test)
 
@@ -362,11 +362,12 @@ if __name__ == "__main__":
     parser.add_argument('--json_path', type=str, required=True, help='Path to the JSON file containing the function bank.')
     parser.add_argument('--data_path', type=str, required=True, help='Path to the data directory.')
     parser.add_argument('--precision_index', type=int, required=False, default=0, help='Which average precision index to use. [0.5, 0.75, 0.9].')
+    parser.add_argument('--device', type=int, required=False, default=0, help='Which GPU to use.')
     args = parser.parse_args()
     
     output_dir = os.path.dirname(args.json_path)
     json_path = args.json_path
     data_path = args.data_path
     data_path = os.path.dirname(os.path.dirname(data_path))
-    main(json_path, data_path, output_dir, args.precision_index)
+    main(json_path, data_path, output_dir, args.precision_index, args.device)
     
