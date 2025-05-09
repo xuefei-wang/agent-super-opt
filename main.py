@@ -431,7 +431,7 @@ def main(args: argparse.Namespace):
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         sampling_function = lambda x: x['overall_metrics']['average_precision']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/cellpose_segmentation_expert.py.txt"
     elif args.experiment_name == "medSAM_segmentation":
@@ -655,6 +655,10 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    # Check that k word and int were both set
+    if args.k == 5 and args.k_word != "five" or args.k != 5 and args.k_word == "five":
+        raise ValueError("k and k_word must be set to be equivalent.")
 
     # Work directory
     if args.work_dir is None:
