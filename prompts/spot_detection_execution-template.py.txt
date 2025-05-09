@@ -11,6 +11,7 @@ import traceback
 try:
     from src.data_io import ImageData
     from src.spot_detection import DeepcellSpotsDetector
+    from src.utils import set_gpu_device
     import cv2 as cv
 except ImportError as import_err:
     print(f"FATAL ERROR: Failed to import required modules (ImageData, Tool): {import_err}")
@@ -24,6 +25,8 @@ seed = {seed} # Seed is now an integer, no quotes needed
 data_path = r"{dataset_path}"
 function_bank_path = r"{function_bank_path}"
 script_start_time = time.time()
+
+set_gpu_device(gpu_id)
 
 # --- Saving Function Definition ---
 def save_results_to_json(file_path, results_dict):
