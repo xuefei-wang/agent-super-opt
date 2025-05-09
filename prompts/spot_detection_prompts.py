@@ -1,5 +1,5 @@
 from prompts.task_prompts import TaskPrompts
-_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTION_INSERT ---"
+_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
 import textwrap
 import os
 
@@ -135,10 +135,10 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     task_details = """
     You will work together to complete the following instructions in order:
     1. View the function bank provided in the prompt to see previous preprocessing functions and their performance metrics.
-    2. Based on previous evaluations, suggest a new unique preprocessing function that may improve the performance metrics of the spot detector.
-    3. Plug the preprocessing function into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
-    4. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script. Do not terminate until you can verify the output of the code. 
-    Make sure that the entire pipeline runs to end-to-end with the new preprocessing function and computes metrics before saving to function bank.
+    2. Based on previous evaluations, suggest {k_word} new unique preprocessing functions that may improve the performance metrics of the spot detector.
+    3. Plug each of the {k_word} preprocessing functions into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
+    4. Save the {k_word} newly proposed preprocessing functions and their performance metrics in the function bank, using the provided script. Do not terminate until you can verify the output of the code. 
+    Make sure that the entire pipeline runs to end-to-end with the new preprocessing functions and computes metrics before saving to function bank.
     """
 
     pipeline_metrics_info = """
@@ -150,7 +150,7 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     """
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -167,6 +167,8 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
         self.seed = seed
         self.dataset_path = dataset_path
         self.function_bank_path = function_bank_path
+        self.k = k
+        self.k_word = k_word
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -189,7 +191,8 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
-            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
+            "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "sample_k": str(self.k)
         }
 
         script_with_config = template_content

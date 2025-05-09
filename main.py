@@ -31,10 +31,10 @@ from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 load_dotenv()
 
 
-def set_up_agents(executor: CodeExecutor, llm_model: str):
+def set_up_agents(executor: CodeExecutor, llm_model: str, k, k_word):
     ''' Prepare 3 agents and state transition'''
     if isinstance(executor, JupyterCodeExecutor) or isinstance(executor, LocalCommandLineCodeExecutor) or isinstance(executor, TemplatedLocalCommandLineCodeExecutor):
-        code_writer_prompt = sys_prompt_code_writer
+        code_writer_prompt = sys_prompt_code_writer(k, k_word)
     else:
         raise ValueError(f"Executor type {type(executor)} not supported")
     
@@ -192,12 +192,13 @@ def prepare_prompt_pipeline_optimization(
     prompt_pipeline_optimization = f"""
 
     
-    ## Preprocessing Function API:
+    ## Preprocessing Functions API:
     ```python
-    # Necessary imports for the function logic (if any)
-    # Do not import ImageData in the function, it is already imported in the environment
+    # Necessary imports for any function's logic (if any)
+    # Do not import ImageData in the functions, it is already imported in the environment
+    # All preprocessing function names should be of the form preprocess_images_i where i enumerates the preprocessing function, beginning at 1
     import cv2 as cv
-    def preprocess_images(images: ImageData) -> ImageData:
+    def preprocess_images_i(images: ImageData) -> ImageData:
         # Function logic here
         processed_images_list = []
         for img_array in images.raw:
@@ -343,7 +344,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
                  # "summary_prompt": prompts_instance.summary_prompt if hasattr(prompts_instance, 'summary_prompt') else None,
              },
              "agent_system_prompts": {
-                 "code_writer": sys_prompt_code_writer,
+                 "code_writer": sys_prompt_code_writer(args.k, args.k_word),
                  # "code_verifier": sys_prompt_code_verifier,
              },
              "executable_pipeline_script_template": prompts_instance.run_pipeline_prompt(), # Call the method to get the script string
@@ -425,14 +426,14 @@ def main(args: argparse.Namespace):
         from prompts.spot_detection_prompts import SpotDetectionPrompts, SpotDetectionPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = SpotDetectionPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['f1_score']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/spot_detection_expert.py.txt"
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         sampling_function = lambda x: x['overall_metrics']['average_precision']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "dataset_size": args.dataset_size, "batch_size": args.batch_size}        
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "dataset_size": args.dataset_size, "batch_size": args.batch_size}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/cellpose_segmentation_expert.py.txt"
     elif args.experiment_name == "medSAM_segmentation":
@@ -466,7 +467,9 @@ def main(args: argparse.Namespace):
         if args.warm_start:
             warm_start(
                 baseline_function_path,
-                prompt_class(**kwargs_for_prompt_class),
+                prompt_class(
+                    **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}}
+                ),
                 _PREPROCESSING_FUNCTION_PLACEHOLDER
             )
 
@@ -491,12 +494,12 @@ def main(args: argparse.Namespace):
                 template_script_func=prompts.run_pipeline_prompt,
                 placeholder=_PREPROCESSING_FUNCTION_PLACEHOLDER,
                 work_dir=work_dir,
-                timeout=300*2.5
+                timeout=300 * 2.5 * args.k
             )
 
             # Set up agents
             # code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents(executor_instance)
-            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model)
+            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model, args.k, args.k_word)
 
             
 
@@ -632,6 +635,22 @@ if __name__ == "__main__":
         type=int,
         default=5,
         help="Number of history threshold to show in the function bank."
+    )
+
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=5,
+        required=False,
+        help="Preprocessing function group size."
+    )
+
+    parser.add_argument(
+        "--k_word",
+        type=str,
+        default="five",
+        required=False,
+        help="Preprocessing function group size in English."
     )
 
     parser.add_argument(
