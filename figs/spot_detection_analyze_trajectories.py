@@ -5,8 +5,6 @@ import numpy as np
 from typing import List, Dict, Callable
 import argparse
 import matplotlib.pyplot as plt
-# from src.cellpose_segmentation import CellposeTool
-# from src.data_io import ImageData
 import cv2 as cv
 import logging
 import sys
@@ -17,21 +15,6 @@ import numpy as np
 import torch
 from torch import nn
 import glob
-
-# try:
-#     from data_io import ImageData
-# except ImportError:
-#     from src.data_io import ImageData
-
-# try:
-#     from tools import BaseSegmenter
-# except ImportError:
-#     from src.tools import BaseSegmenter
-
-# try:
-#     from utils import set_gpu_device
-# except ImportError:
-#     from src.utils import set_gpu_device
 
 # Dynamically add the project root to sys.path
 # This allows Python to find the 'src' module correctly
