@@ -19,7 +19,6 @@ Notes:
 - Make sure each conversation has at least one code block, and that the code block ONLY contains the code for the preprocessing function. Do not include any mock code for data loading or evaluation.
 - Only a single function is allowed to be written, and it must be named `preprocess_images` and follow the provided Preprocessing Function API.
 - For generating numbers or variables, you will need to print those out so that you can obtain the results
-- Write code incrementally to build your solution; avoid writing all the code at once
 - Write "TERMINATE" when the task is complete
 """
 
