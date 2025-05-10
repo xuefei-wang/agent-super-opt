@@ -1,5 +1,5 @@
 from prompts.task_prompts import TaskPrompts
-_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTION_INSERT ---"
+_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
 import textwrap
 import os
 
@@ -152,23 +152,24 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
     """
 
     task_details = """
-    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
-    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
-    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
+    All of you should work together to write {k_word} preprocessing functions to maximize the reported advantages and improve segmentation performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest {k_word} new unique preprocessing functions using OpenCV functions (APIs provided below) that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average.
+    2. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing functions.
+    3. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
     4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
-    6. Do not terminate the conversation until the new preprocessing function is evaluated.
-    7. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND it must be written to the function bank by calling the write_results function.
-    8. Recall, this is not a stateful kernel, so all functions, imports, etc. must be provided in the script to be executed.
+    5. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
+    6. Extremely important: Do not terminate the conversation until each of the {k_word} new preprocessing functions are evaluated AND their results are written to the function bank.
+    7. Recall, this is not a stateful kernel, so all functions, imports, etc. must be provided in the script to be executed.
     """
 
     pipeline_metrics_info = """
+        The advantage quantifies how much better this function performs than the average baseline (if positive) or how much worse than the average baseline (if negative).
         The following metrics are used to evaluate the performance of the pipeline: dsc_metric, nsd_metric.
         - The `dsc_metric` is the dice similarity coefficient (DSC) score of the pipeline and is similar to IoU, measuring the overlap between predicted and ground truth masks.
         - The `nsd_metric` is the normalized surface distance (NSD) score and is more sensitive to distance and boundary calculations.
     """
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path, k, k_word):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -186,6 +187,8 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         self.dataset_path = dataset_path
         self.function_bank_path = function_bank_path
         self.checkpoint_path = checkpoint_path
+        self.k = k
+        self.k_word = k_word
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -209,7 +212,8 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
             "checkpoint_path": f'"{self.checkpoint_path.replace("\\", "/")}"',
-            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "sample_k": str(self.k)
         }
 
         script_with_config = template_content

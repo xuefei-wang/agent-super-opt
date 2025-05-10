@@ -133,16 +133,20 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     """
 
     task_details = """
-    You will work together to complete the following instructions in order:
-    1. View the function bank provided in the prompt to see previous preprocessing functions and their performance metrics.
-    2. Based on previous evaluations, suggest {k_word} new unique preprocessing functions that may improve the performance metrics of the spot detector.
-    3. Plug each of the {k_word} preprocessing functions into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
-    4. Save the {k_word} newly proposed preprocessing functions and their performance metrics in the function bank, using the provided script. Do not terminate until you can verify the output of the code. 
-    Make sure that the entire pipeline runs to end-to-end with the new preprocessing functions and computes metrics before saving to function bank.
+    All of you should work together to write {k_word} preprocessing functions to maximize the reported advantages and improve spot detection performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest {k_word} new unique preprocessing functions using OpenCV functions (APIs provided below) that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average.
+    2. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing functions.
+    3. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
+    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
+    5. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
+    6. Extremely important: Do not terminate the conversation until each of the {k_word} new preprocessing functions are evaluated AND their results are written to the function bank.
+    7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
+    8. Do not write any code outside of the preprocessing functions.
     """
 
     pipeline_metrics_info = """
     {
+    advantage: score which quantifies how much better this function performs than the average baseline (if positive) or how much worse than the average baseline (if negative)
     class_loss: loss from one-hot encoded 2D matrix, where 1 is a spot and 0 is not a spot
     regress_loss: loss 2D matrix where each entry is distance from a predicted spot
     f1_score: Mean F1 score of predicted spots

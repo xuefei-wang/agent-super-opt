@@ -185,12 +185,12 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
     """
 
     task_details = """
-    All of you should work together to write {k_word} preprocessing functions to improve segmentation performance using OpenCV functions (APIs provided).
+    All of you should work together to write {k_word} preprocessing functions that maximize the reported advantages and improve segmentation performance using OpenCV functions (APIs provided).
     It might make sense to start the process with small preprocessing functions, and then build up to more complex functions depending on the performance of the previous functions.
 
-    1. Based on previous preprocessing functions and their performance (provided below), suggest {k_word} new preprocessing functions using OpenCV functions (APIs provided below). Successful strategies can include improving upon high performing functions (including tuning the parameters of the function), or exploring the image processing space for novel or different image processing approaches. You can feel free to combine OpenCV functions or suggest novel combinations that can lead to improvements, or modify the parameters of the existing extremely successful functions.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest {k_word} new unique preprocessing functions using OpenCV functions (APIs provided below) that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average. Successful strategies can include improving upon high performing functions (including tuning the parameters of the function), or exploring the image processing space for novel or different image processing approaches. You can feel free to combine OpenCV functions or suggest novel combinations that can lead to improvements, or modify the parameters of the existing extremely successful functions.
     2. Remember, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged.
-    3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing function.
+    3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing functions.
     4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
     5. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
     6. Extremely important: Do not terminate the conversation until each of the {k_word} new preprocessing functions are evaluated AND their results are written to the function bank.
@@ -201,9 +201,10 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
     """
 
     pipeline_metrics_info = """
+        The advantage quantifies how much better this function performs than the average baseline (if positive) or how much worse than the average baseline (if negative).
         The following metrics are used to evaluate the performance of the pipeline: average_precision.
         The average_precision is the average precision score of the pipeline at an Intersection over Union (IoU) threshold of 0.5.
-        Our ultimate goal is to increase the average_precision as much as possible (0.95 is the target).
+        Our ultimate goal is to maximize the advantage and increase the average_precision as much as possible (0.95 is the target).
         """
 
     # --- End of CLASS attributes ---
