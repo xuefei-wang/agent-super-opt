@@ -18,7 +18,9 @@ class TaskPrompts:
     task_details : str
     pipeline_metrics_info : str
     checkpoint_path : Optional[str] = None
-
+    dataset_size :Optional[int] = None
+    batch_size : Optional[int] = None
+    
     @abstractmethod
     def run_pipeline_prompt(self) -> str:
         pass
