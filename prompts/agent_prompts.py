@@ -18,7 +18,6 @@ Notes:
 - Make sure each conversation has at least one code block, and that the code block ONLY contains the code for the preprocessing function. Do not include any mock code for data loading or evaluation.
 - All {k_word} functions must be defined at once, and they must be named `preprocess_images_i` where `i` starts at 1 and ranges to {k}. The functions must follow the provided Preprocessing Functions API.
 - For generating numbers or variables, you will need to print those out so that you can obtain the results
-- Write code incrementally to build your solution; avoid writing all the logic at once
 - Write "TERMINATE" when the task is complete
 """.format(k=k, k_word=k_word)
 

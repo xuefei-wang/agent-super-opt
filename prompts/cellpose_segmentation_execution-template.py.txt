@@ -171,12 +171,18 @@ try:
         k_metrics_times.append(time.time() - metrics_start_time)
         logger.info(f"Metrics calculation finished in {k_metrics_times[i]:.2f} seconds.")
 
+    # --- Compute Advantages ---
+    if k_overall_metrics:
+        retrieve_reward = lambda m: m["average_precision"]
+        group_baseline = np.mean(list(map(retrieve_reward, k_overall_metrics)))
+        k_overall_metrics = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics]
+    
     # --- Log Metrics ---
-    logger.info("All overall metrics: %s", json.dumps(k_overall_metrics if k_overall_metrics is not None else 'N/A', indent=2))
+    logger.info("All overall metrics: %s", json.dumps(k_overall_metrics if k_overall_metrics else 'N/A', indent=2))
 
     # --- CHANGE: Save Results ONLY on SUCCESS (End of Try Block) ---
-    # Check if metrics were actually calculated (not None)
-    if len(k_overall_metrics) != 0:
+    # Check if metrics were actually calculated (not empty)
+    if k_overall_metrics:
         logger.info("Saving successful results to function bank...")
         # Access the code string variable injected by the executor
         preprocessing_code_str = globals().get("_GENERATED_CODE_STRING", None)
