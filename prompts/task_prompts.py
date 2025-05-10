@@ -17,6 +17,8 @@ class TaskPrompts:
     # summary_prompt : str
     task_details : str
     pipeline_metrics_info : str
+    k : int
+    k_word : str
     checkpoint_path : Optional[str] = None
     dataset_size :Optional[int] = None
     batch_size : Optional[int] = None
@@ -28,3 +30,6 @@ class TaskPrompts:
     @abstractmethod
     def save_function_prompt(self) -> str:
         pass
+
+    def get_task_details(self) -> str:
+        return self.task_details.format(k=self.k, k_word=self.k_word)

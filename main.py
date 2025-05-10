@@ -213,7 +213,7 @@ def prepare_prompt_pipeline_optimization(
     {baseline_metric}
 
     ## Task Details:
-    {prompts.task_details}
+    {prompts.get_task_details()}
 
     ## Task Metrics Details:
     {prompts.pipeline_metrics_info}
@@ -339,7 +339,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
-                 "task_details": prompts_instance.task_details,
+                 "task_details": prompts_instance.get_task_details(),
                  "pipeline_metrics_info": prompts_instance.pipeline_metrics_info,
                  # "summary_prompt": prompts_instance.summary_prompt if hasattr(prompts_instance, 'summary_prompt') else None,
              },
@@ -468,7 +468,9 @@ def main(args: argparse.Namespace):
             warm_start(
                 baseline_function_path,
                 prompt_class(
-                    **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}}
+                    **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}},
+                    k=1,
+                    k_word=None
                 ),
                 _PREPROCESSING_FUNCTION_PLACEHOLDER
             )
