@@ -171,7 +171,7 @@ def hyperparameter_search(func_str, task: str, data_path: str, metric: str, n_tr
         output (tuple[str, dict]): Tuple of the optimal function string and the metrics dictionary.
     '''
     code, params = transform_opencv_constants(func_str)
-
+    
     study = optuna.create_study(direction='maximize')
     study_objective = make_objective(code, params, task, data_path, metric)
     study.optimize(study_objective, n_trials=n_trials)
