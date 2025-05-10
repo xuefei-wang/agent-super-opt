@@ -181,7 +181,16 @@ try:
         # Access the code string variable injected by the executor
         preprocessing_code_str = globals().get("_GENERATED_CODE_STRING", None)
         pattern = rf'(?m)(?=^\s*def\s+preprocess_images_[1-{k}]\s*\()'
-        k_preprocessing_functions = [c.rstrip() for c in re.split(pattern, preprocessing_code_str) if c.lstrip().startswith("def preprocess_images_")]
+        k_preprocessing_functions = [
+            re.sub(
+                r'^(\s*def\s+)preprocess_images_\d+(\s*\()',
+                r'\1preprocess_images\2',
+                chunk,
+                flags=re.MULTILINE
+            ).rstrip()
+            for chunk in re.split(pattern, preprocessing_code_str)
+            if chunk.lstrip().startswith("def preprocess_images_")
+        ]
         results_to_save = {
             'preprocessing_function': k_preprocessing_functions,
             'overall_metrics': k_overall_metrics, # Known to be not None here
