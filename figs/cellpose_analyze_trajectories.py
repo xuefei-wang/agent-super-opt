@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import cv2 as cv
 import logging
 import sys
+import pickle
 
 from typing import Optional, Dict, Any, Tuple, List
 from abc import ABC, abstractmethod
@@ -161,7 +162,8 @@ class PriviligedCellposeTool(BaseSegmenter):
         metrics = {}
         losses = {}
         ap, tp, fp, fn  = average_precision(pred_masks, gt_masks)
-        metrics["average_precision"] = ap.mean(axis=0) # Average over all images
+        # metrics["average_precision"] = ap.mean(axis=0) # Average over all images
+        metrics["average_precision"] = np.nanmean(ap, axis=0) # Average over all images
         # metrics["aggregated_jaccard_index"] = aggregated_jaccard_index(pred_masks, gt_masks)
         # metrics["flow_error"] = flow_error(pred_masks, gt_masks)
         # classification loss
@@ -210,6 +212,16 @@ class PriviligedCellposeTool(BaseSegmenter):
         gt_masks = [np.expand_dims(mask, axis=2) for mask in gt_masks]
         return raw_images, gt_masks
     
+    def loadCombinedDataset(self, data_path: str, dataset_size: int = 256) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        """Used with combined datasets."""
+        # Load all images and masks
+        file = glob.glob(os.path.join(data_path, '*'))
+        with open(file[0], 'rb') as f:
+            data = pickle.load(f)
+        images = data['images'][:dataset_size]
+        masks = data['masks'][:dataset_size]
+        return images, masks    
+    
 def convert_string_to_function(func_str, func_name):
     # Create a namespace dictionary to store the function
     namespace = {}
@@ -222,7 +234,7 @@ def convert_string_to_function(func_str, func_name):
 
     
 
-def main(json_path: str, data_path: str, output_dir: str, precision_index: int = 0, device: int = 0):
+def main(json_path: str, data_path: str, output_dir: str, precision_index: int = 0, device: int = 0, dataset_size: int = 256, batch_size: int = 16):
     # Let's save these results into a new subfolder of output_dir
     output_dir = os.path.join(output_dir, 'analysis_results')
     os.makedirs(output_dir, exist_ok=True)
@@ -232,9 +244,11 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
 
     # First evaluate the baseline of no preprocessing
     segmenter = CellposeTool(model_name="cyto3", device=device)
-    raw_images, gt_masks = segmenter.loadData(os.path.join(data_path, 'val_set/'))
+    # raw_images, gt_masks = segmenter.loadData(os.path.join(data_path, 'val_set/'))
+    raw_images, gt_masks = segmenter.loadCombinedDataset(os.path.join(data_path, 'val_set/'), dataset_size=dataset_size)
+
     raw_images, gt_masks = raw_images, gt_masks
-    images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
+    images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
 
     pred_masks = segmenter.predict(images, batch_size=images.batch_size)
     metrics_val = segmenter.evaluate(pred_masks, gt_masks)
@@ -243,9 +257,11 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     # Use priviliged CellposeTool to get "best" results, to_normalize=True
     priviliged_segmenter = PriviligedCellposeTool(model_name="cyto3", device=device, channels=[2,1], to_normalize=True)
 
-    raw_images_val, gt_masks_val = priviliged_segmenter.loadData(os.path.join(data_path, 'val_set/'))
-    images = ImageData(raw=raw_images_val, batch_size=16, image_ids=[i for i in range(len(raw_images_val))])
-    pred_masks_val = priviliged_segmenter.predict(images, batch_size=16)
+    # raw_images_val, gt_masks_val = priviliged_segmenter.loadData(os.path.join(data_path, 'val_set/'))
+    raw_images_val, gt_masks_val = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'val_set/'), dataset_size=dataset_size)
+
+    images = ImageData(raw=raw_images_val, batch_size=batch_size, image_ids=[i for i in range(len(raw_images_val))])
+    pred_masks_val = priviliged_segmenter.predict(images, batch_size=images.batch_size)
     metrics_val = priviliged_segmenter.evaluate(pred_masks_val, gt_masks_val, precision_index=precision_index)
 
     # raw_images_test, gt_masks_test = priviliged_segmenter.loadData(os.path.join(data_path, 'test_set/'))
@@ -307,12 +323,14 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     # Now let's get images with and without preprocessing
     # First evaluate the baseline of no preprocessing
     segmenter = CellposeTool(model_name="cyto3", device=device)
-    raw_images, gt_masks = segmenter.loadData(os.path.join(data_path, 'val_set/'))
+    # raw_images, gt_masks = segmenter.loadData(os.path.join(data_path, 'val_set/'))
+    raw_images, gt_masks = segmenter.loadCombinedDataset(os.path.join(data_path, 'val_set/'), dataset_size=dataset_size)
+
     raw_images, gt_masks = raw_images, gt_masks
-    images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
+    images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
 
     orig_images = images
-    best_preprocessed_images = best_preprocessing_function(ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))]))
+    best_preprocessed_images = best_preprocessing_function(ImageData(raw=raw_images, batch_size=images.batch_size, image_ids=[i for i in range(len(raw_images))]))
     agent_images = best_preprocessed_images.raw
     plt.figure()
     fig, axes = plt.subplots(2, 4, figsize=(20, 10))
@@ -328,22 +346,23 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
 
     # # First, the baseline (to_normalize=True)
     priviliged_segmenter = PriviligedCellposeTool(model_name="cyto3", device=device, channels=[2,1], to_normalize=True)
-    raw_images_test, gt_masks_test = priviliged_segmenter.loadData(os.path.join(data_path, 'test_set/'))
-    images = ImageData(raw=raw_images_test, batch_size=8, image_ids=[i for i in range(len(raw_images_test))])
-    pred_masks_test = priviliged_segmenter.predict(images, batch_size=8)
+    # raw_images_test, gt_masks_test = priviliged_segmenter.loadData(os.path.join(data_path, 'test_set/'))
+    raw_images_test, gt_masks_test = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'test_set/'), dataset_size=dataset_size)
+    images = ImageData(raw=raw_images_test, batch_size=batch_size, image_ids=[i for i in range(len(raw_images_test))])
+    pred_masks_test = priviliged_segmenter.predict(images, batch_size=batch_size)
     metrics_test_baseline = priviliged_segmenter.evaluate(pred_masks_test, gt_masks_test, precision_index)
 
     # Now let's do the other baseline (to_normalize=False)
     # no norm baseline
     non_privileged_segmenter = CellposeTool(model_name="cyto3", device=device)
-    pred_masks_test_no_norm = non_privileged_segmenter.predict(images, batch_size=8)
+    pred_masks_test_no_norm = non_privileged_segmenter.predict(images, batch_size=batch_size)
     metrics_test_baseline_no_norm = non_privileged_segmenter.evaluate(pred_masks_test_no_norm, gt_masks_test)
 
 
     best_preprocessed_images = best_preprocessing_function(images)
     # Our function, without to_normalize
     non_privileged_segmenter = CellposeTool(model_name="cyto3", device=device)
-    pred_masks_test = non_privileged_segmenter.predict(best_preprocessed_images, batch_size=8)
+    pred_masks_test = non_privileged_segmenter.predict(best_preprocessed_images, batch_size=batch_size)
     metrics_test_our_function = non_privileged_segmenter.evaluate(pred_masks_test, gt_masks_test)
 
 
@@ -363,11 +382,13 @@ if __name__ == "__main__":
     parser.add_argument('--data_path', type=str, required=True, help='Path to the data directory.')
     parser.add_argument('--precision_index', type=int, required=False, default=0, help='Which average precision index to use. [0.5, 0.75, 0.9].')
     parser.add_argument('--device', type=int, required=False, default=0, help='Which GPU to use.')
+    parser.add_argument('--dataset_size', type=int, required=False, default=256, help='Number of dataset size to show in the function bank.')
+    parser.add_argument('--batch_size', type=int, required=False, default=16, help='Batch size for Cellpose.')
     args = parser.parse_args()
     
     output_dir = os.path.dirname(args.json_path)
     json_path = args.json_path
     data_path = args.data_path
     data_path = os.path.dirname(os.path.dirname(data_path))
-    main(json_path, data_path, output_dir, args.precision_index, args.device)
+    main(json_path, data_path, output_dir, args.precision_index, args.device, args.dataset_size, args.batch_size)
     
