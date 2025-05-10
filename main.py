@@ -183,7 +183,7 @@ def prepare_prompt_pipeline_optimization(
         sampling_function: callable, 
         current_iteration: int, 
         history_threshold: int=0, 
-        total_iterations: int=20,
+        total_iterations: int=30,
         maximize = True, 
         n_top: int=5,
         n_worst: int=5, 
@@ -419,7 +419,7 @@ def main(args: argparse.Namespace):
     my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = args.random_seed # Random seed for reproducibility
-    num_optim_iter = 30 # Number of optimization iterations
+    num_optim_iter = 20 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
     # history_threshold = 5
