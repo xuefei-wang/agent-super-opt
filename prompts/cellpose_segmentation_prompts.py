@@ -179,43 +179,9 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
     This is a three-channel image dataset for biological segmentation, consisting of images from different experiments and different settings - a heterogenous dataset of many different object types.  There is a particular focus on biological microscopy images, including cells, sometimes with nuclei labeled in a separate channel.
     The images have pixel values between 0 and 1 and are in float32 format.
     Channel[0] is the nucleus, channel[1] is the cytoplasm, and channel[2] is empty, however not all images have any nuclear data.
-    Because many images lack nuclear data, preprocessing functions should be designed with particular focus on the cytoplasm channel.
     Our goal is to improve the segmentation performance of the neural network by using OpenCV preprocessing functions to improve the quality of the images for downstream segmentation.
     We want to increase the neural network tool's performance at segmenting cells with cell perimeter masks that have high Intersection over Union (IoU) with the ground truth masks.
-    The cell images have dimensions (B, L, W, C) = (batch, length, width, channel). To correctly predict masks, the images provided must be in the format of standard ImageData object and must maintain channel dimensions and ordering.
-    Successful preprocessing functions will typically normalize as the final step.  You can use clever approaches to normalize images.
-    Highest performing expert preprocessing function: average_precision = 0.7401
-    def normalize99(Y, lower=1, upper=99, copy=True, downsample=False):
-            '''
-            Normalize the image so that 0.0 corresponds to the 1st percentile and 1.0 corresponds to the 99th percentile.
-            Args:
-                Y (ndarray): The input image (for downsample, use [Ly x Lx] or [Lz x Ly x Lx]).
-                lower (int, optional): The lower percentile. Defaults to 1.
-                upper (int, optional): The upper percentile. Defaults to 99.
-                copy (bool, optional): Whether to create a copy of the input image. Defaults to True.
-                downsample (bool, optional): Whether to downsample image to compute percentiles. Defaults to False.
-            Returns:
-                ndarray: The normalized image.
-            '''
-            X = Y.copy() if copy else Y
-            X = X.astype("float32") if X.dtype!="float64" and X.dtype!="float32" else X
-            if downsample and X.size > 224**3:
-                nskip = [max(1, X.shape[i] // 224) for i in range(X.ndim)]
-                nskip[0] = max(1, X.shape[0] // 50) if X.ndim == 3 else nskip[0]
-                slc = tuple([slice(0, X.shape[i], nskip[i]) for i in range(X.ndim)])
-                x01 = np.percentile(X[slc], lower)
-                x99 = np.percentile(X[slc], upper)
-            else:
-                x01 = np.percentile(X, lower)
-                x99 = np.percentile(X, upper)
-            if x99 - x01 > 1e-3:
-                X -= x01 
-                X /= (x99 - x01)
-            else:
-                X[:] = 0
-            return X
-        ```
-    
+    The cell images have dimensions (B, L, W, C) = (batch, length, width, channel). To correctly predict masks, the images provided must be in the format of standard ImageData object and must maintain channel dimensions and ordering.   
     """
 
     task_details = """
