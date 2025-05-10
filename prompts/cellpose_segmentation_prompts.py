@@ -253,7 +253,9 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             # summary_prompt=self.summary_prompt, # Access class attribute
             task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
-            pipeline_metrics_info=self.pipeline_metrics_info # Access class attribute
+            pipeline_metrics_info=self.pipeline_metrics_info, # Access class attribute
+            k=k,
+            k_word=k_word
         )
         # Assign instance attributes
         self.gpu_id = gpu_id

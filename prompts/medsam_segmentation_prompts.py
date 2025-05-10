@@ -179,7 +179,9 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
             pipeline_metrics_info=self.pipeline_metrics_info, # Access class attribute
-            checkpoint_path=checkpoint_path
+            checkpoint_path=checkpoint_path,
+            k=k,
+            k_word=k_word
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
