@@ -7,7 +7,7 @@ You write code using Python in a STATELESS execution environment, so all code mu
 
 - Write code in Python markdown code blocks:
 ```python
-def preprocess_images(image_data: ImageData) -> ImageData:
+def preprocess_images_i(image_data: ImageData) -> ImageData:
     # Code example. All code must be written within this function.
     return image_data
 ```
