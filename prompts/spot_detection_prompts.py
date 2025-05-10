@@ -145,6 +145,7 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     {
     class_loss: loss from one-hot encoded 2D matrix, where 1 is a spot and 0 is not a spot
     regress_loss: loss 2D matrix where each entry is distance from a predicted spot
+    f1_score: Mean F1 score of predicted spots
     }
     """
     # --- End of CLASS attributes ---

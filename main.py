@@ -542,7 +542,7 @@ def main(args: argparse.Namespace):
         # os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
         pass
     elif args.experiment_name == "spot_detection":
-        # os.system(f"python figs/spot_detection_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
+        os.system(f"python figs/spot_detection_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset}")
         pass
 
 if __name__ == "__main__":
