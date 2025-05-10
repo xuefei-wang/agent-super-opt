@@ -201,7 +201,7 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
     """
 
     pipeline_metrics_info = """
-        The advantage quantifies how much better this function performs than the average baseline (if positive) or how much worse than the average baseline (if negative).
+        The advantage quantifies how much better this function performs than the expert baseline (if positive) or how much worse than the expert baseline (if negative).
         The following metrics are used to evaluate the performance of the pipeline: average_precision.
         The average_precision is the average precision score of the pipeline at an Intersection over Union (IoU) threshold of 0.5.
         Our ultimate goal is to maximize the advantage and increase the average_precision as much as possible (0.95 is the target).
@@ -209,7 +209,7 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
 
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, dataset_size, batch_size):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, dataset_size, batch_size, baseline_metric_value=-100):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -232,6 +232,7 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
         self.function_bank_path = function_bank_path
         self.k = k
         self.k_word = k_word
+        self.baseline_metric_value = baseline_metric_value
         self.dataset_size = dataset_size
         self.batch_size = batch_size
 
@@ -257,6 +258,8 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
             "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "sample_k": str(self.k),
+            "baseline_metric_value": str(self.baseline_metric_value),
             "sample_k": str(self.k),
             "dataset_size": str(self.dataset_size),
             "batch_size": str(self.batch_size)

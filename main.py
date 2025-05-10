@@ -7,6 +7,7 @@ import uuid
 import random
 from datetime import datetime
 import os
+import re
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock, CodeExecutor, DockerCommandLineCodeExecutor, LocalCommandLineCodeExecutor
@@ -304,8 +305,13 @@ def warm_start(function_definition_path: str, task_prompts: TaskPrompts, functio
     print("Performing warm start with expert baseline function")
 
     with open(function_definition_path, "r") as file:
-        function_definition = file.read()
-    
+        function_definition = re.sub(
+            r'^(\s*def\s+)preprocess_images(\s*\()',
+            r'\1preprocess_images_1\2',
+            file.read(),
+            flags=re.MULTILINE,
+        )
+
     executor = TemplatedLocalCommandLineCodeExecutor(
         template_script_func=task_prompts.run_pipeline_prompt,
         placeholder=function_placeholder,
@@ -464,28 +470,32 @@ def main(args: argparse.Namespace):
 
         # Run baseline and insert to function bank first
         baseline_metric = ""
-        if args.warm_start:
-            warm_start(
-                baseline_function_path,
-                prompt_class(
-                    **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}},
-                    k=1,
-                    k_word=None
-                ),
-                _PREPROCESSING_FUNCTION_PLACEHOLDER
-            )
+        warm_start(
+            baseline_function_path,
+            prompt_class(
+                **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}},
+                k=1,
+                k_word=None,
+            ),
+            _PREPROCESSING_FUNCTION_PLACEHOLDER
+        )
 
-            if args.metric_only:
-                # Get baseline metric and reset function bank
-                if args.experiment_name == "cellpose_segmentation":
-                    baseline_metric = "Expert average precision score: "
-                elif args.experiment_name == "medSAM_segmentation":
-                    baseline_metric = "Expert DSC + NSD score: "
-                elif args.experiment_name == "spot_detection":
-                    baseline_metric = "Expert F1 score: "
-                baseline_metric += str(sampling_function(last_n(output_function_bank, n=1)[0]))
-                with open(output_function_bank, "w") as file:
-                    json.dump([], file)
+        baseline_metric_value = sampling_function(last_n(output_function_bank, n=1)[0])
+        kwargs_for_prompt_class["baseline_metric_value"] = baseline_metric_value
+
+        if args.warm_start and args.metric_only:
+            # Get baseline metric and reset function bank
+            if args.experiment_name == "cellpose_segmentation":
+                baseline_metric = "Expert average precision score: "
+            elif args.experiment_name == "medSAM_segmentation":
+                baseline_metric = "Expert DSC + NSD score: "
+            elif args.experiment_name == "spot_detection":
+                baseline_metric = "Expert F1 score: "
+            baseline_metric += str(baseline_metric_value)
+
+        if not args.warm_start or args.metrics_only:
+            with open(output_function_bank, "w") as file:
+                json.dump([], file)
 
         for i in range(num_optim_iter):
 

@@ -146,7 +146,7 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
 
     pipeline_metrics_info = """
     {
-    advantage: score which quantifies how much better this function performs than the average baseline (if positive) or how much worse than the average baseline (if negative)
+    advantage: score which quantifies how much better this function performs than the expert baseline (if positive) or how much worse than the expert baseline (if negative)
     class_loss: loss from one-hot encoded 2D matrix, where 1 is a spot and 0 is not a spot
     regress_loss: loss 2D matrix where each entry is distance from a predicted spot
     f1_score: Mean F1 score of predicted spots
@@ -154,7 +154,7 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     """
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, baseline_metric_value=-100):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -175,6 +175,7 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
         self.function_bank_path = function_bank_path
         self.k = k
         self.k_word = k_word
+        self.baseline_metric_value = baseline_metric_value
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -198,7 +199,8 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
             "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
-            "sample_k": str(self.k)
+            "sample_k": str(self.k),
+            "baseline_metric_value": str(self.baseline_metric_value)
         }
 
         script_with_config = template_content

@@ -23,6 +23,7 @@ except ImportError as import_err:
 gpu_id = {gpu_id}
 seed = {seed} # Seed is now an integer, no quotes needed
 k = {sample_k}
+group_baseline = {baseline_metric_value}
 data_path = r"{dataset_path}"
 function_bank_path = r"{function_bank_path}"
 script_start_time = time.time()
@@ -180,7 +181,6 @@ try:
     # --- Compute Advantages ---
     if k_overall_metrics:
         retrieve_reward = lambda m: m["dsc_metric"] + m["nsd_metric"]
-        group_baseline = np.mean(list(map(retrieve_reward, k_overall_metrics)))
         k_overall_metrics = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics]
 
     # --- Log Metrics ---

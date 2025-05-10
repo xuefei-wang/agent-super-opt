@@ -163,13 +163,13 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
     """
 
     pipeline_metrics_info = """
-        The advantage quantifies how much better this function performs than the average baseline (if positive) or how much worse than the average baseline (if negative).
+        The advantage quantifies how much better this function performs than the expert baseline (if positive) or how much worse than the expert baseline (if negative).
         The following metrics are used to evaluate the performance of the pipeline: dsc_metric, nsd_metric.
         - The `dsc_metric` is the dice similarity coefficient (DSC) score of the pipeline and is similar to IoU, measuring the overlap between predicted and ground truth masks.
         - The `nsd_metric` is the normalized surface distance (NSD) score and is more sensitive to distance and boundary calculations.
     """
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path, k, k_word):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path, k, k_word, baseline_metric_value=-100):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -191,6 +191,7 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         self.checkpoint_path = checkpoint_path
         self.k = k
         self.k_word = k_word
+        self.baseline_metric_value = baseline_metric_value
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -215,7 +216,8 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
             "checkpoint_path": f'"{self.checkpoint_path.replace("\\", "/")}"',
             "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
-            "sample_k": str(self.k)
+            "sample_k": str(self.k),
+            "baseline_metric_value": str(self.baseline_metric_value),
         }
 
         script_with_config = template_content
