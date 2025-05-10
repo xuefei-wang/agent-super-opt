@@ -333,6 +333,8 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "n_worst": n_worst,
          "n_last": n_last,
          "llm_model": llm_model,
+         "warm_start": args.warm_start,
+         "metric_only": args.metric_only,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
@@ -411,7 +413,7 @@ def main(args: argparse.Namespace):
     cache_seed = 4 # Cache seed for caching the results
     random_seed = args.random_seed # Random seed for reproducibility
     num_optim_iter = 30 # Number of optimization iterations
-    max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
+    max_round = 10  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
     # history_threshold = 5
     llm_model = "gpt-4.1" # Do not modify this string
@@ -430,7 +432,7 @@ def main(args: argparse.Namespace):
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         sampling_function = lambda x: x['overall_metrics']['average_precision']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "dataset_size": args.dataset_size, "batch_size": args.batch_size}        
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/cellpose_segmentation_expert.py.txt"
     elif args.experiment_name == "medSAM_segmentation":
@@ -464,12 +466,7 @@ def main(args: argparse.Namespace):
         if args.warm_start:
             warm_start(
                 baseline_function_path,
-                prompt_class(
-                    gpu_id=args.gpu_id,
-                    seed=0,
-                    dataset_path=args.dataset,
-                    function_bank_path=output_function_bank,
-                ),
+                prompt_class(**kwargs_for_prompt_class),
                 _PREPROCESSING_FUNCTION_PLACEHOLDER
             )
 
@@ -494,7 +491,7 @@ def main(args: argparse.Namespace):
                 template_script_func=prompts.run_pipeline_prompt,
                 placeholder=_PREPROCESSING_FUNCTION_PLACEHOLDER,
                 work_dir=work_dir,
-                timeout=300
+                timeout=300*2.5
             )
 
             # Set up agents
@@ -537,7 +534,7 @@ def main(args: argparse.Namespace):
 
     update_run_info_with_end_timestamp(run_output_dir)
     if args.experiment_name == "cellpose_segmentation":
-        os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
+        os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id} --dataset_size {args.dataset_size} --batch_size {args.batch_size}")
     elif args.experiment_name == "medSAM_segmentation":
         # os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
         pass
@@ -636,6 +633,21 @@ if __name__ == "__main__":
         default=5,
         help="Number of history threshold to show in the function bank."
     )
+
+    parser.add_argument(
+        "--dataset_size",
+        type=int,
+        default=256,
+        help="Cellpose specific argument to determine size of val/test set."
+    )
+
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=16,
+        help="Batch size for Cellpose."
+    )
+
 
     args = parser.parse_args()
 
