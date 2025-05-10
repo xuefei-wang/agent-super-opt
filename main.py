@@ -182,7 +182,7 @@ def prepare_prompt_pipeline_optimization(
         sampling_function: callable, 
         current_iteration: int, 
         history_threshold: int=0, 
-        total_iterations: int=30, 
+        total_iterations: int=20,
         maximize = True, 
         n_top: int=5,
         n_worst: int=5, 
@@ -641,15 +641,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--k",
         type=int,
-        default=5,
+        default=3,
         required=False,
-        help="Preprocessing function group size."
+        help="Preprocessing function group size value."
     )
 
     parser.add_argument(
         "--k_word",
         type=str,
-        default="five",
+        default="three",
         required=False,
         help="Preprocessing function group size in English."
     )
@@ -657,7 +657,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Check that k word and int were both set
-    if args.k == 5 and args.k_word != "five" or args.k != 5 and args.k_word == "five":
+    if args.k == 3 and args.k_word != "three" or args.k != 3 and args.k_word == "three":
         raise ValueError("k and k_word must be set to be equivalent.")
 
     # Work directory
