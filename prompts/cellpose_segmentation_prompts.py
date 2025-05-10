@@ -208,7 +208,7 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
 
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, dataset_size, batch_size):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -218,13 +218,17 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             # summary_prompt=self.summary_prompt, # Access class attribute
             task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
-            pipeline_metrics_info=self.pipeline_metrics_info # Access class attribute
+            pipeline_metrics_info=self.pipeline_metrics_info, # Access class attribute
+            dataset_size=dataset_size,
+            batch_size=batch_size
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
         self.seed = seed
         self.dataset_path = dataset_path
         self.function_bank_path = function_bank_path
+        self.dataset_size = dataset_size
+        self.batch_size = batch_size
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -247,7 +251,9 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
-            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
+            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "dataset_size": str(self.dataset_size),
+            "batch_size": str(self.batch_size)
         }
 
         script_with_config = template_content
