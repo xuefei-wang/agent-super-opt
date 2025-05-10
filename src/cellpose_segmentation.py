@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from torch import nn
 import glob
+import os
+import pickle
 
 try:
     from data_io import ImageData
@@ -85,7 +87,7 @@ class CellposeTool(BaseSegmenter):
         metrics = {}
         losses = {}
         ap, tp, fp, fn  = average_precision(pred_masks, gt_masks)
-        metrics["average_precision"] = ap.mean(axis=0) # Average over all images
+        metrics["average_precision"] = np.nanmean(ap, axis=0) #ap.mean(axis=0) # Average over all images
         # metrics["aggregated_jaccard_index"] = aggregated_jaccard_index(pred_masks, gt_masks)
         # metrics["flow_error"] = flow_error(pred_masks, gt_masks)
         # classification loss
@@ -130,6 +132,16 @@ class CellposeTool(BaseSegmenter):
         gt_masks = [imread(f.split('.')[0][:-3] + 'masks' + '.' + f.split('.')[1]) for f in files]
         gt_masks = [np.expand_dims(mask, axis=2) for mask in gt_masks]
         return raw_images, gt_masks
+    
+    def loadCombinedDataset(self, data_path: str, dataset_size: int = 256) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        """Used with combined datasets."""
+        # Load all images and masks
+        file = glob.glob(os.path.join(data_path, '*'))
+        with open(file[0], 'rb') as f:
+            data = pickle.load(f)
+        images = data['images'][:dataset_size]
+        masks = data['masks'][:dataset_size]
+        return images, masks   
     
 
 if __name__ == "__main__":
