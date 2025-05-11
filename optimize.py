@@ -170,7 +170,7 @@ def evaluate_pipeline(preprocess_func: callable, task: str, data_path: str, **kw
         # raw_images, gt_masks = segmenter.loadData(data_path)
         raw_images, gt_masks = segmenter.loadCombinedDataset(data_path, kwargs.get('dataset_size'))
 
-        images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
+        images = ImageData(raw=raw_images, batch_size=kwargs.get('batch_size'), image_ids=[i for i in range(len(raw_images))])
 
         processed_img = preprocess_func(images) 
         pred_masks = segmenter.predict(processed_img, batch_size=images.batch_size)
