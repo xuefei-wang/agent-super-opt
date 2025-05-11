@@ -150,7 +150,7 @@ try:
     logger.info(f"[Single Image] Loading single image as a tester...")
 
     # --- Prepare ImageData ---
-     batch_size = spots_data['X'].shape[0]
+    batch_size = spots_data['X'].shape[0]
     images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
 
     # Run the pipeline on a single image at first so that if the pipeline fails,
