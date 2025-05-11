@@ -27,6 +27,9 @@ from prompts.agent_prompts import (
 
 from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 
+from optimize import hyperparameter_search, transform_opencv_constants, save_to_function_bank
+import time
+
 # Load environment variables
 load_dotenv()
 
@@ -535,6 +538,37 @@ def main(args: argparse.Namespace):
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, run_output_dir)
 
+        # Run an optimization study on the best 3 function in the function bank
+        if args.optimize:
+            
+            print("Starting hyperparameter search")
+            optimize_time = time.time()
+            
+            for result in top_n(output_function_bank, sorting_function=sampling_function, n=args.n_optimize):
+                func_to_optimize = result['preprocessing_function']
+                
+                _, params, _ = transform_opencv_constants(func_to_optimize)
+                
+                if len(params) == 0:
+                    # Skip if no parameters to optimize
+                    print("No parameters to optimize, skipping hyperparameter search")
+                else:
+                    opt_code, opt_metrics = hyperparameter_search(
+                        func_to_optimize,
+                        args.experiment_name,
+                        args.dataset,
+                        args.n_optimize_trials,
+                        kwargs_for_prompt_class
+                    )
+                    optimize_time = time.time() - optimize_time
+                    save_to_function_bank(
+                        opt_code,
+                        opt_metrics,
+                        output_function_bank,
+                        optimize_time,
+                    )
+                
+        
     update_run_info_with_end_timestamp(run_output_dir)
     if args.experiment_name == "cellpose_segmentation":
         os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
@@ -636,6 +670,26 @@ if __name__ == "__main__":
         default=5,
         help="Number of history threshold to show in the function bank."
     )
+    
+    parser.add_argument(
+        '--optimize',
+        action='store_true'
+    )
+    
+    parser.add_argument(
+        '--n_optimize',
+        type=int,
+        default=3,
+        help="Number of functions to optimize."
+    )
+    
+    parser.add_argument(
+        '--n_optimize_trials',
+        type=int,
+        default=15,
+        help="Number of trials for each function to optimize."
+    )
+        
 
     args = parser.parse_args()
 

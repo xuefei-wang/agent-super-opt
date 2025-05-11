@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 from src.data_io import ImageData
 from src.spot_detection import DeepcellSpotsDetector
+from src.cellpose_segmentation import CellposeTool
+from src.medsam_segmentation import MedSAMTool
 from assets.opencv_arg_rules import OPENCV_ARG_RULES
 from prompts.task_prompts import TaskPrompts
 
@@ -15,6 +17,7 @@ class CV2ParamExtractor(ast.NodeTransformer):
     def __init__(self):
         self.param_counter = 0
         self.param_info = []
+        self.original_values = {}
 
     def visit_Call(self, node):
         if (
@@ -46,24 +49,44 @@ class CV2ParamExtractor(ast.NodeTransformer):
                 "type": ptype,
                 "constraints": constraints
             })
+            self.original_values[param_name] = node.value
             self.param_counter += 1
             return ast.Name(id=param_name, ctx=ast.Load())
         elif isinstance(node, ast.Tuple):
             elements = []
+            values = []
             for i, el in enumerate(node.elts):
                 el_rule = None
                 if rule and rule["type"].startswith("tuple") and "int" in rule["type"]:
                     el_rule = {"type": "int", "constraints": rule.get("constraints", {})}
-                elements.append(self.replace_constants(el, el_rule))
-            return ast.Tuple(elts=elements, ctx=ast.Load())
+                new_el = self.replace_constants(el, el_rule)
+                values.append(el.value if isinstance(el, ast.Constant) else None)
+                elements.append(new_el)
+
+            param_name = f"param_{self.param_counter}"
+            self.param_info.append({
+                "name": param_name,
+                "type": rule["type"] if rule else "tuple[int,int]",
+                "constraints": rule.get("constraints", {}) if rule else {}
+            })
+            self.original_values[param_name] = tuple(values)
+            self.param_counter += 1
+            return ast.Name(id=param_name, ctx=ast.Load())
         return node
 
 def transform_opencv_constants(func_str):
+    """
+    Transform OpenCV function calls in a string to use parameters instead of constants.
+    Args:
+        func_str (str): The function string to transform.
+    Returns:
+        tuple: A tuple containing the modified function string, parameter information, and original values.
+    """
     tree = ast.parse(func_str)
     transformer = CV2ParamExtractor()
     modified_tree = transformer.visit(tree)
     ast.fix_missing_locations(modified_tree)
-    return ast.unparse(modified_tree), transformer.param_info
+    return ast.unparse(modified_tree), transformer.param_info, transformer.original_values
 
 
 def define_optuna_search_space(trial, param_info):
@@ -122,7 +145,7 @@ def create_preprocessing_function(modified_func_str: str, param_values: dict):
 
     return preprocess_func
 
-def evaluate_pipeline(preprocess_func: callable, task: str, data_path: str):
+def evaluate_pipeline(preprocess_func: callable, task: str, data_path: str, **kwargs):
     
     if task == "spot_detection":
         detector = DeepcellSpotsDetector()
@@ -140,24 +163,78 @@ def evaluate_pipeline(preprocess_func: callable, task: str, data_path: str):
 
         return metrics
     elif task == "cellpose_segmentation":
-        #TODO
-        pass
-    elif task == "medSAM_segmentation":
-        #TODO
-        pass
+        segmenter = CellposeTool(model_name="cyto3", device=kwargs.get('gpu_id'))
+        raw_images, gt_masks = segmenter.loadData(data_path)
 
-def make_objective(modified_func_str, param_info, task, data_path, metric: str):
+        images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
+
+        processed_img = preprocess_func(images) 
+        pred_masks = segmenter.predict(processed_img, batch_size=images.batch_size)
+        overall_metrics = segmenter.evaluate(pred_masks, gt_masks)
+        return overall_metrics
+    elif task == "medSAM_segmentation":
+        segmenter = MedSAMTool(gpu_id=kwargs.get('gpu_id'), checkpoint_path=kwargs.get('checkpoint_path'))
+        raw_images, boxes, masks = segmenter.loadData(data_path)
+
+        # --- Prepare ImageData ---
+        batch_size = 8
+        images = ImageData(raw=raw_images,
+                    batch_size=batch_size,
+                    image_ids=[i for i in range(len(raw_images))],
+                    masks=masks,
+                    predicted_masks=masks)
+        
+        images = preprocess_func(images)
+        
+        # --- Run Segmenter ---
+        pred_masks = segmenter.predict(images, boxes, used_for_baseline=False)
+
+        overall_metrics = segmenter.evaluate(pred_masks, images.masks)
+            
+        return overall_metrics
+
+def make_objective(modified_func_str, param_info, task, data_path, kwargs):
+    
+    if task == "spot_detection":
+        metric = 'f1_score'
+    elif task == "cellpose_segmentation":
+        metric = 'average_precision'
+    elif task == "medSAM_segmentation":
+        metric = 'dsc_metric'
+        
     def objective(trial):
         param_values = define_optuna_search_space(trial, param_info)
         preprocess_func = create_preprocessing_function(modified_func_str, param_values)
         
-        score = evaluate_pipeline(preprocess_func, task, data_path)
+        score = evaluate_pipeline(preprocess_func, task, data_path, kwargs)
         
         return score[metric]
     return objective
 
+def save_to_function_bank(func_str: str, metrics: dict, function_bank_path: str, time: float):
+    '''
+    Save the function string and metrics to a JSON file.
 
-def hyperparameter_search(func_str, task: str, data_path: str, metric: str, n_trials: int = 15):
+    Args:
+        func_str (str): The function string to save.
+        metrics (dict): The metrics dictionary to save.
+        function_bank_path (str): Path to the function bank JSON file.
+        time (float): Time taken for the optimization.
+    '''
+    
+    with open(function_bank_path, 'r') as f:
+        function_bank = json.load(f)
+
+    function_bank.append({
+        "preprocessing_function": func_str,
+        "overall_metrics": metrics,
+        "optimization_time": time,
+    })
+
+    with open(function_bank_path, 'w') as f:
+        json.dump(function_bank, f, indent=4)
+
+def hyperparameter_search(func_str, task: str, data_path: str, n_trials: int = 15, **kwargs):
     '''
     Perform hyperparameter search.
 
@@ -165,21 +242,23 @@ def hyperparameter_search(func_str, task: str, data_path: str, metric: str, n_tr
         func_str (str): The function string to optimize.
         data_path (str): Path to the data.
         task (str): The task to perform (e.g., "spot_detection").
-        metric (str): The metric to optimize.
         n_trials (int): Number of trials for the optimization.
     Returns:
         output (tuple[str, dict]): Tuple of the optimal function string and the metrics dictionary.
     '''
-    code, params = transform_opencv_constants(func_str)
+    
+    
+    code, params, orig_values = transform_opencv_constants(func_str)
     
     study = optuna.create_study(direction='maximize')
-    study_objective = make_objective(code, params, task, data_path, metric)
+    study.enqueue_trial(orig_values)
+    study_objective = make_objective(code, params, task, data_path, kwargs)
     study.optimize(study_objective, n_trials=n_trials)
 
     best_params = study.best_params
 
     
-    metrics = evaluate_pipeline(create_preprocessing_function(code, best_params), task, data_path)
+    metrics = evaluate_pipeline(create_preprocessing_function(code, best_params), task, data_path, kwargs)
 
     for p in best_params:
         code = code.replace(p, str(best_params[p]))

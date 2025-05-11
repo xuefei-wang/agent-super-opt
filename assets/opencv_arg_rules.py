@@ -324,14 +324,6 @@ OPENCV_ARG_RULES = {
             6: {"type": "int", "constraints": {}}                     # dtype
         }
     },
-    "normalize": {
-        "args": {
-            2: {"type": "float", "constraints": {}},                   # alpha
-            3: {"type": "float", "constraints": {}},                   # beta
-            4: {"type": "int", "constraints": {"enum": [0,1,2,3,4]}}, # norm_type
-            5: {"type": "int", "constraints": {}}                     # dtype
-        }
-    },
     "adaptiveThreshold": {
         "args": {
             1: {"type": "float", "constraints": {}},                   # maxValue
@@ -346,15 +338,6 @@ OPENCV_ARG_RULES = {
             1: {"type": "int", "constraints": {"enum": [1,2,3]}},      # distanceType
             2: {"type": "int", "constraints": {"odd": True, "min":3}}, # maskSize
             4: {"type": "int", "constraints": {}}                     # dstType
-        }
-    },
-    "floodFill": {
-        "args": {
-            1: {"type": "tuple[int,int]", "constraints": {}},          # seedPoint
-            2: {"type": "tuple[int,int,int]", "constraints": {}},      # newVal
-            3: {"type": "tuple[int,int,int]", "constraints": {}},      # loDiff
-            4: {"type": "tuple[int,int,int]", "constraints": {}},      # upDiff
-            5: {"type": "int", "constraints": {}}                     # flags
         }
     },
     "integral": {
