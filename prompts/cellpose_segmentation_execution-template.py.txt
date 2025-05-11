@@ -143,13 +143,12 @@ try:
     logger.info("Initializing CellposeTool...")
     segmenter = CellposeTool(model_name="cyto3", device=gpu_id)
     logger.info(f"Loading data from {data_path}...")
-    raw_images, gt_masks = segmenter.loadData(data_path)
+    raw_images, gt_masks = segmenter.loadCombinedDataset(data_path, dataset_size)
     logger.info(f"Data loaded: {len(raw_images)} images.")
     logger.info(f"[Single Image] Loading single image as a tester...")
 
     # --- Prepare ImageData ---
-    images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
-    
+    images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
     single_image_data = ImageData(raw=raw_images[:1], batch_size=1, image_ids=[0])
 
     for i, preprocess_images in enumerate(k_preprocess_images_fns_single_img):
@@ -170,7 +169,7 @@ try:
     for i, preprocessed_images in enumerate(k_preprocessed_images_single_img):
         logger.info(f"[Single Image] Running segmentation prediction {i + 1}...")
         prediction_start_time = time.time()
-        k_predictions_single_img.append(segmenter.predict(preprocessed_images, boxes, used_for_baseline=False))
+        k_predictions_single_img.append(segmenter.predict(single_image_data, batch_size=single_image_data.batch_size))
         k_prediction_times_single_img.append(time.time() - prediction_start_time)
         logger.info(f"[Single Image] Segmentation prediction finished in {k_prediction_times_single_img[i]:.2f} seconds.")
 
@@ -178,7 +177,7 @@ try:
     for i, pred in enumerate(k_predictions_single_img):
         logger.info(f"[Single Image] Calculating metrics for prediction {i + 1}...")
         metrics_start_time = time.time()
-        k_overall_metrics_single_img.append(segmenter.evaluate(pred, single_image_data.masks))
+        k_overall_metrics_single_img.append(segmenter.evaluate(pred, gt_masks[:1]))
         k_metrics_times_single_img.append(time.time() - metrics_start_time)
         logger.info(f"[Single Image] Metrics calculation finished in {k_metrics_times_single_img[i]:.2f} seconds.")
 
