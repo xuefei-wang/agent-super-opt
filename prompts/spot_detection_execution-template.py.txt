@@ -162,8 +162,8 @@ try:
     single_image_data = ImageData(raw=images.raw[:1],
                 batch_size=1,
                 image_ids=[0],
-                masks=images.masks[:1],
-                predicted_masks=images.masks[:1])
+                masks=None,
+                predicted_masks=None)
 
     for i, preprocess_images in enumerate(k_preprocess_images_fns_single_img):
         logger.info(f"[Single Image] Applying preprocess_images_{i + 1} function...")
