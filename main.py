@@ -571,7 +571,7 @@ def main(args: argparse.Namespace):
                         args.experiment_name,
                         args.dataset,
                         args.n_optimize_trials,
-                        kwargs_for_prompt_class
+                        **kwargs_for_prompt_class
                     )
                     optimize_time = time.time() - optimize_time
                     save_to_function_bank(
