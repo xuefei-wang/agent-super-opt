@@ -144,14 +144,6 @@ class MedSAMTool():
         return image_data
     
     def loadData(self, data_path: str) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-        # Load data
-        unpacked_info_path = os.path.join(data_path, "unpacked_info.pkl")
-        resized_imgs_path = os.path.join(data_path, "resized_imgs.pkl")
-
-        with open(unpacked_info_path, "rb") as f:
-            _, _, masks = pickle.load(f)
-
-        with open(resized_imgs_path, "rb") as f:
-            imgs, boxes = pickle.load(f)
-
+        with open(data_path, "rb") as f:
+            imgs, boxes, masks = pickle.load(f)
         return imgs, boxes, masks

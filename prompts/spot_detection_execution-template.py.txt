@@ -111,6 +111,13 @@ pipeline_traceback = None
 k_preprocess_images_fns = []
 k_preprocessed_images = []
 k_predictions = []
+k_preprocess_images_fns_single_img = []
+k_preprocessed_images_single_img = []
+k_preprocessing_times_single_img = []
+k_predictions_single_img = []
+k_prediction_times_single_img = []
+k_metrics_times_single_img = []
+k_overall_metrics_single_img = []
 
 # --- Generated Preprocessing Function Definition ---
 # This placeholder will be replaced by the executor
@@ -126,6 +133,7 @@ try:
             raise NameError(err_msg)
         else:
             k_preprocess_images_fns.append(globals().get(f'preprocess_images_{i + 1}', None))
+            k_preprocess_images_fns_single_img.append(globals().get(f'preprocess_images_{i + 1}', None))
             logger.info(f"preprocess_images_{i + 1} function appears to be defined.")
 
     # --- Set random seeds ---
@@ -140,10 +148,51 @@ try:
     logger.info(f"Loading data from {data_path}...")
     spots_data = np.load(f"{data_path}", allow_pickle=True)
     logger.info(f"Data loaded: {len(spots_data['X'])} images.")
+    logger.info(f"[Single Image] Loading single image as a tester...")
 
     # --- Prepare ImageData ---
     batch_size = spots_data['X'].shape[0]
     images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
+
+    # Run the pipeline on a single image at first so that if the pipeline fails,
+    # we fail fast.
+    # --- [Single Image] Prepare ImageData ---
+    single_image_data = ImageData(images.raw[0], batch_size=1, image_ids=[0])
+
+    for i, preprocess_images in enumerate(k_preprocess_images_fns_single_img):
+        logger.info(f"[Single Image] Applying preprocess_images_{i + 1} function...")
+        preprocessing_start_time = time.time()
+        try:
+            k_preprocessed_images_single_img.append(preprocess_images(single_image_data))
+            k_preprocessing_times_single_img.append(time.time() - preprocessing_start_time)
+            logger.info(f"[Single Image] Preprocessing {i + 1} finished in {k_preprocessing_times_single_img[i]:.2f} seconds.")
+            if not isinstance(single_image_data, ImageData):
+                raise TypeError(f"Preprocessing function {i + 1} returned type {type(single_image_data)}, expected ImageData.")
+        except Exception as preprocess_error:
+            logger.error(f"[Single Image] !!! ERROR occurred inside the dynamically generated preprocess_images_{i + 1} function:")
+            logger.exception(preprocess_error)
+            raise preprocess_error
+
+    # --- [Single Image] Run Spot Detection ---
+    for i, preprocessed_images in enumerate(k_preprocessed_images_single_img):
+        logger.info(f"[Single Image] Running spot detection prediction {i + 1}...")
+        prediction_start_time = time.time()
+        k_predictions_single_img.append(deepcell_spot_detector.predict(preprocessed_images))
+        k_prediction_times_single_img.append(time.time() - prediction_start_time)
+        logger.info(f"[Single Image] Segmentation prediction finished in {k_prediction_times_single_img[i]:.2f} seconds.")
+
+    # --- [Single Image] Calculate Metrics ---
+    for i, pred in enumerate(k_predictions_single_img):
+        logger.info(f"[Single Image] Calculating metrics for prediction {i + 1}...")
+        metrics_start_time = time.time()
+        k_overall_metrics_single_img.append(deepcell_spot_detector.evaluate(pred, spots_data['y'][:1]))
+        k_metrics_times_single_img.append(time.time() - metrics_start_time)
+        logger.info(f"[Single Image] Metrics calculation finished in {k_metrics_times_single_img[i]:.2f} seconds.")
+
+    # --- [Single Image] Compute Advantages ---
+    if k_overall_metrics_single_img:
+        retrieve_reward = lambda m: m["f1_score"]
+        k_overall_metrics_single_img = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics_single_img]
 
     # --- Apply Preprocessing ---
     for i, preprocess_images in enumerate(k_preprocess_images_fns):

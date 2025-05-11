@@ -214,7 +214,7 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
-            "checkpoint_path": f'"{self.checkpoint_path.replace("\\", "/")}"',
+            "checkpoint_path": self.checkpoint_path.replace("\\", "/"),
             "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
             "sample_k": str(self.k),
             "baseline_metric_value": str(self.baseline_metric_value),
