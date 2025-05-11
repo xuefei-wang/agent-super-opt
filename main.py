@@ -345,6 +345,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "llm_model": llm_model,
          "warm_start": args.warm_start,
          "metric_only": args.metric_only,
+         "hyperparameter_optimization": args.optimize,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
@@ -553,10 +554,7 @@ def main(args: argparse.Namespace):
 
         # Run an optimization study on the best 3 function in the function bank
         if args.optimize:
-            
             print("Starting hyperparameter search")
-            optimize_time = time.time()
-            
             for result in top_n(output_function_bank, sorting_function=sampling_function, n=args.n_optimize):
                 func_to_optimize = result['preprocessing_function']
                 
@@ -566,6 +564,7 @@ def main(args: argparse.Namespace):
                     # Skip if no parameters to optimize
                     print("No parameters to optimize, skipping hyperparameter search")
                 else:
+                    optimize_time = time.time()
                     opt_code, opt_metrics = hyperparameter_search(
                         func_to_optimize,
                         args.experiment_name,
