@@ -190,7 +190,7 @@ try:
 
     # --- [Single Image] Compute Advantages ---
     if k_overall_metrics_single_img:
-        retrieve_reward = lambda m: m["f1_score]
+        retrieve_reward = lambda m: m["f1_score"]
         k_overall_metrics_single_img = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics_single_img]
 
     # --- Apply Preprocessing ---
@@ -208,25 +208,25 @@ try:
             logger.exception(preprocess_error)
             raise preprocess_error
 
-    # --- Run Segmenter ---
+    # --- Run Spot Detection ---
     for i, preprocessed_images in enumerate(k_preprocessed_images):
-        logger.info(f"Running segmentation prediction {i + 1}...")
+        logger.info(f"Running spot detection prediction {i + 1}...")
         prediction_start_time = time.time()
-        k_predictions.append(segmenter.predict(preprocessed_images, boxes, used_for_baseline=False))
+        k_predictions.append(deepcell_spot_detector.predict(preprocessed_images))
         k_prediction_times.append(time.time() - prediction_start_time)
-        logger.info(f"Segmentation prediction finished in {k_prediction_times[i]:.2f} seconds.")
+        logger.info(f"Spot detection prediction finished in {k_prediction_times[i]:.2f} seconds.")
 
     # --- Calculate Metrics ---
     for i, pred in enumerate(k_predictions):
         logger.info(f"Calculating metrics for prediction {i + 1}...")
         metrics_start_time = time.time()
-        k_overall_metrics.append(segmenter.evaluate(pred, images.masks))
+        k_overall_metrics.append(deepcell_spot_detector.evaluate(pred, spots_data['y']))
         k_metrics_times.append(time.time() - metrics_start_time)
         logger.info(f"Metrics calculation finished in {k_metrics_times[i]:.2f} seconds.")
 
     # --- Compute Advantages ---
     if k_overall_metrics:
-        retrieve_reward = lambda m: m["dsc_metric"] + m["nsd_metric"]
+        retrieve_reward = lambda m: m["f1_score"]
         k_overall_metrics = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics]
 
     # --- Log Metrics ---
@@ -256,9 +256,9 @@ try:
             'timestamp': [script_start_time] * k,
             'gpu_id': [gpu_id] * k,
             'timestamp_finish': [time.time()] * k,
-            'preprocessing_time': k_preprocessing_times,
-            'prediction_time': k_prediction_times,
-            'metrics_time': k_metrics_times,
+            'preprocessing_times': k_preprocessing_times,
+            'prediction_times': k_prediction_times,
+            'metrics_times': k_metrics_times,
             'error': [None] * k, # Explicitly None on success
             'traceback': [None] * k # Explicitly None on success
         }
