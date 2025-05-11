@@ -20,6 +20,8 @@ except ImportError as import_err:
 
 # --- Configuration (Replaced by run_pipeline_prompt) ---
 gpu_id = {gpu_id}
+dataset_size = {dataset_size}
+batch_size = {batch_size}
 seed = {seed} # Seed is now an integer, no quotes needed
 data_path = r"{dataset_path}"
 function_bank_path = r"{function_bank_path}"
@@ -127,11 +129,11 @@ try:
     logger.info("Initializing CellposeTool...")
     segmenter = CellposeTool(model_name="cyto3", device=gpu_id)
     logger.info(f"Loading data from {data_path}...")
-    raw_images, gt_masks = segmenter.loadData(data_path)
+    raw_images, gt_masks = segmenter.loadCombinedDataset(data_path, dataset_size)
     logger.info(f"Data loaded: {len(raw_images)} images.")
 
     # --- Prepare ImageData ---
-    images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
+    images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
 
     # --- Apply Preprocessing ---
     logger.info("Applying preprocess_images function...")

@@ -131,8 +131,8 @@ class ImageData:
         if self.batch_size is None:
             self.batch_size = total_size
         elif self.batch_size > total_size:
-            raise ValueError(f"Requested batch_size ({self.batch_size}) exceeds dataset size ({total_size})")
-        
+            self.batch_size = total_size
+            # raise ValueError(f"Requested batch_size ({self.batch_size}) exceeds dataset size ({total_size})")        
         # Generate default image_ids if none provided - use integers [0,1,2,...]
         if self.image_ids is None:
             self.image_ids = list(range(total_size))
