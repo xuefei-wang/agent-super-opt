@@ -23,24 +23,14 @@ OPENCV_ARG_RULES = {
     },
     "dilate": {
         "args": {
-            1: {"type": "Any", "constraints": {}},
             3: {"type": "int", "constraints": {"min": 1}},
             4: {"type": "int", "constraints": {"enum": [0, 1, 2, 3, 4]}}
         }
     },
     "erode": {
         "args": {
-            1: {"type": "Any", "constraints": {}},
             3: {"type": "int", "constraints": {"min": 1}},
             4: {"type": "int", "constraints": {"enum": [0, 1, 2, 3, 4]}}
-        }
-    },
-    "filter2D": {
-        "args": {
-            1: {"type": "int", "constraints": {}},
-            2: {"type": "Any", "constraints": {}},
-            5: {"type": "float", "constraints": {}},
-            6: {"type": "int", "constraints": {"enum": [0, 1, 2, 3, 4]}}
         }
     },
     "GaussianBlur": {
@@ -116,27 +106,19 @@ OPENCV_ARG_RULES = {
     "Scharr": {
         "args": {
             1: {"type": "int", "constraints": {}},
-            2: {"type": "int", "constraints": {}},
-            3: {"type": "int", "constraints": {}},
+            2: {"type": "int", "constraints": {"enum": [0, 1]}},
+            3: {"type": "int", "constraints": {"enum": [0, 1]}},
             5: {"type": "float", "constraints": {}},
             6: {"type": "float", "constraints": {}},
             7: {"type": "int", "constraints": {"enum": [0, 1, 2, 3, 4]}}
         }
     },
-    "sepFilter2D": {
-        "args": {
-            1: {"type": "int", "constraints": {}},
-            2: {"type": "Any", "constraints": {}},
-            3: {"type": "Any", "constraints": {}},
-            5: {"type": "int", "constraints": {"enum": [0, 1, 2, 3, 4]}}
-        }
-    },
     "Sobel": {
         "args": {
             1: {"type": "int", "constraints": {}},
-            2: {"type": "int", "constraints": {}},
-            3: {"type": "int", "constraints": {}},
-            5: {"type": "int", "constraints": {"odd": True}},
+            2: {"type": "int", "constraints": {"enum": [0, 1]}},
+            3: {"type": "int", "constraints": {"enum": [0, 1]}},
+            5: {"type": "int", "constraints": {"odd": True, "min": 3}},
             6: {"type": "float", "constraints": {}},
             7: {"type": "float", "constraints": {}},
             8: {"type": "int", "constraints": {"enum": [0, 1, 2, 3, 4]}}
@@ -159,7 +141,6 @@ OPENCV_ARG_RULES = {
                     ]
                 }
             },
-            2: {"type": "numpy.ndarray", "constraints": {}},
             4: {"type": "tuple[int, int]", "constraints": {}},  # anchor point
             5: {"type": "int", "constraints": {"min": 1}},      # iterations
             6: {
@@ -174,7 +155,6 @@ OPENCV_ARG_RULES = {
                     ]
                 }
             },
-            7: {"type": "tuple[int, int, int] or int or float", "constraints": {}}  # borderValue
         }
     },
     "spatialGradient": {
@@ -287,17 +267,12 @@ OPENCV_ARG_RULES = {
     },
     "calcBackProject": {
         "args": {
-            1: {"type": "list", "constraints": {}},                     # channels
-            3: {"type": "list", "constraints": {}},                     # ranges
             5: {"type": "float", "constraints": {"min": 0.0}},         # scale
             6: {"type": "bool", "constraints": {}}                     # uniform
         }
     },
     "calcHist": {
         "args": {
-            1: {"type": "list", "constraints": {}},                     # channels
-            3: {"type": "list", "constraints": {}},                     # histSize
-            4: {"type": "list", "constraints": {}},                     # ranges
             6: {"type": "bool", "constraints": {}},                    # accumulate
             7: {"type": "bool", "constraints": {}}                    # uniform
         }
@@ -312,9 +287,6 @@ OPENCV_ARG_RULES = {
             1: {"type": "float", "constraints": {"min": 0.0}},         # clipLimit
             2: {"type": "tuple[int,int]", "constraints": {"min":1}},   # tileGridSize
         }
-    },
-    "equalizeHist": {
-        "args": {}  # no tunable args
     },
     "addWeighted": {
         "args": {

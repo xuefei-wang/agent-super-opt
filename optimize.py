@@ -13,6 +13,14 @@ from src.data_io import ImageData
 from assets.opencv_arg_rules import OPENCV_ARG_RULES
 from prompts.task_prompts import TaskPrompts
 
+def int_to_param_name(n):
+    if n < 10:
+        return f"param_{n}" 
+    else:
+        n -= 10
+        return f"param_{chr(97 + n)}"
+
+
 class CV2ParamExtractor(ast.NodeTransformer):
     def __init__(self):
         self.param_counter = 0
@@ -42,7 +50,7 @@ class CV2ParamExtractor(ast.NodeTransformer):
     def replace_constants(self, node, rule=None):
         if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
             ptype = "float" if isinstance(node.value, float) else "int"
-            param_name = f"param_{self.param_counter}"
+            param_name = int_to_param_name(self.param_counter)
             constraints = rule.get("constraints", {}) if rule else {}
             self.param_info.append({
                 "name": param_name,
@@ -63,7 +71,7 @@ class CV2ParamExtractor(ast.NodeTransformer):
                 values.append(el.value if isinstance(el, ast.Constant) else None)
                 elements.append(new_el)
 
-            param_name = f"param_{self.param_counter}"
+            param_name = int_to_param_name(self.param_counter)
             self.param_info.append({
                 "name": param_name,
                 "type": rule["type"] if rule else "tuple[int,int]",
