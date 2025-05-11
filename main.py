@@ -348,6 +348,8 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "warm_start": args.warm_start,
          "metric_only": args.metric_only,
          "hyperparameter_optimization": args.optimize,
+         "n_optimize": args.n_optimize,
+         "n_optimize_trials": args.n_optimize_trials,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
