@@ -7,9 +7,9 @@ import json
 import cv2
 import numpy as np
 from src.data_io import ImageData
-from src.spot_detection import DeepcellSpotsDetector
-from src.cellpose_segmentation import CellposeTool
-from src.medsam_segmentation import MedSAMTool
+# from src.spot_detection import DeepcellSpotsDetector
+# from src.cellpose_segmentation import CellposeTool
+# from src.medsam_segmentation import MedSAMTool
 from assets.opencv_arg_rules import OPENCV_ARG_RULES
 from prompts.task_prompts import TaskPrompts
 
@@ -148,6 +148,8 @@ def create_preprocessing_function(modified_func_str: str, param_values: dict):
 def evaluate_pipeline(preprocess_func: callable, task: str, data_path: str, **kwargs):
     
     if task == "spot_detection":
+        from src.spot_detection import DeepcellSpotsDetector
+
         detector = DeepcellSpotsDetector()
         spots_data = np.load(f"{data_path}", allow_pickle=True)
 
@@ -163,6 +165,7 @@ def evaluate_pipeline(preprocess_func: callable, task: str, data_path: str, **kw
 
         return metrics
     elif task == "cellpose_segmentation":
+        from src.cellpose_segmentation import CellposeTool
         segmenter = CellposeTool(model_name="cyto3", device=kwargs.get('gpu_id'))
         # raw_images, gt_masks = segmenter.loadData(data_path)
         raw_images, gt_masks = segmenter.loadCombinedDataset(data_path, dataset_size)
@@ -174,6 +177,8 @@ def evaluate_pipeline(preprocess_func: callable, task: str, data_path: str, **kw
         overall_metrics = segmenter.evaluate(pred_masks, gt_masks)
         return overall_metrics
     elif task == "medSAM_segmentation":
+        from src.medsam_segmentation import MedSAMTool
+
         segmenter = MedSAMTool(gpu_id=kwargs.get('gpu_id'), checkpoint_path=kwargs.get('checkpoint_path'))
         raw_images, boxes, masks = segmenter.loadData(data_path)
 
