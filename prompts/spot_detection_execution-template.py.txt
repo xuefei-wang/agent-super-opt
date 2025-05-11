@@ -10,6 +10,7 @@ import re
 
 # --- Dependency Imports ---
 try:
+    from src.data_io import ImageData
     from src.spot_detection import DeepcellSpotsDetector
     from src.utils import set_gpu_device
     import cv2 as cv
