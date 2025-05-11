@@ -8,3 +8,4 @@ numpy
 zarr
 torch
 ag2[openai]
+optuna
