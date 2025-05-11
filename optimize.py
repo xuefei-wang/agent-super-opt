@@ -106,8 +106,10 @@ def define_optuna_search_space(trial, param_info):
         name = param['name']
         param_type = param['type']
         constraints = param['constraints']
-
-        if param_type == 'int':
+        
+        if 'enum' in constraints:
+            params[name] = trial.suggest_categorical(name, constraints['enum']) 
+        elif param_type == 'int':
             low = constraints.get('min', 1)
             high = constraints.get('max', 11)
             if constraints.get('odd'):
@@ -116,12 +118,10 @@ def define_optuna_search_space(trial, param_info):
                 params[name] = trial.suggest_categorical(name, candidates)
             else:
                 params[name] = trial.suggest_int(name, low, high)
-
         elif param_type == 'float':
             low = constraints.get('min', 0.0)
             high = constraints.get('max', 20.0)
             params[name] = trial.suggest_float(name, low, high)
-
         elif param_type.startswith('tuple[int,int]'):
             if constraints.get('odd'):
                 low = constraints.get('min', 1)
@@ -133,10 +133,6 @@ def define_optuna_search_space(trial, param_info):
                 high = constraints.get('max', 11)
                 candidates = [(i, i) for i in range(low, high + 1)]
                 params[name] = trial.suggest_categorical(name, candidates)
-
-        elif 'enum' in constraints:
-            params[name] = trial.suggest_categorical(name, constraints['enum'])
-
         else:
             raise ValueError(f"Unsupported type or constraint for param: {name}")
 
