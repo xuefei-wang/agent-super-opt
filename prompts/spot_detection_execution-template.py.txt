@@ -22,8 +22,6 @@ except ImportError as import_err:
 
 # --- Configuration (Replaced by run_pipeline_prompt) ---
 gpu_id = {gpu_id}
-dataset_size = {dataset_size}
-batch_size = {batch_size}
 seed = {seed} # Seed is now an integer, no quotes needed
 k = {sample_k}
 group_baseline = {baseline_metric_value}
@@ -177,7 +175,7 @@ try:
 
     # --- [Single Image] Run Spot Detection ---
     for i, preprocessed_images in enumerate(k_preprocessed_images_single_img):
-        logger.info(f"[Single Image] Running segmentation prediction {i + 1}...")
+        logger.info(f"[Single Image] Running spot detection prediction {i + 1}...")
         prediction_start_time = time.time()
         k_predictions_single_img.append(deepcell_spot_detector.predict(preprocessed_images))
         k_prediction_times_single_img.append(time.time() - prediction_start_time)
