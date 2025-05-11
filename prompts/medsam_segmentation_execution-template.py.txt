@@ -233,7 +233,7 @@ try:
         logger.info(f"Metrics calculation finished in {k_metrics_times[i]:.2f} seconds.")
 
     # --- Compute Advantages ---
-    if k_overall_metrics and advantage_enbaled:
+    if k_overall_metrics and advantage_enabled:
         retrieve_reward = lambda m: m["dsc_metric"] + m["nsd_metric"]
         k_overall_metrics = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics]
 

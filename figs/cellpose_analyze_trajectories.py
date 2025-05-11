@@ -234,7 +234,7 @@ def convert_string_to_function(func_str, func_name):
 
     
 
-def main(json_path: str, data_path: str, output_dir: str, precision_index: int = 0, device: int = 0, dataset_size: int = 256, batch_size: int = 16):
+def main(json_path: str, data_path: str, output_dir: str, precision_index: int = 0, device: int = 0, dataset_size: int = 256, batch_size: int = 16, k: int = 3):
     # Let's save these results into a new subfolder of output_dir
     output_dir = os.path.join(output_dir, 'analysis_results')
     os.makedirs(output_dir, exist_ok=True)
@@ -251,8 +251,9 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
 
     pred_masks = segmenter.predict(images, batch_size=images.batch_size)
-    metrics_val = segmenter.evaluate(pred_masks, gt_masks)
-    no_preprocess = metrics_val
+    metrics_val_no_preprocessing = segmenter.evaluate(pred_masks, gt_masks)
+    no_preprocess = metrics_val_no_preprocessing
+    print('Evaluated no preprocessing baseline on val (black line)')
 
     # Use priviliged CellposeTool to get "best" results, to_normalize=True
     priviliged_segmenter = PriviligedCellposeTool(model_name="cyto3", device=device, channels=[2,1], to_normalize=True)
@@ -260,9 +261,10 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     # raw_images_val, gt_masks_val = priviliged_segmenter.loadData(os.path.join(data_path, 'val_set/'))
     raw_images_val, gt_masks_val = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'val_set/'), dataset_size=dataset_size)
 
-    images = ImageData(raw=raw_images_val, batch_size=batch_size, image_ids=[i for i in range(len(raw_images_val))])
-    pred_masks_val = priviliged_segmenter.predict(images, batch_size=images.batch_size)
-    metrics_val = priviliged_segmenter.evaluate(pred_masks_val, gt_masks_val, precision_index=precision_index)
+    images_val = ImageData(raw=raw_images_val, batch_size=batch_size, image_ids=[i for i in range(len(raw_images_val))])
+    pred_masks_val = priviliged_segmenter.predict(images_val, batch_size=images_val.batch_size)
+    metrics_val_expert_baseline = priviliged_segmenter.evaluate(pred_masks_val, gt_masks_val, precision_index=precision_index)
+    print('Evaluated expert baseline on val (cyan line)')
 
     # raw_images_test, gt_masks_test = priviliged_segmenter.loadData(os.path.join(data_path, 'test_set/'))
     # images = ImageData(raw=raw_images_test, batch_size=8, image_ids=[i for i in range(len(raw_images_test))])
@@ -306,15 +308,15 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     plt.title(f'Validation Metrics during Agent Search: {json_path.split("/")[-2]}')
 
     plt.axhline(no_preprocess['average_precision'], color='k', linestyle='--', label=f'No preprocessing. IOU threshold 0.5: {no_preprocess["average_precision"]}')
-    plt.axhline(metrics_val['average_precision'], color='cyan', linestyle='--', label=f"Baseline: cellpose's min-max norm {metrics_val['average_precision']}") 
+    plt.axhline(metrics_val_expert_baseline['average_precision'], color='cyan', linestyle='--', label=f"Baseline: cellpose's min-max norm {metrics_val_expert_baseline['average_precision']}") 
     plt.legend(loc='best')
 
     plt.savefig(os.path.join(output_dir, 'metrics_during_agent_search.png'))
 
     # Now begin the image analysis and attempt to convert string to function
 
-    best_preprocessing_function = highest_metric_obj['preprocessing_function']
-    best_preprocessing_function = convert_string_to_function(best_preprocessing_function, 'preprocess_images')
+    best_preprocessing_function_str = highest_metric_obj['preprocessing_function']
+    best_preprocessing_function = convert_string_to_function(best_preprocessing_function_str, 'preprocess_images')
 
     # Print a dump of the function to a text file
     with open(os.path.join(output_dir, 'best_preprocessing_function.txt'), 'w') as file:
@@ -324,57 +326,132 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     # First evaluate the baseline of no preprocessing
     segmenter = CellposeTool(model_name="cyto3", device=device)
     # raw_images, gt_masks = segmenter.loadData(os.path.join(data_path, 'val_set/'))
-    raw_images, gt_masks = segmenter.loadCombinedDataset(os.path.join(data_path, 'val_set/'), dataset_size=dataset_size)
+    # Re-use raw_images and gt_masks from validation set loading earlier
+    # raw_images, gt_masks = segmenter.loadCombinedDataset(os.path.join(data_path, 'val_set/'), dataset_size=dataset_size)
 
-    raw_images, gt_masks = raw_images, gt_masks
-    images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
+    # raw_images, gt_masks = raw_images, gt_masks
+    # images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))]) # This is images_val
 
-    orig_images = images
-    best_preprocessed_images = best_preprocessing_function(ImageData(raw=raw_images, batch_size=images.batch_size, image_ids=[i for i in range(len(raw_images))]))
-    agent_images = best_preprocessed_images.raw
+    orig_images_val = ImageData(raw=[np.copy(img_arr) for img_arr in raw_images_val], batch_size=images_val.batch_size, image_ids=list(images_val.image_ids))
+    best_preprocessed_images_val = best_preprocessing_function(ImageData(raw=[np.copy(img_arr) for img_arr in raw_images_val], batch_size=images_val.batch_size, image_ids=list(images_val.image_ids)))
+    agent_images_val = best_preprocessed_images_val.raw
+    print("Preprocessed validation images with best function")
+
     plt.figure()
     fig, axes = plt.subplots(2, 4, figsize=(20, 10))
-    for i in range(4):
-        axes[0, i].imshow(orig_images.raw[i])
-        axes[0, i].set_title(f'Original Image {i+1}')
-        axes[1, i].imshow(agent_images[i])
-        axes[1, i].set_title(f'Agent Image {i+1}')
+    for i in range(min(4, len(orig_images_val.raw))): # Ensure we don't go out of bounds
+        axes[0, i].imshow(orig_images_val.raw[i])
+        axes[0, i].set_title(f'Original Val Image {i+1}')
+        axes[1, i].imshow(agent_images_val[i])
+        axes[1, i].set_title(f'Agent Val Image {i+1}')
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'preprocessed_images.png'))
+    plt.savefig(os.path.join(output_dir, 'preprocessed_val_images.png'))
 
     # Now let's do test set evaluation
 
     # # First, the baseline (to_normalize=True)
-    priviliged_segmenter = PriviligedCellposeTool(model_name="cyto3", device=device, channels=[2,1], to_normalize=True)
+    # priviliged_segmenter is already initialized
     # raw_images_test, gt_masks_test = priviliged_segmenter.loadData(os.path.join(data_path, 'test_set/'))
     raw_images_test, gt_masks_test = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'test_set/'), dataset_size=dataset_size)
-    images = ImageData(raw=raw_images_test, batch_size=batch_size, image_ids=[i for i in range(len(raw_images_test))])
-    pred_masks_test = priviliged_segmenter.predict(images, batch_size=batch_size)
-    metrics_test_baseline = priviliged_segmenter.evaluate(pred_masks_test, gt_masks_test, precision_index)
+    images_test = ImageData(raw=raw_images_test, batch_size=batch_size, image_ids=[i for i in range(len(raw_images_test))])
+    pred_masks_test_expert_baseline = priviliged_segmenter.predict(images_test, batch_size=batch_size)
+    metrics_test_expert_baseline = priviliged_segmenter.evaluate(pred_masks_test_expert_baseline, gt_masks_test, precision_index)
+    print("Evaluated expert baseline on test (blue bar)")
 
-    # Now let's do the other baseline (to_normalize=False)
-    # no norm baseline
-    non_privileged_segmenter = CellposeTool(model_name="cyto3", device=device)
-    pred_masks_test_no_norm = non_privileged_segmenter.predict(images, batch_size=batch_size)
-    metrics_test_baseline_no_norm = non_privileged_segmenter.evaluate(pred_masks_test_no_norm, gt_masks_test)
+    # Now let's do the other baseline (to_normalize=False) for test set
+    non_privileged_segmenter_test = CellposeTool(model_name="cyto3", device=device) # ensure fresh segmenter for test
+    # We use images_test which contains the raw test images
+    pred_masks_test_no_norm = non_privileged_segmenter_test.predict(ImageData(raw=[np.copy(img_arr) for img_arr in raw_images_test], batch_size=images_test.batch_size, image_ids=list(images_test.image_ids)), batch_size=batch_size)
+    metrics_test_baseline_no_norm = non_privileged_segmenter_test.evaluate(pred_masks_test_no_norm, gt_masks_test)
+    print("Evaluated no preprocessing baseline on test (black bar)")
 
-
-    best_preprocessed_images = best_preprocessing_function(images)
-    # Our function, without to_normalize
-    non_privileged_segmenter = CellposeTool(model_name="cyto3", device=device)
-    pred_masks_test = non_privileged_segmenter.predict(best_preprocessed_images, batch_size=batch_size)
-    metrics_test_our_function = non_privileged_segmenter.evaluate(pred_masks_test, gt_masks_test)
-
+    # Agent's best function on test set, without to_normalize
+    best_preprocessed_images_test = best_preprocessing_function(ImageData(raw=[np.copy(img_arr) for img_arr in raw_images_test], batch_size=images_test.batch_size, image_ids=list(images_test.image_ids)))
+    # non_privileged_segmenter_test is already initialized
+    pred_masks_test_agent = non_privileged_segmenter_test.predict(best_preprocessed_images_test, batch_size=batch_size)
+    metrics_test_agent_function = non_privileged_segmenter_test.evaluate(pred_masks_test_agent, gt_masks_test)
+    print("Evaluated top performing agent function on test (red bar)")
 
 
     plt.figure()
-    plt.bar('baseline', metrics_test_baseline['average_precision'], color='b', label=f'Baseline minmax norm Test Set: {metrics_test_baseline["average_precision"]}')
-    plt.bar('agent designed', metrics_test_our_function['average_precision'], color='r', label=f'Our function Test Set: {metrics_test_our_function["average_precision"]}')
-    plt.bar('baseline no norm', metrics_test_baseline_no_norm['average_precision'], color='k', label=f'Baseline no norm Test Set: {metrics_test_baseline_no_norm["average_precision"]}')
+    plt.bar('expert_baseline', metrics_test_expert_baseline['average_precision'], color='b', label=f"Expert Baseline (min-max norm) Test Set: {metrics_test_expert_baseline['average_precision']:.4f}")
+    plt.bar('agent_designed', metrics_test_agent_function['average_precision'], color='r', label=f"Agent Designed Test Set: {metrics_test_agent_function['average_precision']:.4f}")
+    plt.bar('no_preprocessing_baseline', metrics_test_baseline_no_norm['average_precision'], color='k', label=f"No Preprocessing Baseline Test Set: {metrics_test_baseline_no_norm['average_precision']:.4f}")
     plt.xlabel('Method')
     plt.ylabel('Average Precision')
     plt.legend(loc='lower right')
+    plt.title(f'Test Set Performance Comparison: {json_path.split("/")[-2]}')
     plt.savefig(os.path.join(output_dir, 'test_set_metrics.png'))
+
+    # Save expert baseline performances to a JSON file
+    expert_baseline_performances = {
+        "expert_baseline_val_avg_precision": metrics_val_expert_baseline['average_precision'],
+        "expert_baseline_test_avg_precision": metrics_test_expert_baseline['average_precision']
+    }
+    with open(os.path.join(output_dir, 'expert_baseline_performances.json'), 'w') as file:
+        json.dump(expert_baseline_performances, file, indent=4)
+    print(f"Saved expert baseline performances to {os.path.join(output_dir, 'expert_baseline_performances.json')}")
+
+    # Let's find the top performing k functions, evaluate them on the test set and save the results into a new file (pickle)
+    def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k: int) -> List[Dict]:
+        '''Returns object containing the top k highest metric values from a list of JSON objects.'''
+        return sorted(json_array, key=metric_lambda, reverse=True)[:k]
+    
+    top_k_functions = find_top_k(json_array, metric_lambda, k)
+
+    # Now let's evaluate the top k functions on the test set
+    top_k_functions_results_val = []
+    top_k_functions_results_test = []
+    top_k_functions_str = []
+
+    # priviliged_segmenter_for_top_k = PriviligedCellposeTool(model_name="cyto3", device=device, channels=[2,1], to_normalize=True)
+    # Use non_privileged_segmenter_test for evaluating agent functions, as per earlier logic for "Our function, without to_normalize"
+    segmenter_for_top_k_agent_eval = CellposeTool(model_name="cyto3", device=device)
+
+
+    for function_item in top_k_functions:
+        current_function_str = function_item['preprocessing_function']
+        current_metrics_val_float = function_item['average_precision']
+
+        if current_function_str == best_preprocessing_function_str: # Compare strings to avoid issues with function object comparison
+            current_metrics_test_dict = metrics_test_agent_function # Use already computed result for the best function
+            function_str_to_save = current_function_str
+        else:
+            cur_preprocessing_fn_obj = convert_string_to_function(current_function_str, 'preprocess_images')
+            
+            # Ensure fresh ImageData object for each preprocessing
+            current_images_to_preprocess_test = ImageData(raw=[np.copy(img_arr) for img_arr in raw_images_test], batch_size=images_test.batch_size, image_ids=list(images_test.image_ids))
+
+            cur_preprocessed_images_test = cur_preprocessing_fn_obj(current_images_to_preprocess_test)
+            # Evaluate with non_privileged_segmenter, same as the best agent function
+            pred_masks_test_current_fn = segmenter_for_top_k_agent_eval.predict(cur_preprocessed_images_test, batch_size=batch_size)
+            current_metrics_test_dict = segmenter_for_top_k_agent_eval.evaluate(pred_masks_test_current_fn, gt_masks_test)
+            function_str_to_save = current_function_str
+        
+        top_k_functions_results_test.append(current_metrics_test_dict)
+        top_k_functions_results_val.append(current_metrics_val_float)
+        top_k_functions_str.append(function_str_to_save)
+
+    print(f"Evaluated top {k} functions on test set using non-privileged segmenter.")
+
+    # Save the results into a new file (json)
+    top_k_functions_results_output = []
+    for i in range(len(top_k_functions)):
+        rank = i + 1
+        preprocessing_function_string = top_k_functions_str[i]
+        test_metrics_dict = top_k_functions_results_test[i]
+        val_metric_float = top_k_functions_results_val[i]
+
+        top_k_functions_results_output.append({
+            "rank": rank,
+            "preprocessing_function": preprocessing_function_string,
+            "average_precision_test": test_metrics_dict['average_precision'],
+            "average_precision_val": val_metric_float
+        })
+    
+    with open(os.path.join(output_dir, 'top_k_functions_results.json'), 'w') as file:
+        json.dump(top_k_functions_results_output, file, indent=4)
+    print(f"Saved top-k function results to {os.path.join(output_dir, 'top_k_functions_results.json')}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
@@ -384,11 +461,14 @@ if __name__ == "__main__":
     parser.add_argument('--device', type=int, required=False, default=0, help='Which GPU to use.')
     parser.add_argument('--dataset_size', type=int, required=False, default=256, help='Number of dataset size to show in the function bank.')
     parser.add_argument('--batch_size', type=int, required=False, default=16, help='Batch size for Cellpose.')
+    parser.add_argument('--k', type=int, required=False, default=5, help='Number of top performing functions to evaluate on the test set.')
     args = parser.parse_args()
+    
+
     
     output_dir = os.path.dirname(args.json_path)
     json_path = args.json_path
     data_path = args.data_path
     data_path = os.path.dirname(os.path.dirname(data_path))
-    main(json_path, data_path, output_dir, args.precision_index, args.device, args.dataset_size, args.batch_size)
+    main(json_path, data_path, output_dir, args.precision_index, args.device, args.dataset_size, args.batch_size, args.k)
     

@@ -28,6 +28,9 @@ from prompts.agent_prompts import (
 
 from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 
+from optimize import hyperparameter_search, transform_opencv_constants, save_to_function_bank
+import time
+
 # Load environment variables
 load_dotenv()
 
@@ -339,9 +342,14 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "n_top": n_top,
          "n_worst": n_worst,
          "n_last": n_last,
+         "sample_k": args.k,
+         "advantage_enabled": args.enable_advantage,
          "llm_model": llm_model,
          "warm_start": args.warm_start,
          "metric_only": args.metric_only,
+         "hyperparameter_optimization": args.optimize,
+         "n_optimize": args.n_optimize,
+         "n_optimize_trials": args.n_optimize_trials,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
@@ -548,6 +556,36 @@ def main(args: argparse.Namespace):
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, run_output_dir)
 
+        # Run an optimization study on the best 3 function in the function bank
+        if args.optimize:
+            print("Starting hyperparameter search")
+            for result in top_n(output_function_bank, sorting_function=sampling_function, n=args.n_optimize):
+                func_to_optimize = result['preprocessing_function']
+                
+                _, params, _ = transform_opencv_constants(func_to_optimize)
+                
+                if len(params) == 0:
+                    # Skip if no parameters to optimize
+                    print("No parameters to optimize, skipping hyperparameter search")
+                else:
+                    optimize_time = time.time()
+                    opt_code, opt_metrics = hyperparameter_search(
+                        func_to_optimize,
+                        args.experiment_name,
+                        args.dataset,
+                        os.path.join(os.path.dirname(output_function_bank), "pipeline_run.log"),
+                        args.n_optimize_trials,
+                        **kwargs_for_prompt_class
+                    )
+                    optimize_time = time.time() - optimize_time
+                    save_to_function_bank(
+                        opt_code,
+                        opt_metrics,
+                        output_function_bank,
+                        optimize_time,
+                    )
+                
+        
     update_run_info_with_end_timestamp(run_output_dir)
     if args.experiment_name == "cellpose_segmentation":
         os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id} --dataset_size {args.dataset_size} --batch_size {args.batch_size}")
@@ -654,6 +692,26 @@ if __name__ == "__main__":
         default=5,
         help="Number of history threshold to show in the function bank."
     )
+    
+    parser.add_argument(
+        '--optimize',
+        action='store_true'
+    )
+    
+    parser.add_argument(
+        '--n_optimize',
+        type=int,
+        default=3,
+        help="Number of functions to optimize."
+    )
+    
+    parser.add_argument(
+        '--n_optimize_trials',
+        type=int,
+        default=15,
+        help="Number of trials for each function to optimize."
+    )
+        
 
     parser.add_argument(
         "--k",

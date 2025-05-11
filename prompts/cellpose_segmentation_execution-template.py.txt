@@ -152,7 +152,8 @@ try:
 
     # --- Prepare ImageData ---
     images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
-    single_image_data = ImageData(raw=raw_images[:1], batch_size=1, image_ids=[0])
+    single_image_data = ImageData(raw=raw_images[:2], batch_size=1, masks=gt_masks[:2])
+
 
     for i, preprocess_images in enumerate(k_preprocess_images_fns_single_img):
         logger.info(f"[Single Image] Applying preprocess_images_{i + 1} function...")
@@ -180,7 +181,7 @@ try:
     for i, pred in enumerate(k_predictions_single_img):
         logger.info(f"[Single Image] Calculating metrics for prediction {i + 1}...")
         metrics_start_time = time.time()
-        k_overall_metrics_single_img.append(segmenter.evaluate(pred, gt_masks[:1]))
+        k_overall_metrics_single_img.append(segmenter.evaluate(pred, single_image_data.masks))
         k_metrics_times_single_img.append(time.time() - metrics_start_time)
         logger.info(f"[Single Image] Metrics calculation finished in {k_metrics_times_single_img[i]:.2f} seconds.")
 
