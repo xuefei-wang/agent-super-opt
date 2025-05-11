@@ -217,7 +217,7 @@ def prepare_prompt_pipeline_optimization(
     {prompts.get_task_details()}
 
     ## Task Metrics Details:
-    {prompts.pipeline_metrics_info}
+    {prompts.get_pipeline_metrics_info()}
     
     ## Function bank sample:
     {function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations)}
@@ -346,7 +346,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
                  "task_details": prompts_instance.get_task_details(),
-                 "pipeline_metrics_info": prompts_instance.pipeline_metrics_info,
+                 "pipeline_metrics_info": prompts_instance.get_pipeline_metrics_info(),
                  # "summary_prompt": prompts_instance.summary_prompt if hasattr(prompts_instance, 'summary_prompt') else None,
              },
              "agent_system_prompts": {
@@ -432,14 +432,14 @@ def main(args: argparse.Namespace):
         from prompts.spot_detection_prompts import SpotDetectionPrompts, SpotDetectionPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = SpotDetectionPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['f1_score']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word, "advantage_enabled": args.enable_advantage}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/spot_detection_expert.py.txt"
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         sampling_function = lambda x: x['overall_metrics']['average_precision']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word, "dataset_size": args.dataset_size, "batch_size": args.batch_size}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word, "dataset_size": args.dataset_size, "batch_size": args.batch_size, "advantage_enabled": args.enable_advantage}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/cellpose_segmentation_expert.py.txt"
     elif args.experiment_name == "medSAM_segmentation":
@@ -447,7 +447,7 @@ def main(args: argparse.Namespace):
         prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
         baseline_function_path = "prompts/medsam_segmentation_expert.py.txt"
         sampling_function = lambda x: x['overall_metrics']['dsc_metric'] + x['overall_metrics']['nsd_metric']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": args.k, "k_word": args.k_word}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": args.k, "k_word": args.k_word, "advantage_enabled": args.enable_advantage}
 
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
@@ -470,15 +470,19 @@ def main(args: argparse.Namespace):
 
         # Run baseline and insert to function bank first
         baseline_metric = ""
-        temp_kwargs = kwargs_for_prompt_class.copy()
-        temp_kwargs['k'] = 1
-        temp_kwargs['k_word'] = None
-        warm_start(baseline_function_path, 
-                   prompt_class(**temp_kwargs), 
-                   _PREPROCESSING_FUNCTION_PLACEHOLDER)
+        if args.warm_start or args.enable_advantage:
+            warm_start(
+                baseline_function_path,
+                prompt_class(
+                    **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}},
+                    k=1,
+                    k_word=None,
+                ),
+                _PREPROCESSING_FUNCTION_PLACEHOLDER
+            )
 
-        baseline_metric_value = sampling_function(last_n(output_function_bank, n=1)[0])
-        kwargs_for_prompt_class["baseline_metric_value"] = baseline_metric_value
+            baseline_metric_value = sampling_function(last_n(output_function_bank, n=1)[0])
+            kwargs_for_prompt_class["baseline_metric_value"] = baseline_metric_value
 
         if args.warm_start and args.metric_only:
             # Get baseline metric and reset function bank
@@ -490,7 +494,7 @@ def main(args: argparse.Namespace):
                 baseline_metric = "Expert F1 score: "
             baseline_metric += str(baseline_metric_value)
 
-        if not args.warm_start or args.metrics_only:
+        if (args.enable_advantage and not args.warm_start) or (args.warm_start and args.metrics_only):
             with open(output_function_bank, "w") as file:
                 json.dump([], file)
 
@@ -617,25 +621,30 @@ if __name__ == "__main__":
         "--metric_only",
         action="store_true"
     )
-    
+
+    parser.add_argument(
+        "--enable_advantage",
+        action="store_true"
+    )
+
     parser.add_argument(
         "--n_top",
         type=int,
-        default=5,
+        default=3,
         help="Number of top functions to show in the function bank."
     )
 
     parser.add_argument(
         "--n_worst",
         type=int,
-        default=5,
+        default=3,
         help="Number of worst functions to show in the function bank."
     )
 
     parser.add_argument(
         "--n_last",
         type=int,
-        default=5,
+        default=0,
         help="Number of last functions to show in the function bank."
     )
 
