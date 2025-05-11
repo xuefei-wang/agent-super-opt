@@ -1,5 +1,5 @@
 from prompts.task_prompts import TaskPrompts
-_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTION_INSERT ---"
+_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
 import textwrap
 import os
 
@@ -179,70 +179,39 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
     This is a three-channel image dataset for biological segmentation, consisting of images from different experiments and different settings - a heterogenous dataset of many different object types.  There is a particular focus on biological microscopy images, including cells, sometimes with nuclei labeled in a separate channel.
     The images have pixel values between 0 and 1 and are in float32 format.
     Channel[0] is the nucleus, channel[1] is the cytoplasm, and channel[2] is empty, however not all images have any nuclear data.
-    Because many images lack nuclear data, preprocessing functions should be designed with particular focus on the cytoplasm channel.
     Our goal is to improve the segmentation performance of the neural network by using OpenCV preprocessing functions to improve the quality of the images for downstream segmentation.
     We want to increase the neural network tool's performance at segmenting cells with cell perimeter masks that have high Intersection over Union (IoU) with the ground truth masks.
-    The cell images have dimensions (B, L, W, C) = (batch, length, width, channel). To correctly predict masks, the images provided must be in the format of standard ImageData object and must maintain channel dimensions and ordering.
-    Successful preprocessing functions will typically normalize as the final step.  You can use clever approaches to normalize images.
-    Highest performing expert preprocessing function: average_precision = 0.7401
-    def normalize99(Y, lower=1, upper=99, copy=True, downsample=False):
-            '''
-            Normalize the image so that 0.0 corresponds to the 1st percentile and 1.0 corresponds to the 99th percentile.
-            Args:
-                Y (ndarray): The input image (for downsample, use [Ly x Lx] or [Lz x Ly x Lx]).
-                lower (int, optional): The lower percentile. Defaults to 1.
-                upper (int, optional): The upper percentile. Defaults to 99.
-                copy (bool, optional): Whether to create a copy of the input image. Defaults to True.
-                downsample (bool, optional): Whether to downsample image to compute percentiles. Defaults to False.
-            Returns:
-                ndarray: The normalized image.
-            '''
-            X = Y.copy() if copy else Y
-            X = X.astype("float32") if X.dtype!="float64" and X.dtype!="float32" else X
-            if downsample and X.size > 224**3:
-                nskip = [max(1, X.shape[i] // 224) for i in range(X.ndim)]
-                nskip[0] = max(1, X.shape[0] // 50) if X.ndim == 3 else nskip[0]
-                slc = tuple([slice(0, X.shape[i], nskip[i]) for i in range(X.ndim)])
-                x01 = np.percentile(X[slc], lower)
-                x99 = np.percentile(X[slc], upper)
-            else:
-                x01 = np.percentile(X, lower)
-                x99 = np.percentile(X, upper)
-            if x99 - x01 > 1e-3:
-                X -= x01 
-                X /= (x99 - x01)
-            else:
-                X[:] = 0
-            return X
-        ```
-    
+    The cell images have dimensions (B, L, W, C) = (batch, length, width, channel). To correctly predict masks, the images provided must be in the format of standard ImageData object and must maintain channel dimensions and ordering.   
     """
 
-    task_details = """
-    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions (APIs provided).
+    def get_task_details(self):
+        return f"""
+    All of you should work together to write {self.k_word} preprocessing functions that {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance using OpenCV functions (APIs provided).
     It might make sense to start the process with small preprocessing functions, and then build up to more complex functions depending on the performance of the previous functions.
 
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below). Successful strategies can include improving upon high performing functions (including tuning the parameters of the function), or exploring the image processing space for novel or different image processing approaches. You can feel free to combine OpenCV functions or suggest novel combinations that can lead to improvements, or modify the parameters of the existing extremely successful functions.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest {self.k_word} new unique preprocessing functions using OpenCV functions (APIs provided below){self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average.")}. Successful strategies can include improving upon high performing functions (including tuning the parameters of the function), or exploring the image processing space for novel or different image processing approaches. You can feel free to combine OpenCV functions or suggest novel combinations that can lead to improvements, or modify the parameters of the existing extremely successful functions.
     2. Remember, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged.
-    3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing function.
-    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
-    5. Do not terminate the conversation until the new preprocessing function is evaluated and the numerical performance metrics are logged.
-    6. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND its results are written to the function bank.
+    3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing functions.
+    4. For this task, if all {self.k_word} functions are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
+    5. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
+    6. Extremely important: Do not terminate the conversation until each of the {self.k_word} new preprocessing functions are evaluated AND their results are written to the function bank.
     7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
-    8. Do not write any code outside of the preprocessing function.
+    8. Do not write any code outside of the preprocessing functions.
     9. Do not modify the masks under any circumstances.  
-    10. The preprocessing function written must return an ImageData object with each image in the batch having the same image resolution (H,W) as the original image.
+    10. The preprocessing functions written must return an ImageData object with each image in the batch having the same image resolution (H,W) as the original image.
     """
 
-    pipeline_metrics_info = """
-        The following metrics are used to evaluate the performance of the pipeline: average_precision.
-        The average_precision is the average precision score of the pipeline at an Intersection over Union (IoU) threshold of 0.5.
-        Our ultimate goal is to increase the average_precision as much as possible (0.95 is the target).
-        """
+    def get_pipeline_metrics_info(self):
+        return f"""
+    {self.if_advantage("The advantage quantifies how much better this function performs than the expert baseline (if positive) or how much worse than the expert baseline (if negative).")}
+    The following metrics are used to evaluate the performance of the pipeline: average_precision.
+    The average_precision is the average precision score of the pipeline at an Intersection over Union (IoU) threshold of 0.5.
+    Our ultimate goal is to {self.if_advantage("maximize the advantage and ")}increase the average_precision as much as possible (0.95 is the target).
+    """
 
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, advantage_enabled=False, dataset_size=256, batch_size=16, baseline_metric_value=-100):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -250,15 +219,24 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             dataset_info=self.dataset_info, # Access class attribute
             dataset_path=dataset_path,
             # summary_prompt=self.summary_prompt, # Access class attribute
-            task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
-            pipeline_metrics_info=self.pipeline_metrics_info # Access class attribute
+            dataset_size=dataset_size,
+            batch_size=batch_size,
+            k=k,
+            k_word=k_word,
+            advantage_enabled=advantage_enabled
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
         self.seed = seed
         self.dataset_path = dataset_path
         self.function_bank_path = function_bank_path
+        self.k = k
+        self.k_word = k_word
+        self.baseline_metric_value = baseline_metric_value
+        self.dataset_size = dataset_size
+        self.batch_size = batch_size
+        self.advantage_enabled = advantage_enabled
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -281,7 +259,12 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
-            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
+            "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "baseline_metric_value": str(self.baseline_metric_value),
+            "advantage_enabled": str(self.advantage_enabled),
+            "sample_k": str(self.k),
+            "dataset_size": str(self.dataset_size),
+            "batch_size": str(self.batch_size)
         }
 
         script_with_config = template_content

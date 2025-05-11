@@ -1,5 +1,5 @@
 from prompts.task_prompts import TaskPrompts
-_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTION_INSERT ---"
+_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
 import textwrap
 import os
 
@@ -132,25 +132,31 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     ```
     """
 
-    task_details = """
-    You will work together to complete the following instructions in order:
-    1. View the function bank provided in the prompt to see previous preprocessing functions and their performance metrics.
-    2. Based on previous evaluations, suggest a new unique preprocessing function that may improve the performance metrics of the spot detector.
-    3. Plug the preprocessing function into the pipeline and run the spot detector to calculate the performance metrics, using the provided code snippet.
-    4. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script. Do not terminate until you can verify the output of the code. 
-    Make sure that the entire pipeline runs to end-to-end with the new preprocessing function and computes metrics before saving to function bank.
+    def get_task_details(self):
+        return f"""
+    All of you should work together to write {self.k_word} preprocessing functions to {self.if_advantage("maximize the reported advantages and ")}improve spot detection performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest {self.k_word} new unique preprocessing functions using OpenCV functions (APIs provided below){self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average")}.
+    2. The environment will handle all data loading, evaluation, and logging of the results. Your only job is to write the preprocessing functions.
+    3. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
+    4. For this task, if all {self.k_word} functions are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
+    5. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
+    6. Extremely important: Do not terminate the conversation until each of the {self.k_word} new preprocessing functions are evaluated AND their results are written to the function bank.
+    7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
+    8. Do not write any code outside of the preprocessing functions.
     """
 
-    pipeline_metrics_info = """
-    {
+    def get_pipeline_metrics_info(self):
+        return f"""
+    {{
+    {self.if_advantage("advantage: score which quantifies how much better this function performs than the expert baseline (if positive) or how much worse than the expert baseline (if negative)")}
     class_loss: loss from one-hot encoded 2D matrix, where 1 is a spot and 0 is not a spot
     regress_loss: loss 2D matrix where each entry is distance from a predicted spot
     f1_score: Mean F1 score of predicted spots
-    }
+    }}
     """
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, advantage_enabled=False, baseline_metric_value=-100):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -158,15 +164,20 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
             dataset_info=self.dataset_info, # Access class attribute
             dataset_path=dataset_path,
             # summary_prompt=None, # Access class attribute
-            task_details=self.task_details,     # Access class attribute
             function_bank_path=function_bank_path,
-            pipeline_metrics_info=self.pipeline_metrics_info # Access class attribute
+            k=k,
+            k_word=k_word,
+            advantage_enabled=advantage_enabled
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
         self.seed = seed
         self.dataset_path = dataset_path
         self.function_bank_path = function_bank_path
+        self.k = k
+        self.k_word = k_word
+        self.baseline_metric_value = baseline_metric_value
+        self.advantage_enabled = advantage_enabled
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -189,7 +200,10 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
-            "_PREPROCESSING_FUNCTION_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER
+            "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "sample_k": str(self.k),
+            "baseline_metric_value": str(self.baseline_metric_value),
+            "advantage_enabled": str(self.advantage_enabled),
         }
 
         script_with_config = template_content
