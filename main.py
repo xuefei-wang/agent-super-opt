@@ -569,6 +569,7 @@ def main(args: argparse.Namespace):
                         func_to_optimize,
                         args.experiment_name,
                         args.dataset,
+                        os.path.join(os.path.dirname(output_function_bank), "pipeline_run.log"),
                         args.n_optimize_trials,
                         **kwargs_for_prompt_class
                     )

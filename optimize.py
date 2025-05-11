@@ -4,7 +4,7 @@ import inspect
 import optuna
 import json
 
-import cv2
+import cv2 as cv
 import numpy as np
 from src.data_io import ImageData
 # from src.spot_detection import DeepcellSpotsDetector
@@ -12,6 +12,9 @@ from src.data_io import ImageData
 # from src.medsam_segmentation import MedSAMTool
 from assets.opencv_arg_rules import OPENCV_ARG_RULES
 from prompts.task_prompts import TaskPrompts
+import logging
+import traceback
+import os
 
 def int_to_param_name(n):
     if n < 10:
@@ -248,7 +251,7 @@ def save_to_function_bank(func_str: str, metrics: dict, function_bank_path: str,
     with open(function_bank_path, 'w') as f:
         json.dump(function_bank, f, indent=4)
 
-def hyperparameter_search(func_str, task: str, data_path: str, n_trials: int = 15, **kwargs):
+def hyperparameter_search(func_str, task: str, data_path: str, log_path: str, n_trials: int = 15, **kwargs):
     '''
     Perform hyperparameter search.
 
@@ -256,18 +259,48 @@ def hyperparameter_search(func_str, task: str, data_path: str, n_trials: int = 1
         func_str (str): The function string to optimize.
         data_path (str): Path to the data.
         task (str): The task to perform (e.g., "spot_detection").
+        log_path (str): Path to the log file.
         n_trials (int): Number of trials for the optimization.
     Returns:
         output (tuple[str, dict]): Tuple of the optimal function string and the metrics dictionary.
     '''
     
+    logger = None
+    print(f"Setting up logging to file: {log_path}")
+    try:
+        logging.basicConfig(
+            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
+            handlers=[
+                logging.FileHandler(log_path),
+                logging.StreamHandler()
+            ],
+            force=True
+        )
+        logger = logging.getLogger(__name__)
+        logger.info("Logging configured successfully.")
+    except Exception as log_e:
+        print(f"Error configuring logging: {log_e}. Using basic print statements.")
+        class PrintLogger:
+            def info(self, msg, *args): print("INFO: " + (msg % args if args else msg))
+            def warning(self, msg, *args): print("WARNING: " + (msg % args if args else msg))
+            def error(self, msg, *args): print("ERROR: " + (msg % args if args else msg))
+            def exception(self, msg, *args): print("EXCEPTION: " + (msg % args if args else msg) + f"\\n{traceback.format_exc()}")
+        logger = PrintLogger()
+    
+    optuna.logging.enable_propagation() 
+    optuna.logging.disable_default_handler()
     
     code, params, orig_values = transform_opencv_constants(func_str)
+    
+    logger.info("Transformed function string:")
+    logger.info(code)
+    logger.info(f"Parameters extracted: {params}")
+    logger.info(f"Original values: {orig_values}")
     
     study = optuna.create_study(direction='maximize')
     study.enqueue_trial(orig_values)
     study_objective = make_objective(code, params, task, data_path, kwargs)
-    study.optimize(study_objective, n_trials=n_trials)
+    study.optimize(study_objective, n_trials=n_trials, catch=(cv.error, TypeError, ValueError, SyntaxError))
 
     best_params = study.best_params
 
