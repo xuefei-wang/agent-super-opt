@@ -164,7 +164,8 @@ def evaluate_pipeline(preprocess_func: callable, task: str, data_path: str, **kw
         return metrics
     elif task == "cellpose_segmentation":
         segmenter = CellposeTool(model_name="cyto3", device=kwargs.get('gpu_id'))
-        raw_images, gt_masks = segmenter.loadData(data_path)
+        # raw_images, gt_masks = segmenter.loadData(data_path)
+        raw_images, gt_masks = segmenter.loadCombinedDataset(data_path, dataset_size)
 
         images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
 
