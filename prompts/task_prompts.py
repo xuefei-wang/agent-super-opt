@@ -15,8 +15,9 @@ class TaskPrompts:
 
     dataset_info : str
     # summary_prompt : str
-    task_details : str
-    pipeline_metrics_info : str
+    k : int
+    k_word : str
+    advantage_enabled : bool = False
     checkpoint_path : Optional[str] = None
     dataset_size :Optional[int] = None
     batch_size : Optional[int] = None
@@ -28,3 +29,14 @@ class TaskPrompts:
     @abstractmethod
     def save_function_prompt(self) -> str:
         pass
+
+    @abstractmethod
+    def get_task_details(self):
+        pass
+
+    @abstractmethod
+    def get_pipeline_metrics_info(self):
+        pass
+
+    def if_advantage(self, enabled_string, disabled_string=""):
+        return enabled_string if self.advantage_enabled else disabled_string

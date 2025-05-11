@@ -7,6 +7,7 @@ import uuid
 import random
 from datetime import datetime
 import os
+import re
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
 from autogen.coding import CodeBlock, CodeExecutor, DockerCommandLineCodeExecutor, LocalCommandLineCodeExecutor
@@ -31,10 +32,10 @@ from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 load_dotenv()
 
 
-def set_up_agents(executor: CodeExecutor, llm_model: str):
+def set_up_agents(executor: CodeExecutor, llm_model: str, k, k_word):
     ''' Prepare 3 agents and state transition'''
     if isinstance(executor, JupyterCodeExecutor) or isinstance(executor, LocalCommandLineCodeExecutor) or isinstance(executor, TemplatedLocalCommandLineCodeExecutor):
-        code_writer_prompt = sys_prompt_code_writer
+        code_writer_prompt = sys_prompt_code_writer(k, k_word)
     else:
         raise ValueError(f"Executor type {type(executor)} not supported")
     
@@ -182,7 +183,7 @@ def prepare_prompt_pipeline_optimization(
         sampling_function: callable, 
         current_iteration: int, 
         history_threshold: int=0, 
-        total_iterations: int=30, 
+        total_iterations: int=30,
         maximize = True, 
         n_top: int=5,
         n_worst: int=5, 
@@ -192,12 +193,13 @@ def prepare_prompt_pipeline_optimization(
     prompt_pipeline_optimization = f"""
 
     
-    ## Preprocessing Function API:
+    ## Preprocessing Functions API:
     ```python
-    # Necessary imports for the function logic (if any)
-    # Do not import ImageData in the function, it is already imported in the environment
+    # Necessary imports for any function's logic (if any)
+    # Do not import ImageData in the functions, it is already imported in the environment
+    # All preprocessing function names should be of the form preprocess_images_i where i enumerates the preprocessing function, beginning at 1
     import cv2 as cv
-    def preprocess_images(images: ImageData) -> ImageData:
+    def preprocess_images_i(images: ImageData) -> ImageData:
         # Function logic here
         processed_images_list = []
         for img_array in images.raw:
@@ -212,10 +214,10 @@ def prepare_prompt_pipeline_optimization(
     {baseline_metric}
 
     ## Task Details:
-    {prompts.task_details}
+    {prompts.get_task_details()}
 
     ## Task Metrics Details:
-    {prompts.pipeline_metrics_info}
+    {prompts.get_pipeline_metrics_info()}
     
     ## Function bank sample:
     {function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations)}
@@ -303,8 +305,13 @@ def warm_start(function_definition_path: str, task_prompts: TaskPrompts, functio
     print("Performing warm start with expert baseline function")
 
     with open(function_definition_path, "r") as file:
-        function_definition = file.read()
-    
+        function_definition = re.sub(
+            r'^(\s*def\s+)preprocess_images(\s*\()',
+            r'\1preprocess_images_1\2',
+            file.read(),
+            flags=re.MULTILINE,
+        )
+
     executor = TemplatedLocalCommandLineCodeExecutor(
         template_script_func=task_prompts.run_pipeline_prompt,
         placeholder=function_placeholder,
@@ -338,12 +345,12 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
-                 "task_details": prompts_instance.task_details,
-                 "pipeline_metrics_info": prompts_instance.pipeline_metrics_info,
+                 "task_details": prompts_instance.get_task_details(),
+                 "pipeline_metrics_info": prompts_instance.get_pipeline_metrics_info(),
                  # "summary_prompt": prompts_instance.summary_prompt if hasattr(prompts_instance, 'summary_prompt') else None,
              },
              "agent_system_prompts": {
-                 "code_writer": sys_prompt_code_writer,
+                 "code_writer": sys_prompt_code_writer(args.k, args.k_word),
                  # "code_verifier": sys_prompt_code_verifier,
              },
              "executable_pipeline_script_template": prompts_instance.run_pipeline_prompt(), # Call the method to get the script string
@@ -412,8 +419,8 @@ def main(args: argparse.Namespace):
     my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
     random_seed = args.random_seed # Random seed for reproducibility
-    num_optim_iter = 30 # Number of optimization iterations
-    max_round = 10  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
+    num_optim_iter = 20 # Number of optimization iterations
+    max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
     checkpoint_path = args.checkpoint_path
     # history_threshold = 5
     llm_model = "gpt-4.1" # Do not modify this string
@@ -425,14 +432,14 @@ def main(args: argparse.Namespace):
         from prompts.spot_detection_prompts import SpotDetectionPrompts, SpotDetectionPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = SpotDetectionPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['f1_score']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word, "advantage_enabled": args.enable_advantage}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/spot_detection_expert.py.txt"
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
         prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
         sampling_function = lambda x: x['overall_metrics']['average_precision']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "dataset_size": args.dataset_size, "batch_size": args.batch_size}        
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word, "dataset_size": args.dataset_size, "batch_size": args.batch_size, "advantage_enabled": args.enable_advantage}
         # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/cellpose_segmentation_expert.py.txt"
     elif args.experiment_name == "medSAM_segmentation":
@@ -440,7 +447,7 @@ def main(args: argparse.Namespace):
         prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
         baseline_function_path = "prompts/medsam_segmentation_expert.py.txt"
         sampling_function = lambda x: x['overall_metrics']['dsc_metric'] + x['overall_metrics']['nsd_metric']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": args.k, "k_word": args.k_word, "advantage_enabled": args.enable_advantage}
 
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
@@ -463,24 +470,33 @@ def main(args: argparse.Namespace):
 
         # Run baseline and insert to function bank first
         baseline_metric = ""
-        if args.warm_start:
+        if args.warm_start or args.enable_advantage:
             warm_start(
                 baseline_function_path,
-                prompt_class(**kwargs_for_prompt_class),
+                prompt_class(
+                    **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}},
+                    k=1,
+                    k_word=None,
+                ),
                 _PREPROCESSING_FUNCTION_PLACEHOLDER
             )
 
-            if args.metric_only:
-                # Get baseline metric and reset function bank
-                if args.experiment_name == "cellpose_segmentation":
-                    baseline_metric = "Expert average precision score: "
-                elif args.experiment_name == "medSAM_segmentation":
-                    baseline_metric = "Expert DSC + NSD score: "
-                elif args.experiment_name == "spot_detection":
-                    baseline_metric = "Expert F1 score: "
-                baseline_metric += str(sampling_function(last_n(output_function_bank, n=1)[0]))
-                with open(output_function_bank, "w") as file:
-                    json.dump([], file)
+            baseline_metric_value = sampling_function(last_n(output_function_bank, n=1)[0])
+            kwargs_for_prompt_class["baseline_metric_value"] = baseline_metric_value
+
+        if args.warm_start and args.metric_only:
+            # Get baseline metric and reset function bank
+            if args.experiment_name == "cellpose_segmentation":
+                baseline_metric = "Expert average precision score: "
+            elif args.experiment_name == "medSAM_segmentation":
+                baseline_metric = "Expert DSC + NSD score: "
+            elif args.experiment_name == "spot_detection":
+                baseline_metric = "Expert F1 score: "
+            baseline_metric += str(baseline_metric_value)
+
+        if (args.enable_advantage and not args.warm_start) or (args.warm_start and args.metrics_only):
+            with open(output_function_bank, "w") as file:
+                json.dump([], file)
 
         for i in range(num_optim_iter):
 
@@ -491,12 +507,12 @@ def main(args: argparse.Namespace):
                 template_script_func=prompts.run_pipeline_prompt,
                 placeholder=_PREPROCESSING_FUNCTION_PLACEHOLDER,
                 work_dir=work_dir,
-                timeout=300*2.5
+                timeout=300 * 2.5 * args.k
             )
 
             # Set up agents
             # code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents(executor_instance)
-            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model)
+            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model, args.k, args.k_word)
 
             
 
@@ -605,25 +621,30 @@ if __name__ == "__main__":
         "--metric_only",
         action="store_true"
     )
-    
+
+    parser.add_argument(
+        "--enable_advantage",
+        action="store_true"
+    )
+
     parser.add_argument(
         "--n_top",
         type=int,
-        default=5,
+        default=3,
         help="Number of top functions to show in the function bank."
     )
 
     parser.add_argument(
         "--n_worst",
         type=int,
-        default=5,
+        default=3,
         help="Number of worst functions to show in the function bank."
     )
 
     parser.add_argument(
         "--n_last",
         type=int,
-        default=5,
+        default=0,
         help="Number of last functions to show in the function bank."
     )
 
@@ -632,6 +653,22 @@ if __name__ == "__main__":
         type=int,
         default=5,
         help="Number of history threshold to show in the function bank."
+    )
+
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=3,
+        required=False,
+        help="Preprocessing function group size value."
+    )
+
+    parser.add_argument(
+        "--k_word",
+        type=str,
+        default="three",
+        required=False,
+        help="Preprocessing function group size in English."
     )
 
     parser.add_argument(
@@ -650,6 +687,10 @@ if __name__ == "__main__":
 
 
     args = parser.parse_args()
+
+    # Check that k word and int were both set
+    if args.k == 3 and args.k_word != "three" or args.k != 3 and args.k_word == "three":
+        raise ValueError("k and k_word must be set to be equivalent.")
 
     # Work directory
     if args.work_dir is None:
