@@ -168,7 +168,7 @@ def evaluate_pipeline(preprocess_func: callable, task: str, data_path: str, **kw
         from src.cellpose_segmentation import CellposeTool
         segmenter = CellposeTool(model_name="cyto3", device=kwargs.get('gpu_id'))
         # raw_images, gt_masks = segmenter.loadData(data_path)
-        raw_images, gt_masks = segmenter.loadCombinedDataset(data_path, dataset_size)
+        raw_images, gt_masks = segmenter.loadCombinedDataset(data_path, kwargs.get('dataset_size'))
 
         images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
 
@@ -212,7 +212,7 @@ def make_objective(modified_func_str, param_info, task, data_path, kwargs):
         param_values = define_optuna_search_space(trial, param_info)
         preprocess_func = create_preprocessing_function(modified_func_str, param_values)
         
-        score = evaluate_pipeline(preprocess_func, task, data_path, kwargs)
+        score = evaluate_pipeline(preprocess_func, task, data_path, **kwargs)
         
         return score[metric]
     return objective
@@ -264,7 +264,7 @@ def hyperparameter_search(func_str, task: str, data_path: str, n_trials: int = 1
     best_params = study.best_params
 
     
-    metrics = evaluate_pipeline(create_preprocessing_function(code, best_params), task, data_path, kwargs)
+    metrics = evaluate_pipeline(create_preprocessing_function(code, best_params), task, data_path, **kwargs)
 
     for p in best_params:
         code = code.replace(p, str(best_params[p]))
