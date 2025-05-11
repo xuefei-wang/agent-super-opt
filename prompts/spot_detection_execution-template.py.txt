@@ -158,7 +158,7 @@ try:
     # Run the pipeline on a single image at first so that if the pipeline fails,
     # we fail fast.
     # --- [Single Image] Prepare ImageData ---
-    single_image_data = ImageData(images.raw[0], batch_size=1, image_ids=[0])
+    single_image_data = ImageData(images.raw[:2], batch_size=1, image_ids=[0,1])
 
     for i, preprocess_images in enumerate(k_preprocess_images_fns_single_img):
         logger.info(f"[Single Image] Applying preprocess_images_{i + 1} function...")
