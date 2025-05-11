@@ -7,13 +7,12 @@ import os
 import time
 import traceback
 import re
+import cv2 as cv
 
 # --- Dependency Imports ---
 try:
     from src.data_io import ImageData
-    from src.spot_detection import DeepcellSpotsDetector
-    from src.utils import set_gpu_device
-    import cv2 as cv
+    from src.medsam_segmentation import MedSAMTool
 except ImportError as import_err:
     print(f"FATAL ERROR: Failed to import required modules (ImageData, Tool): {import_err}")
     print(traceback.format_exc())
@@ -28,8 +27,7 @@ group_baseline = {baseline_metric_value}
 data_path = r"{dataset_path}"
 function_bank_path = r"{function_bank_path}"
 script_start_time = time.time()
-
-set_gpu_device(gpu_id)
+checkpoint_path = r"{checkpoint_path}"
 
 # --- Saving Function Definition ---
 def save_results_to_json(file_path, results_dict):
@@ -111,6 +109,13 @@ pipeline_traceback = None
 k_preprocess_images_fns = []
 k_preprocessed_images = []
 k_predictions = []
+k_preprocess_images_fns_single_img = []
+k_preprocessed_images_single_img = []
+k_preprocessing_times_single_img = []
+k_predictions_single_img = []
+k_prediction_times_single_img = []
+k_metrics_times_single_img = []
+k_overall_metrics_single_img = []
 
 # --- Generated Preprocessing Function Definition ---
 # This placeholder will be replaced by the executor
@@ -126,6 +131,7 @@ try:
             raise NameError(err_msg)
         else:
             k_preprocess_images_fns.append(globals().get(f'preprocess_images_{i + 1}', None))
+            k_preprocess_images_fns_single_img.append(globals().get(f'preprocess_images_{i + 1}', None))
             logger.info(f"preprocess_images_{i + 1} function appears to be defined.")
 
     # --- Set random seeds ---
@@ -134,16 +140,65 @@ try:
     torch.manual_seed(seed)
     if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
 
-    # --- Initialize spot detector tool ---
-    logger.info("Initializing SpotsDetector...")
-    deepcell_spot_detector = DeepcellSpotsDetector()
+    # --- Initialize segmenter tool ---
+    logger.info("Initializing MedSAMTool...")
+    segmenter = MedSAMTool(gpu_id={gpu_id}, checkpoint_path=checkpoint_path)
     logger.info(f"Loading data from {data_path}...")
-    spots_data = np.load(f"{data_path}", allow_pickle=True)
-    logger.info(f"Data loaded: {len(spots_data['X'])} images.")
+    raw_images, boxes, masks = segmenter.loadData(data_path)
+    logger.info(f"Data loaded: {len(raw_images)} images.")
+    logger.info(f"[Single Image] Loading single image as a tester...")
 
     # --- Prepare ImageData ---
-    batch_size = spots_data['X'].shape[0]
-    images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
+    batch_size = 8
+    images = ImageData(raw=raw_images,
+                batch_size=batch_size,
+                image_ids=[i for i in range(len(raw_images))],
+                masks=masks,
+                predicted_masks=masks)
+
+    # Run the pipeline on a single image at first so that if the pipeline fails,
+    # we fail fast.
+    # --- [Single Image] Prepare ImageData ---
+    single_image_data = ImageData(raw=images.raw[:1],
+                batch_size=1,
+                image_ids=[0],
+                masks=images.masks[:1],
+                predicted_masks=images.masks[:1])
+
+    for i, preprocess_images in enumerate(k_preprocess_images_fns_single_img):
+        logger.info(f"[Single Image] Applying preprocess_images_{i + 1} function...")
+        preprocessing_start_time = time.time()
+        try:
+            k_preprocessed_images_single_img.append(preprocess_images(single_image_data))
+            k_preprocessing_times_single_img.append(time.time() - preprocessing_start_time)
+            logger.info(f"[Single Image] Preprocessing {i + 1} finished in {k_preprocessing_times_single_img[i]:.2f} seconds.")
+            if not isinstance(single_image_data, ImageData):
+                raise TypeError(f"Preprocessing function {i + 1} returned type {type(single_image_data)}, expected ImageData.")
+        except Exception as preprocess_error:
+            logger.error(f"[Single Image] !!! ERROR occurred inside the dynamically generated preprocess_images_{i + 1} function:")
+            logger.exception(preprocess_error)
+            raise preprocess_error
+
+    # --- [Single Image] Run Segmenter ---
+    for i, preprocessed_images in enumerate(k_preprocessed_images_single_img):
+        logger.info(f"[Single Image] Running segmentation prediction {i + 1}...")
+        prediction_start_time = time.time()
+        k_predictions_single_img.append(segmenter.predict(preprocessed_images, boxes, used_for_baseline=False))
+        k_prediction_times_single_img.append(time.time() - prediction_start_time)
+        logger.info(f"[Single Image] Segmentation prediction finished in {k_prediction_times_single_img[i]:.2f} seconds.")
+
+    # --- [Single Image] Calculate Metrics ---
+    for i, pred in enumerate(k_predictions_single_img):
+        logger.info(f"[Single Image] Calculating metrics for prediction {i + 1}...")
+        metrics_start_time = time.time()
+        k_overall_metrics_single_img.append(segmenter.evaluate(pred, single_image_data.masks))
+        k_metrics_times_single_img.append(time.time() - metrics_start_time)
+        logger.info(f"[Single Image] Metrics calculation finished in {k_metrics_times_single_img[i]:.2f} seconds.")
+
+    # --- [Single Image] Compute Advantages ---
+    if k_overall_metrics_single_img:
+        retrieve_reward = lambda m: m["dsc_metric"] + m["nsd_metric"]
+        k_overall_metrics_single_img = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics_single_img]
 
     # --- Apply Preprocessing ---
     for i, preprocess_images in enumerate(k_preprocess_images_fns):
@@ -160,25 +215,25 @@ try:
             logger.exception(preprocess_error)
             raise preprocess_error
 
-    # --- Run Spot Detection ---
+    # --- Run Segmenter ---
     for i, preprocessed_images in enumerate(k_preprocessed_images):
-        logger.info(f"Running spot detection prediction {i + 1}...")
+        logger.info(f"Running segmentation prediction {i + 1}...")
         prediction_start_time = time.time()
-        k_predictions.append(deepcell_spot_detector.predict(preprocessed_images))
+        k_predictions.append(segmenter.predict(preprocessed_images, boxes, used_for_baseline=False))
         k_prediction_times.append(time.time() - prediction_start_time)
-        logger.info(f"Spot detection prediction finished in {k_prediction_times[i]:.2f} seconds.")
+        logger.info(f"Segmentation prediction finished in {k_prediction_times[i]:.2f} seconds.")
 
     # --- Calculate Metrics ---
     for i, pred in enumerate(k_predictions):
         logger.info(f"Calculating metrics for prediction {i + 1}...")
         metrics_start_time = time.time()
-        k_overall_metrics.append(deepcell_spot_detector.evaluate(pred, spots_data['y']))
+        k_overall_metrics.append(segmenter.evaluate(pred, images.masks))
         k_metrics_times.append(time.time() - metrics_start_time)
         logger.info(f"Metrics calculation finished in {k_metrics_times[i]:.2f} seconds.")
 
     # --- Compute Advantages ---
     if k_overall_metrics:
-        retrieve_reward = lambda m: m["f1_score"]
+        retrieve_reward = lambda m: m["dsc_metric"] + m["nsd_metric"]
         k_overall_metrics = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics]
 
     # --- Log Metrics ---
@@ -208,9 +263,9 @@ try:
             'timestamp': [script_start_time] * k,
             'gpu_id': [gpu_id] * k,
             'timestamp_finish': [time.time()] * k,
-            'preprocessing_times': k_preprocessing_times,
-            'prediction_times': k_prediction_times,
-            'metrics_times': k_metrics_times,
+            'preprocessing_time': k_preprocessing_times,
+            'prediction_time': k_prediction_times,
+            'metrics_time': k_metrics_times,
             'error': [None] * k, # Explicitly None on success
             'traceback': [None] * k # Explicitly None on success
         }

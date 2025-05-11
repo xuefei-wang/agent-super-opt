@@ -447,7 +447,7 @@ def main(args: argparse.Namespace):
         prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
         baseline_function_path = "prompts/medsam_segmentation_expert.py.txt"
         sampling_function = lambda x: x['overall_metrics']['dsc_metric'] + x['overall_metrics']['nsd_metric']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": args.k, "k_word": args.k_word}
 
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
@@ -470,15 +470,12 @@ def main(args: argparse.Namespace):
 
         # Run baseline and insert to function bank first
         baseline_metric = ""
-        warm_start(
-            baseline_function_path,
-            prompt_class(
-                **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}},
-                k=1,
-                k_word=None,
-            ),
-            _PREPROCESSING_FUNCTION_PLACEHOLDER
-        )
+        temp_kwargs = kwargs_for_prompt_class.copy()
+        temp_kwargs['k'] = 1
+        temp_kwargs['k_word'] = None
+        warm_start(baseline_function_path, 
+                   prompt_class(**temp_kwargs), 
+                   _PREPROCESSING_FUNCTION_PLACEHOLDER)
 
         baseline_metric_value = sampling_function(last_n(output_function_bank, n=1)[0])
         kwargs_for_prompt_class["baseline_metric_value"] = baseline_metric_value

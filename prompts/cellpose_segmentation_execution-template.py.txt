@@ -21,8 +21,6 @@ except ImportError as import_err:
 
 # --- Configuration (Replaced by run_pipeline_prompt) ---
 gpu_id = {gpu_id}
-dataset_size = {dataset_size}
-batch_size = {batch_size}
 seed = {seed} # Seed is now an integer, no quotes needed
 k = {sample_k}
 group_baseline = {baseline_metric_value}
@@ -110,6 +108,13 @@ pipeline_traceback = None
 k_preprocess_images_fns = []
 k_preprocessed_images = []
 k_predictions = []
+k_preprocess_images_fns_single_img = []
+k_preprocessed_images_single_img = []
+k_preprocessing_times_single_img = []
+k_predictions_single_img = []
+k_prediction_times_single_img = []
+k_metrics_times_single_img = []
+k_overall_metrics_single_img = []
 
 # --- Generated Preprocessing Function Definition ---
 # This placeholder will be replaced by the executor
@@ -125,6 +130,7 @@ try:
             raise NameError(err_msg)
         else:
             k_preprocess_images_fns.append(globals().get(f'preprocess_images_{i + 1}', None))
+            k_preprocess_images_fns_single_img.append(globals().get(f'preprocess_images_{i + 1}', None))
             logger.info(f"preprocess_images_{i + 1} function appears to be defined.")
 
     # --- Set random seeds ---
@@ -137,12 +143,50 @@ try:
     logger.info("Initializing CellposeTool...")
     segmenter = CellposeTool(model_name="cyto3", device=gpu_id)
     logger.info(f"Loading data from {data_path}...")
-    raw_images, gt_masks = segmenter.loadCombinedDataset(data_path, dataset_size)
+    raw_images, gt_masks = segmenter.loadData(data_path)
     logger.info(f"Data loaded: {len(raw_images)} images.")
+    logger.info(f"[Single Image] Loading single image as a tester...")
 
     # --- Prepare ImageData ---
-    images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
+    images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
+    
+    single_image_data = ImageData(raw=raw_images[:1], batch_size=1, image_ids=[0])
 
+    for i, preprocess_images in enumerate(k_preprocess_images_fns_single_img):
+        logger.info(f"[Single Image] Applying preprocess_images_{i + 1} function...")
+        preprocessing_start_time = time.time()
+        try:
+            k_preprocessed_images_single_img.append(preprocess_images(single_image_data))
+            k_preprocessing_times_single_img.append(time.time() - preprocessing_start_time)
+            logger.info(f"[Single Image] Preprocessing {i + 1} finished in {k_preprocessing_times_single_img[i]:.2f} seconds.")
+            if not isinstance(single_image_data, ImageData):
+                raise TypeError(f"Preprocessing function {i + 1} returned type {type(single_image_data)}, expected ImageData.")
+        except Exception as preprocess_error:
+            logger.error(f"[Single Image] !!! ERROR occurred inside the dynamically generated preprocess_images_{i + 1} function:")
+            logger.exception(preprocess_error)
+            raise preprocess_error
+
+    # --- [Single Image] Run Segmenter ---
+    for i, preprocessed_images in enumerate(k_preprocessed_images_single_img):
+        logger.info(f"[Single Image] Running segmentation prediction {i + 1}...")
+        prediction_start_time = time.time()
+        k_predictions_single_img.append(segmenter.predict(preprocessed_images, boxes, used_for_baseline=False))
+        k_prediction_times_single_img.append(time.time() - prediction_start_time)
+        logger.info(f"[Single Image] Segmentation prediction finished in {k_prediction_times_single_img[i]:.2f} seconds.")
+
+    # --- [Single Image] Calculate Metrics ---
+    for i, pred in enumerate(k_predictions_single_img):
+        logger.info(f"[Single Image] Calculating metrics for prediction {i + 1}...")
+        metrics_start_time = time.time()
+        k_overall_metrics_single_img.append(segmenter.evaluate(pred, single_image_data.masks))
+        k_metrics_times_single_img.append(time.time() - metrics_start_time)
+        logger.info(f"[Single Image] Metrics calculation finished in {k_metrics_times_single_img[i]:.2f} seconds.")
+
+    # --- [Single Image] Compute Advantages ---
+    if k_overall_metrics_single_img:
+        retrieve_reward = lambda m: m["average_precision"]
+        k_overall_metrics_single_img = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics]
+        
     # --- Apply Preprocessing ---
     for i, preprocess_images in enumerate(k_preprocess_images_fns):
         logger.info(f"Applying preprocess_images_{i + 1} function...")
