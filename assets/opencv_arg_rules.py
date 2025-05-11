@@ -106,8 +106,6 @@ OPENCV_ARG_RULES = {
     "Scharr": {
         "args": {
             1: {"type": "int", "constraints": {}},
-            2: {"type": "int", "constraints": {"enum": [0, 1]}},
-            3: {"type": "int", "constraints": {"enum": [0, 1]}},
             5: {"type": "float", "constraints": {}},
             6: {"type": "float", "constraints": {}},
             7: {"type": "int", "constraints": {"enum": [0, 1, 2, 3, 4]}}
@@ -116,8 +114,6 @@ OPENCV_ARG_RULES = {
     "Sobel": {
         "args": {
             1: {"type": "int", "constraints": {}},
-            2: {"type": "int", "constraints": {"enum": [0, 1]}},
-            3: {"type": "int", "constraints": {"enum": [0, 1]}},
             5: {"type": "int", "constraints": {"odd": True, "min": 3}},
             6: {"type": "float", "constraints": {}},
             7: {"type": "float", "constraints": {}},

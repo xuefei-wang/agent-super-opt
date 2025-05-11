@@ -40,14 +40,47 @@ class CV2ParamExtractor(ast.NodeTransformer):
             # If we don't have rules for this function, skip it
             if func_name not in OPENCV_ARG_RULES:
                 return self.generic_visit(node)
-            
-            rules = OPENCV_ARG_RULES.get(func_name, {}).get("args", {})
+            elif func_name == "Sobel" or func_name == "Scharr":
+                # Special case for Sobel/Scharr dy, dx
+                rules = OPENCV_ARG_RULES.get(func_name, {}).get("args", {})
+                
+                new_args = []
+                dx_param_name = None
+                for idx, arg in enumerate(node.args):
+                    if idx == 2:
+                        if isinstance(arg, ast.Constant):
+                            # Special case for Sobel/Scharr dx, dy
+                            param_name = int_to_param_name(self.param_counter)
+                            dx_param_name = param_name
+                            new_args.append(ast.Name(id=param_name, ctx=ast.Load()))
+                            self.param_info.append({
+                                "name": param_name,
+                                "type": "int",
+                                "constraints": {"enum": [0, 1]}
+                            })
+                            self.original_values[param_name] = arg.value
+                            self.param_counter += 1
+                    elif idx == 3:
+                        if isinstance(arg, ast.Constant) and dx_param_name is not None:
+                            # If dx is specified, dy = 1 - dx
+                            new_args.append(ast.BinOp(
+                                left=ast.Constant(value=1),
+                                op=ast.Sub(),
+                                right=ast.Name(id=dx_param_name, ctx=ast.Load())
+                            ))
+                    else:   
+                        rule = rules.get(idx)
+                        new_args.append(self.replace_constants(arg, rule))
+                        
+                node.args = new_args
+            else:
+                rules = OPENCV_ARG_RULES.get(func_name, {}).get("args", {})
 
-            new_args = []
-            for idx, arg in enumerate(node.args):
-                rule = rules.get(idx)
-                new_args.append(self.replace_constants(arg, rule))
-            node.args = new_args
+                new_args = []
+                for idx, arg in enumerate(node.args):
+                    rule = rules.get(idx)
+                    new_args.append(self.replace_constants(arg, rule))
+                node.args = new_args
         return self.generic_visit(node)
 
     def replace_constants(self, node, rule=None):
@@ -64,17 +97,8 @@ class CV2ParamExtractor(ast.NodeTransformer):
             self.param_counter += 1
             return ast.Name(id=param_name, ctx=ast.Load())
         elif isinstance(node, ast.Tuple):
-            elements = []
-            values = []
-            for i, el in enumerate(node.elts):
-                el_rule = None
-                if rule and rule["type"].startswith("tuple") and "int" in rule["type"]:
-                    el_rule = {"type": "int", "constraints": rule.get("constraints", {})}
-                new_el = self.replace_constants(el, el_rule)
-                values.append(el.value if isinstance(el, ast.Constant) else None)
-                elements.append(new_el)
-
             param_name = int_to_param_name(self.param_counter)
+            values = [el.value if isinstance(el, ast.Constant) else None for el in node.elts]
             self.param_info.append({
                 "name": param_name,
                 "type": rule["type"] if rule else "tuple[int,int]",
