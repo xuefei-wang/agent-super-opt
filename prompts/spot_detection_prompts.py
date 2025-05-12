@@ -143,6 +143,16 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     6. Extremely important: Do not terminate the conversation until each of the {self.k_word} new preprocessing functions are evaluated AND their results are written to the function bank.
     7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
     8. Do not write any code outside of the preprocessing functions.
+    """ if self.k > 1 else """
+    All of you should work together to write a preprocessing function to improve spot detection performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
+    2. The environment will handle all data loading, evaluation, and logging of the results. Your only job is to write the preprocessing function.
+    3. Do not terminate the conversation until the new preprocessing function is evaluated and the numerical performance metrics are logged.
+    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
+    5. Do not terminate the conversation until the new preprocessing function is evaluated and the numerical performance metrics are logged.
+    6. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND its results are written to the function bank.
+    7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
+    8. Do not write any code outside of the preprocessing function.
     """
 
     def get_pipeline_metrics_info(self):

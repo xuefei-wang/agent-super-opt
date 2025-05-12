@@ -184,7 +184,8 @@ def prepare_prompt_pipeline_optimization(
         function_bank_path: str, 
         prompts : TaskPrompts, 
         sampling_function: callable, 
-        current_iteration: int, 
+        current_iteration: int,
+        k: int,
         history_threshold: int=0, 
         total_iterations: int=30,
         maximize = True, 
@@ -193,16 +194,23 @@ def prepare_prompt_pipeline_optimization(
         n_last: int=5,
         baseline_metric: str = ""):
 
-    prompt_pipeline_optimization = f"""
-
-    
-    ## Preprocessing Functions API:
+    function_api_prompt_prefix = """## Preprocessing Functions API:
     ```python
     # Necessary imports for any function's logic (if any)
     # Do not import ImageData in the functions, it is already imported in the environment
     # All preprocessing function names should be of the form preprocess_images_i where i enumerates the preprocessing function, beginning at 1
     import cv2 as cv
-    def preprocess_images_i(images: ImageData) -> ImageData:
+    def preprocess_images_i(images: ImageData) -> ImageData:""" if k > 1 else """## Preprocessing Function API:
+    ```python
+    # Necessary imports for the function logic (if any)
+    # Do not import ImageData in the function, it is already imported in the environment
+    import cv2 as cv
+    def preprocess_images_1(images: ImageData) -> ImageData:"""
+
+    prompt_pipeline_optimization = f"""
+
+    
+    {function_api_prompt_prefix}
         # Function logic here
         processed_images_list = []
         for img_array in images.raw:
@@ -549,7 +557,7 @@ def main(args: argparse.Namespace):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)}"
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, args.k, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             # summary_args={"summary_prompt": prompts.summary_prompt},
