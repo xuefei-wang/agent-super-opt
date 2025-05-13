@@ -147,12 +147,19 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         ```markdown
 
         This is large-scale medical image segmentation dataset covering the 
-        microscopy modality. The images have dimensions (H, W, C) = (height, width, channel).
+        dermoscopy/xray modality. The images have dimensions (H, W, C) = (height, width, channel).
         ```
     """
 
-    def get_task_details(self):
-        return f"""
+    task_details = """
+    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
+    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
+    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
+    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
+    6. Do not terminate the conversation until the new preprocessing function is evaluated.
+    7. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND it must be written to the function bank by calling the write_results function.
+    8. Recall, this is not a stateful kernel, so all functions, imports, etc. must be provided in the script to be executed.
     """
 
     def get_pipeline_metrics_info(self):
