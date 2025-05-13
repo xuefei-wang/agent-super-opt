@@ -84,7 +84,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
             imgs, boxes, masks = segmenter.loadData({data_path})
 
             images = ImageData(raw=imgs,
-                batch_size=8,
+                batch_size=16,
                 image_ids=[i for i in range(len(imgs))],
                 masks=masks,
                 predicted_masks=masks)
