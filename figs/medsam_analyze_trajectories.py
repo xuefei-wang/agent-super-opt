@@ -129,7 +129,7 @@ def extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_
             spliced_masks = masks
             images = ImageData(
                 raw=spliced_imgs,
-                batch_size=min(16, len(spliced_imgs)),
+                batch_size=min(8, len(spliced_imgs)),
                 image_ids=[i for i in range(len(spliced_imgs))],
                 masks=spliced_masks,
                 predicted_masks=spliced_masks,
