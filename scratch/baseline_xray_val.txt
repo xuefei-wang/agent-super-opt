@@ -1,0 +1,45 @@
+
+
+In _build_sam() with cuda:2
+doing a map load
+Processing batch 1...
+Processing batch 2...
+Processing batch 3...
+Processing batch 4...
+
+Inside medsam_inference()
+Processing batch 1...
+Processing batch 2...
+Processing batch 3...
+Processing batch 4...
+
+Evaluating predictions...
+0 | DSC: 0.548393 | NSD: 0.168163
+1 | DSC: 0.598606 | NSD: 0.429314
+2 | DSC: 0.560871 | NSD: 0.073251
+3 | DSC: 0.584219 | NSD: 0.339512
+4 | DSC: 0.557912 | NSD: 0.434593
+5 | DSC: 0.523553 | NSD: 0.115863
+6 | DSC: 0.514485 | NSD: 0.122342
+7 | DSC: 0.57434 | NSD: 0.045796
+8 | DSC: 0.573879 | NSD: 0.130771
+9 | DSC: 0.536817 | NSD: 0.595563
+10 | DSC: 0.547456 | NSD: 0.057054
+11 | DSC: 0.486142 | NSD: 0.095769
+12 | DSC: 0.565211 | NSD: 0.284252
+13 | DSC: 0.481629 | NSD: 0.000472
+14 | DSC: 0.594718 | NSD: 0.102744
+15 | DSC: 0.609335 | NSD: 0.45583
+16 | DSC: 0.611987 | NSD: 0.64455
+17 | DSC: 0.559121 | NSD: 0.05448
+18 | DSC: 0.575076 | NSD: 0.055906
+19 | DSC: 0.559791 | NSD: 0.106911
+20 | DSC: 0.55018 | NSD: 0.118295
+21 | DSC: 0.562712 | NSD: 0.382661
+22 | DSC: 0.540574 | NSD: 0.060073
+23 | DSC: 0.598833 | NSD: 0.336383
+24 | DSC: 0.48282 | NSD: 0.024478
+
+=======================
+Average DSC metric: 0.555946
+Average NSD metric: 0.209401
