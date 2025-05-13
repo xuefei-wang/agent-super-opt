@@ -6,12 +6,13 @@ import numpy as np
 import cv2 as cv
 import pandas as pd
 import argparse
-# add src to path
 import sys
-project_root = os.path.abspath(os.path.join(os.getcwd(), "..")) # scratch folder
-if project_root not in sys.path:
-    sys.path.append(project_root)
-    
+
+_CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_CURRENT_SCRIPT_DIR)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 from src.medsam_segmentation import MedSAMTool
 from src.data_io import ImageData
 import io
@@ -128,7 +129,7 @@ def extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_
             spliced_masks = masks
             images = ImageData(
                 raw=spliced_imgs,
-                batch_size=min(8, len(spliced_imgs)),
+                batch_size=min(16, len(spliced_imgs)),
                 image_ids=[i for i in range(len(spliced_imgs))],
                 masks=spliced_masks,
                 predicted_masks=spliced_masks,
@@ -288,7 +289,7 @@ def plot_line_graph(output_path, new_json, combined_metric):
     plt.close()
     print(f"Saved line graph to {output_path}")
 
-def main(json_path, k, modality):    # json_path = f'/workspace/output/{outer_folder_name}/medSAM_segmentation/{timestamp_folder}/preprocessing_func_bank.json'
+def main(json_path, k, modality, gpu_id):
     # output paths
     timestamp = os.path.basename(os.path.dirname(json_path))
     output_dir = os.path.abspath(os.path.join(os.path.dirname(json_path), f'../{timestamp}'))
@@ -298,8 +299,8 @@ def main(json_path, k, modality):    # json_path = f'/workspace/output/{outer_fo
     line_graph_output_path = os.path.abspath(os.path.join(output_dir, f'../../{timestamp}_line_graph.png'))
     scatter_output_path = os.path.abspath(os.path.join(output_dir, f'../../{timestamp}_scatter_plot.png'))
 
-    test_data_path = f"/workspace/data/resized_{modality}_test.pkl"
-    baseline_json = f"/workspace/scratch/{modality}_baseline.json"
+    test_data_path = os.path.join(_PROJECT_ROOT, f"data/resized_{modality}_test.pkl")
+    baseline_json = os.path.join(_PROJECT_ROOT, f"scratch/{modality}_baseline.json")
 
     with open(baseline_json, 'r') as f:
         json_array = json.load(f)
@@ -308,7 +309,7 @@ def main(json_path, k, modality):    # json_path = f'/workspace/output/{outer_fo
         print("val_baseline", val_baseline)
         print("test_baseline", test_baseline)
 
-    segmenter = MedSAMTool(gpu_id=4, checkpoint_path="/workspace/data/medsam_vit_b.pth")
+    segmenter = MedSAMTool(gpu_id=gpu_id, checkpoint_path=os.path.join(_PROJECT_ROOT, "data/medsam_vit_b.pth"))
 
     print("Extracting top k functions...")
     results_k = extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_data_path)
@@ -329,12 +330,11 @@ if __name__ == "__main__":
     parser.add_argument('--json_path', type=str, required=True, help='Preprocessing func bank path.')
     parser.add_argument('--k', type=int, default=10, help='Number of top functions to extract.')
     parser.add_argument('--modality', type=str, default='dermoscopy', help='Modality to use (e.g., dermoscopy, xray).')
+    parser.add_argument('--gpu_id', type=int, default=0, help='GPU ID to use for MedSAM.')
 
     args = parser.parse_args()
     json_path = args.json_path
     k = args.k
     modality = args.modality
-    main(json_path, k, modality)
-
-# example usage:
-# python medsam_analyze_trajectories.py --json_path /workspace/output/trial_8_optimized/medSAM_segmentation/20250512-091352/preprocessing_func_bank.json
+    gpu_id = args.gpu_id
+    main(json_path, k, modality, gpu_id)
