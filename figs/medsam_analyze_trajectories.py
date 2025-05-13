@@ -396,7 +396,7 @@ def main(json_path, k, modality):    # json_path = f'/workspace/output/{outer_fo
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate plots to analyze trajectory of MedSAM rollout.')
     parser.add_argument('--json_path', type=str, required=True, help='Preprocessing func bank path.')
-    parser.add_argument('--k', type=int, default=2, help='Number of top functions to extract.')
+    parser.add_argument('--k', type=int, default=10, help='Number of top functions to extract.')
     parser.add_argument('--modality', type=str, default='dermoscopy', help='Modality to use (e.g., dermoscopy, xray).')
 
     args = parser.parse_args()
