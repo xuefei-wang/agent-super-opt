@@ -57,9 +57,9 @@ def extract_top_k_preprocessing_functions(json_path, exp_timestamp, csv_path):
             stdout_capture = io.StringIO()
             with contextlib.redirect_stdout(stdout_capture):
                 # Code block where MedSAMTool is usedj
-                segmenter = MedSAMTool(gpu_id=3, checkpoint_path="/home/sstiles/sci-agent/data/medsam_vit_b.pth")
+                segmenter = MedSAMTool(gpu_id=3, checkpoint_path="/workspace/data/medsam_vit_b.pth")
 
-                imgs, boxes, masks = segmenter.loadData('/home/sstiles/sci-agent/scratch/resized_dermoscopy_test_filenames_25.pkl')
+                imgs, boxes, masks = segmenter.loadData('/workspace/scratch/resized_dermoscopy_test_filenames_25.pkl')
                 used_imgs = imgs
                 used_boxes = boxes
                 used_masks = masks
@@ -345,7 +345,7 @@ def plot_line_graph(output_path, new_json, combined_metric):
 
     # Plot Combined Metric
     plt.plot(metrics_combined, marker='o', linestyle='-', color='b', label='Eval Combined')
-    plt.plot(rolling_highest_combined, marker='x', linestyle='--', color='r', label=f'Rolling highest Combined: {max(rolling_highest_combined)}')
+    plt.plot(rolling_highest_combined, marker='x', linestyle='--', color='r', label=f'Rolling Highest Combined: {max(rolling_highest_combined)}')
     plt.axhline(combined_metric, color='g', linestyle='--', label=f'Baseline Combined: {combined_metric}')
     plt.xlabel('Iteration')
     plt.ylabel('Combined Metric')
@@ -357,7 +357,7 @@ def plot_line_graph(output_path, new_json, combined_metric):
     plt.close()
     print(f"Saved line graph to {output_path}")
 
-def main(json_path, k, modality):    # json_path = f'/home/sstiles/sci-agent/output/{outer_folder_name}/medSAM_segmentation/{timestamp_folder}/preprocessing_func_bank.json'
+def main(json_path, k, modality):    # json_path = f'/workspace/output/{outer_folder_name}/medSAM_segmentation/{timestamp_folder}/preprocessing_func_bank.json'
     # output paths
     timestamp = os.path.basename(os.path.dirname(json_path))
     output_dir = os.path.abspath(os.path.join(os.path.dirname(json_path), f'../{timestamp}'))
@@ -367,8 +367,8 @@ def main(json_path, k, modality):    # json_path = f'/home/sstiles/sci-agent/out
     line_graph_output_path = os.path.abspath(os.path.join(output_dir, f'../../{timestamp}_line_graph.png'))
     scatter_output_path = os.path.abspath(os.path.join(output_dir, f'../../{timestamp}_scatter_plot.png'))
 
-    test_data_path = f"/home/sstiles/sci-agent/data/resized_{modality}_test.pkl"
-    baseline_json = f"/home/sstiles/sci-agent/scratch/{modality}_baseline.json"
+    test_data_path = f"/workspace/data/resized_{modality}_test.pkl"
+    baseline_json = f"/workspace/scratch/{modality}_baseline.json"
 
     with open(baseline_json, 'r') as f:
         json_array = json.load(f)
@@ -377,7 +377,7 @@ def main(json_path, k, modality):    # json_path = f'/home/sstiles/sci-agent/out
         print("val_baseline", val_baseline)
         print("test_baseline", test_baseline)
 
-    segmenter = MedSAMTool(gpu_id=4, checkpoint_path="/home/sstiles/sci-agent/data/medsam_vit_b.pth")
+    segmenter = MedSAMTool(gpu_id=4, checkpoint_path="/workspace/data/medsam_vit_b.pth")
 
     print("Extracting top k functions...")
     results_k = extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_data_path)
@@ -406,4 +406,4 @@ if __name__ == "__main__":
     main(json_path, k, modality)
 
 # example usage:
-# python medsam_analyze_trajectories.py --json_path /home/sstiles/sci-agent/output/trial_8_optimized/medSAM_segmentation/20250512-091352/preprocessing_func_bank.json
+# python medsam_analyze_trajectories.py --json_path /workspace/output/trial_8_optimized/medSAM_segmentation/20250512-091352/preprocessing_func_bank.json
