@@ -40,65 +40,6 @@ def convert_string_to_function(func_str, func_name):
     # Return the function object from the namespace
     return namespace[func_name]
 
-def extract_top_k_preprocessing_functions(json_path, exp_timestamp, csv_path):
-    new_json = get_new_json(json_path)
-    all_fns = find_top_k(new_json, lambda x: x['dsc_metric'] + x['nsd_metric'], 5)  # list of 3 functions
-
-    all_k_metrics = []
-    file_exists = os.path.isfile(csv_path)
-    with open(csv_path, 'a', newline='') as csvfile:  # Open in append mode
-        csv_writer = csv.writer(csvfile)
-        if not file_exists:  # Write header only if file doesn't exist
-            csv_writer.writerow(['exp_timestamp', 'preprocessing_function', 'agent_dsc_TEST', 'agent_nsd_TEST', 'agent_combined_TEST', 'agent_dsc_VAL', 'agent_nsd_VAL', 'agent_combined_VAL'])
-
-        for i, json_dict in enumerate(all_fns):
-            print("==========================================================================")
-            # Capture stdout
-            stdout_capture = io.StringIO()
-            with contextlib.redirect_stdout(stdout_capture):
-                # Code block where MedSAMTool is usedj
-                segmenter = MedSAMTool(gpu_id=3, checkpoint_path="/workspace/data/medsam_vit_b.pth")
-
-                imgs, boxes, masks = segmenter.loadData('/workspace/scratch/resized_dermoscopy_test_filenames_25.pkl')
-                used_imgs = imgs
-                used_boxes = boxes
-                used_masks = masks
-
-                images = ImageData(
-                    raw=used_imgs,
-                    batch_size=min(8, len(used_imgs)),
-                    image_ids=[i for i in range(len(used_imgs))],
-                    masks=used_masks,
-                    predicted_masks=used_masks,
-                )
-
-                fn_str = json_dict['preprocessing_function']
-                best_preprocessing_fn = convert_string_to_function(fn_str, 'preprocess_images')
-                images = best_preprocessing_fn(images)
-                pred_masks = segmenter.predict(images, used_boxes, used_for_baseline=False)
-                segmenter.evaluate(pred_masks, used_masks)
-
-            # Extract metrics from captured stdout
-            stdout_output = stdout_capture.getvalue()
-            print(stdout_output)  # Print captured stdout for progress messages
-            lines = stdout_output.splitlines()
-            for line in lines:
-                if "Average DSC metric" in line:
-                    agent_dsc = float(line.split(": ")[1])
-                elif "Average NSD metric" in line:
-                    agent_nsd = float(line.split(": ")[1])
-
-            print(f"Ran idx {i + 1}/{len(all_fns)}: {agent_dsc + agent_nsd}")
-
-            # Calculate validation metrics
-            agent_dsc_val = json_dict['dsc_metric']
-            agent_nsd_val = json_dict['nsd_metric']
-            # Write the metrics to the CSV file
-            csv_writer.writerow([exp_timestamp, fn_str, agent_dsc, agent_nsd, agent_dsc + agent_nsd, agent_dsc_val, agent_nsd_val, agent_dsc_val + agent_nsd_val])
-            all_k_metrics.append((fn_str, agent_dsc, agent_nsd))
-    '''Returns object with the lowest metric value from a list of JSON objects.'''
-    return min(json_array, key=metric_lambda)
-
 def find_all_metrics(json_array: List[Dict], metric_lambda: Callable[[Dict], float]) -> List[float]:
     '''Returns a list of metric values from a list of JSON objects.'''
     return [metric_lambda(obj) for obj in json_array]
@@ -170,16 +111,6 @@ def get_new_json(json_path):
 
         new_json.append(data_for_json)
     return new_json
-
-    # scrape the DSC metric from that file
-    with open(val_baseline_path, 'r') as file:
-        lines = file.readlines()
-        for line in lines:
-            if 'Average DSC metric' in line:
-                baseline_dsc_metric = float(line.split(': ')[1])
-            if 'Average NSD metric' in line:
-                baseline_nsd_metric = float(line.split(': ')[1])
-    return baseline_dsc_metric, baseline_nsd_metric
 
 def extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_data_path):
     new_json = get_new_json(json_path)
