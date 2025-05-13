@@ -7,6 +7,11 @@ class MedSAMSegmentationPrompts(TaskPrompts):
     """Task prompts for cell segmentation analysis."""
 
     dataset_info = """
+        ```markdown
+
+        This is large-scale medical image segmentation dataset covering the 
+        dermoscopy/xray modality. The images have dimensions (H, W, C) = (height, width, channel).
+        ```
     """
     
     pipeline_metrics_info = """
