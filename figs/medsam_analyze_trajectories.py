@@ -128,56 +128,6 @@ def dump_functions_to_txt(json_array: List[Dict], metric_lambda: Callable[[Dict]
             file.write(obj['preprocessing_function'])
             file.write('\n')
 
-def plot_combined_fig(fig_output_path, new_json, baseline_dsc_metric, baseline_nsd_metric):
-    dsc_metric_lambda = lambda x: x['dsc_metric']
-    nsd_metric_lambda = lambda x: x['nsd_metric']
-    combined_metric_lambda = lambda x: x['dsc_metric'] + x['nsd_metric']
-    
-    """ Plot combined DSC, NSD, and Combined metrics in a single figure """
-    metrics_dsc = find_all_metrics(new_json, dsc_metric_lambda)
-    metrics_nsd = find_all_metrics(new_json, nsd_metric_lambda)
-    metrics_combined = find_all_metrics(new_json, combined_metric_lambda)
-
-    rolling_highest_dsc = find_rolling_highest(new_json, dsc_metric_lambda)
-    rolling_highest_nsd = find_rolling_highest(new_json, nsd_metric_lambda)
-    rolling_highest_combined = find_rolling_highest(new_json, combined_metric_lambda)
-
-    plt.figure(figsize=(15, 5))
-
-    # Plot DSC
-    plt.subplot(1, 3, 1)
-    plt.plot(metrics_dsc, marker='o', linestyle='-', color='b', label='Eval DSC')
-    plt.plot(rolling_highest_dsc, marker='x', linestyle='--', color='r', label=f'Rolling highest DSC: {max(rolling_highest_dsc)}')
-    plt.axhline(baseline_dsc_metric, color='g', linestyle='--', label=f'Baseline DSC: {baseline_dsc_metric}')
-    plt.xlabel('Iteration')
-    plt.ylabel('DSC Metric')
-    plt.title('DSC Metrics')
-    plt.legend()
-
-    # Plot NSD
-    plt.subplot(1, 3, 2)
-    plt.plot(metrics_nsd, marker='o', linestyle='-', color='b', label='Eval NSD')
-    plt.plot(rolling_highest_nsd, marker='x', linestyle='--', color='r', label=f'Rolling highest NSD: {max(rolling_highest_nsd)}')
-    plt.axhline(baseline_nsd_metric, color='g', linestyle='--', label=f'Baseline NSD: {baseline_nsd_metric}')
-    plt.xlabel('Iteration')
-    plt.ylabel('NSD Metric')
-    plt.title('NSD Metrics')
-    plt.legend()
-
-    # Plot Combined
-    plt.subplot(1, 3, 3)
-    plt.plot(metrics_combined, marker='o', linestyle='-', color='b', label='Eval Combined')
-    plt.plot(rolling_highest_combined, marker='x', linestyle='--', color='r', label=f'Rolling highest Combined: {max(rolling_highest_combined)}')
-    plt.axhline(baseline_dsc_metric + baseline_nsd_metric, color='g', linestyle='--', label=f'Baseline Combined: {baseline_dsc_metric + baseline_nsd_metric}')
-    plt.xlabel('Iteration')
-    plt.ylabel('Combined Metric')
-    plt.title('Combined Metrics')
-    plt.legend()
-
-    plt.tight_layout()
-    plt.savefig(fig_output_path)
-    plt.close()
-
 def get_new_json(json_path):
     with open(json_path, 'r') as file:
         json_array = json.load(file)
@@ -318,7 +268,7 @@ def plot_scatterplot(output_json_path, baseline_val, baseline_test, scatter_outp
 
     # Save the figure
     plt.savefig(scatter_output_path)
-    print(f"Plot saved to {scatter_output_path}")
+    print(f"Saved scatterplot to {scatter_output_path}")
 
 def plot_aggregated(json_saved_directories, baselines, k, scatter_output_path):
     """
@@ -370,9 +320,9 @@ def plot_aggregated(json_saved_directories, baselines, k, scatter_output_path):
 
     # Save the figure
     plt.savefig(scatter_output_path)
-    print(f"Plot saved to {scatter_output_path}")
+    print(f"Saved aggregated scatterplot to {scatter_output_path}")
 
-def plot_bar(json_path, baseline_val, baseline_test, bar_output_path):
+def plot_bar_graph(json_path, baseline_val, baseline_test, bar_output_path):
     plt.figure()
     with open(json_path, 'r') as f:
         functions = json.load(f)
@@ -382,71 +332,78 @@ def plot_bar(json_path, baseline_val, baseline_test, bar_output_path):
     
     plt.ylabel('DSC + NSD')
     plt.legend(loc='lower right')
-    print(f"Saved to {bar_output_path}")
     plt.savefig(bar_output_path)
+    print(f"Saved bar graph to {bar_output_path}")
 
-def main(modality, outer_folder_name, k, start_idx, end_idx):  
-    outer_folder_path = f'/home/sstiles/sci-agent/output/{outer_folder_name}/medSAM_segmentation/'
-    nontrivial_subfolders = os.listdir(outer_folder_path)[start_idx:end_idx]
-    print(f"Looping through timestamp folders: {nontrivial_subfolders}")
-    baselines = []
-    for timestamp_folder in nontrivial_subfolders:
-        test_data_path = f"/home/sstiles/sci-agent/scratch/resized_{modality}_test_filenames_25.pkl"
-        val_baseline_dsc, val_baseline_nsd, val_baseline_sum = get_baseline(f"/home/sstiles/sci-agent/scratch/baseline_{modality}_val_filenames_25.txt")
-        _, _, test_baseline_sum = get_baseline(f"/home/sstiles/sci-agent/scratch/baseline_{modality}_test_filenames_25.txt")
-        baselines.append((val_baseline_sum, test_baseline_sum))
+def plot_line_graph(output_path, new_json, combined_metric):
+    """ Plot Combined Metric in a single figure """
+    combined_metric_lambda = lambda x: x['dsc_metric'] + x['nsd_metric']
+    metrics_combined = find_all_metrics(new_json, combined_metric_lambda)
+    rolling_highest_combined = find_rolling_highest(new_json, combined_metric_lambda)
 
-        plot_bar(f'/home/sstiles/sci-agent/exp_output/{outer_folder_name}/{k}/{timestamp_folder}/output.json', val_baseline_sum, test_baseline_sum, f'/home/sstiles/sci-agent/exp_output/{outer_folder_name}/{k}/{timestamp_folder}/bar_plot.png')
+    plt.figure(figsize=(10, 5))
 
-        # input_json_path = f'/home/sstiles/sci-agent/output/{outer_folder_name}/medSAM_segmentation/{timestamp_folder}/preprocessing_func_bank.json'
-        
-        # output_json_path = f'/home/sstiles/sci-agent/exp_output/{outer_folder_name}/{k}/{timestamp_folder}/output.json'
-        # if not os.path.exists(os.path.dirname(output_json_path)):
-        #     os.makedirs(os.path.dirname(output_json_path))
-        # figure_path = f'/home/sstiles/sci-agent/exp_output/{outer_folder_name}/{k}/{timestamp_folder}/combined_metrics.png'
-        # if not os.path.exists(os.path.dirname(figure_path)):
-        #     os.makedirs(os.path.dirname(figure_path))
-        # scatter_output_path = f'/home/sstiles/sci-agent/exp_output/{outer_folder_name}/{k}/{timestamp_folder}/scatter_plot.png'
-        # if not os.path.exists(os.path.dirname(scatter_output_path)):
-        #     os.makedirs(os.path.dirname(scatter_output_path))
+    # Plot Combined Metric
+    plt.plot(metrics_combined, marker='o', linestyle='-', color='b', label='Eval Combined')
+    plt.plot(rolling_highest_combined, marker='x', linestyle='--', color='r', label=f'Rolling highest Combined: {max(rolling_highest_combined)}')
+    plt.axhline(combined_metric, color='g', linestyle='--', label=f'Baseline Combined: {combined_metric}')
+    plt.xlabel('Iteration')
+    plt.ylabel('Combined Metric')
+    plt.title('Combined Metrics')
+    plt.legend()
 
-        # plot_combined_fig(figure_path, get_new_json(input_json_path), val_baseline_dsc, val_baseline_nsd)
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+    print(f"Saved line graph to {output_path}")
 
-        # segmenter = MedSAMTool(gpu_id=4, checkpoint_path="/home/sstiles/sci-agent/data/medsam_vit_b.pth")
-        # results = extract_top_k_preprocessing_functions_to_json(k, input_json_path, segmenter, test_data_path)
-        # print(results)
+def main(json_path, k, modality):    # json_path = f'/home/sstiles/sci-agent/output/{outer_folder_name}/medSAM_segmentation/{timestamp_folder}/preprocessing_func_bank.json'
+    # output paths
+    timestamp = os.path.basename(os.path.dirname(json_path))
+    output_dir = os.path.abspath(os.path.join(os.path.dirname(json_path), f'../{timestamp}'))
+    top_k_json_output_path = os.path.abspath(os.path.join(output_dir, f'../../{timestamp}_top_k_output.json'))
+    top_1_json_output_path = os.path.abspath(os.path.join(output_dir, f'../../{timestamp}_top_1_output.json'))
+    bar_output_path = os.path.abspath(os.path.join(output_dir, f'../../{timestamp}_bar_plot.png'))
+    line_graph_output_path = os.path.abspath(os.path.join(output_dir, f'../../{timestamp}_line_graph.png'))
+    scatter_output_path = os.path.abspath(os.path.join(output_dir, f'../../{timestamp}_scatter_plot.png'))
 
-        # # Ensure the directory exists and has write permissions
-        # os.makedirs(os.path.dirname(output_json_path), exist_ok=True)
-        # with open(output_json_path, 'w') as f:
-        #     json.dump(results, f, indent=4)
-        # plot_scatterplot(output_json_path, val_baseline_sum, test_baseline_sum, scatter_output_path)
+    test_data_path = f"/home/sstiles/sci-agent/data/resized_{modality}_test.pkl"
+    baseline_json = f"/home/sstiles/sci-agent/scratch/{modality}_baseline.json"
 
-    # json_saved_directories = []
-    # for timestamp_folder in nontrivial_subfolders:
-    #     json_saved_directories.append(f'/home/sstiles/sci-agent/exp_output/{outer_folder_name}/{k}/{timestamp_folder}/output.json')
-    # plot_aggregated(json_saved_directories, baselines, k, f'/home/sstiles/sci-agent/exp_output/{outer_folder_name}_{k}_aggregated_plot.png')
+    with open(baseline_json, 'r') as f:
+        json_array = json.load(f)
+        val_baseline = json_array['expert_baseline_val_avg_metric']
+        test_baseline = json_array['expert_baseline_test_avg_metric']
+        print("val_baseline", val_baseline)
+        print("test_baseline", test_baseline)
 
-# Removed the erroneous call to main() without arguments
+    segmenter = MedSAMTool(gpu_id=4, checkpoint_path="/home/sstiles/sci-agent/data/medsam_vit_b.pth")
+
+    print("Extracting top k functions...")
+    results_k = extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_data_path)
+    with open(top_k_json_output_path, 'w') as f:
+        json.dump(results_k, f, indent=4)
+    
+    print("Extracting top 1 function...")
+    results_1 = extract_top_k_preprocessing_functions_to_json(1, json_path, segmenter, test_data_path)
+    with open(top_1_json_output_path, 'w') as f:
+        json.dump(results_1, f, indent=4)
+
+    plot_line_graph(line_graph_output_path, get_new_json(json_path), val_baseline)
+    plot_scatterplot(top_k_json_output_path, val_baseline, test_baseline, scatter_output_path)
+    plot_bar_graph(top_1_json_output_path, val_baseline, test_baseline, bar_output_path)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Analyze agent search trajectory for MedSAM.')
-    parser.add_argument('--modality', type=str, default='xray', help='Modality to analyze (e.g., dermoscopy, histology).')
-    parser.add_argument('--outer_folder_name', type=str, default='2_trial_16_exps', help='Outer folder name for the experiment.')
-    parser.add_argument('--k', type=int, required=True, help='Top K preprocessing functions to run the test set on.')
-    parser.add_argument('--start_idx', type=int, default=0, help='Start index for subfolder iteration.')
-    parser.add_argument('--end_idx', type=int, default=8, help='End index for subfolder iteration.')
+    parser = argparse.ArgumentParser(description='Generate plots to analyze trajectory of MedSAM rollout.')
+    parser.add_argument('--json_path', type=str, required=True, help='Preprocessing func bank path.')
+    parser.add_argument('--k', type=int, default=2, help='Number of top functions to extract.')
+    parser.add_argument('--modality', type=str, default='dermoscopy', help='Modality to use (e.g., dermoscopy, xray).')
 
     args = parser.parse_args()
-    modality = args.modality
-    outer_folder_name = args.outer_folder_name
+    json_path = args.json_path
     k = args.k
-    start_idx = args.start_idx
-    end_idx = args.end_idx
-
-    print(f"Running with the following parameters: {modality}, {outer_folder_name}, {k}, {start_idx}, {end_idx}")
-    main(modality, outer_folder_name, k, start_idx, end_idx)
+    modality = args.modality
+    main(json_path, k, modality)
 
 # example usage:
-# python medsam_analyze_trajectories.py --modality xray --outer_folder_name 2_trial_16_exps --k 1 --start_idx 0 --end_idx 8
-# python medsam_analyze_trajectories.py --modality xray --outer_folder_name 2_trial_16_exps --k 3 --start_idx 0 --end_idx 8
+# python medsam_analyze_trajectories.py --json_path /home/sstiles/sci-agent/output/trial_8_optimized/medSAM_segmentation/20250512-091352/preprocessing_func_bank.json
