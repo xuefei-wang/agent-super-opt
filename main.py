@@ -591,7 +591,7 @@ def main(args: argparse.Namespace):
         os.system(f"python figs/cellpose_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id} --dataset_size {args.dataset_size} --batch_size {args.batch_size}")
     elif args.experiment_name == "medSAM_segmentation":
         modality = "dermoscopy" if args.dataset.startswith("dermoscopy") else "xray"
-        os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --modality {modality}")
+        os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --modality {modality} --gpu_id {args.gpu_id}")
     elif args.experiment_name == "spot_detection":
         os.system(f"python figs/spot_detection_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset}")
         pass
