@@ -1376,3 +1376,4 @@ Evaluating predictions...
 =======================
 Average DSC metric: 0.539532
 Average NSD metric: 0.225843
+Sum: 0.765375
