@@ -89,7 +89,7 @@ def convert_string_to_function(func_str, func_name):
 
     
 
-def main(json_path: str, data_path: str, output_dir: str):
+def main(json_path: str, data_path: str, output_dir: str, k):
     # Let's save these results into a new subfolder of output_dir
     output_dir = os.path.join(output_dir, 'analysis_results')
     os.makedirs(output_dir, exist_ok=True)
@@ -97,15 +97,13 @@ def main(json_path: str, data_path: str, output_dir: str):
     with open(json_path, 'r') as file:
         json_array = json.load(file)
         
-        
     # --- Initialize spot detector tool ---
     deepcell_spot_detector = DeepcellSpotsDetector()
     spots_data = np.load(f"{data_path}", allow_pickle=True)
 
     # --- Prepare ImageData ---
     batch_size = spots_data['X'].shape[0]
-    images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])    
-
+    images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
     pred = deepcell_spot_detector.predict(images)
 
     metrics_val = deepcell_spot_detector.evaluate(pred, spots_data['y'])
@@ -193,14 +191,91 @@ def main(json_path: str, data_path: str, output_dir: str):
     plt.legend(loc='lower right')
     plt.savefig(os.path.join(output_dir, 'test_set_metrics.png'))
 
+
+    # Save the best preprocessing function to a text file
+    best_preprocessing_function_str = highest_metric_obj['preprocessing_function']
+    best_preprocessing_function = convert_string_to_function(best_preprocessing_function_str, 'preprocess_images')
+
+    # Print a dump of the function to a text file
+    with open(os.path.join(output_dir, 'best_preprocessing_function.txt'), 'w') as file:
+        file.write(highest_metric_obj['preprocessing_function'])
+        
+    # Save the baseline metrics to a text file
+    expert_baseline_performances = {
+        "expert_baseline_val_f1": metrics_val['f1_score'],
+        "expert_baseline_test_f1": metrics_test_baseline['f1_score']
+    }
+    with open(os.path.join(output_dir, 'expert_baseline_performances.json'), 'w') as file:
+        json.dump(expert_baseline_performances, file, indent=4)
+    print(f"Saved expert baseline performances to {os.path.join(output_dir, 'expert_baseline_performances.json')}")
+
+    ## Evaluate TOP K
+
+    def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k: int) -> List[Dict]:
+        '''Returns object containing the top k highest metric values from a list of JSON objects.'''
+        return sorted(json_array, key=metric_lambda, reverse=True)[:k]
+    
+    top_k_functions = find_top_k(json_array, metric_lambda, k)
+
+    # Now let's evaluate the top k functions on the test set
+    top_k_functions_results_val = []
+    top_k_functions_results_test = []
+    top_k_functions_str = []
+
+    for function_item in top_k_functions:
+        current_function_str = function_item['preprocessing_function']
+        current_metrics_val_float = function_item['f1_score']
+
+        if current_function_str == best_preprocessing_function_str: # Compare strings to avoid issues with function object comparison
+            current_metrics_test_dict = metrics_test_our_function # Use already computed result for the best function
+            function_str_to_save = current_function_str
+        else:
+            cur_preprocessing_fn_obj = convert_string_to_function(current_function_str, 'preprocess_images')
+            
+            # Ensure fresh ImageData object for each preprocessing
+            batch_size = spots_data['X'].shape[0]
+            images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
+
+            cur_preprocessed_images_test = cur_preprocessing_fn_obj(images)
+            # Evaluate with non_privileged_segmenter, same as the best agent function
+            pred_indiv_test = deepcell_spot_detector.predict(cur_preprocessed_images_test)
+            current_metrics_test_dict = deepcell_spot_detector.evaluate(pred_indiv_test, spots_data['y'])
+            function_str_to_save = current_function_str
+        
+        top_k_functions_results_test.append(current_metrics_test_dict)
+        top_k_functions_results_val.append(current_metrics_val_float)
+        top_k_functions_str.append(function_str_to_save)
+
+    print(f"Evaluated top {k} functions on test set.")
+
+    # Save the results into a new file (json)
+    top_k_functions_results_output = []
+    for i in range(len(top_k_functions)):
+        rank = i + 1
+        preprocessing_function_string = top_k_functions_str[i]
+        test_metrics_dict = top_k_functions_results_test[i]
+        val_metric_float = top_k_functions_results_val[i]
+
+        top_k_functions_results_output.append({
+            "rank": rank,
+            "preprocessing_function": preprocessing_function_string,
+            "average_f1_test": test_metrics_dict['f1_score'],
+            "average_f1_val": val_metric_float
+        })
+    
+    with open(os.path.join(output_dir, 'top_k_functions_results.json'), 'w') as file:
+        json.dump(top_k_functions_results_output, file, indent=4)
+    print(f"Saved top-k function results to {os.path.join(output_dir, 'top_k_functions_results.json')}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
     parser.add_argument('--json_path', type=str, required=True, help='Path to the JSON file containing the function bank.')
     parser.add_argument('--data_path', type=str, required=True, help='Path to the data directory.')
+    parser.add_argument('--k', type=int, required=False, default=10, help='Number of top performing functions to evaluate on the test set.')
     args = parser.parse_args()
     
     output_dir = os.path.dirname(args.json_path)
     json_path = args.json_path
     data_path = args.data_path
-    main(json_path, data_path, output_dir)
-    
+    main(json_path, data_path, output_dir, args.k)
