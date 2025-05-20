@@ -146,13 +146,13 @@ try:
     logger.info("Initializing CellposeTool...")
     segmenter = CellposeTool(model_name="cyto3", device=gpu_id)
     logger.info(f"Loading data from {data_path}...")
-    raw_images, gt_masks = segmenter.loadCombinedDataset(data_path, dataset_size)
+    raw_images, gt_masks, image_sources = segmenter.loadCombinedDataset(data_path, dataset_size)
     logger.info(f"Data loaded: {len(raw_images)} images.")
     logger.info(f"[Single Image] Loading single image as a tester...")
 
     # --- Prepare ImageData ---
-    images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
-    single_image_data = ImageData(raw=raw_images[:2], batch_size=1, masks=gt_masks[:2])
+    images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=image_sources)
+    single_image_data = ImageData(raw=raw_images[:2], batch_size=2, masks=gt_masks[:2], image_ids=image_sources[:2])
 
 
     for i, preprocess_images in enumerate(k_preprocess_images_fns_single_img):
@@ -181,7 +181,8 @@ try:
     for i, pred in enumerate(k_predictions_single_img):
         logger.info(f"[Single Image] Calculating metrics for prediction {i + 1}...")
         metrics_start_time = time.time()
-        k_overall_metrics_single_img.append(segmenter.evaluate(pred, single_image_data.masks))
+        cur_single_image_data = ImageData(raw=raw_images[:2], batch_size=2, masks=gt_masks[:2], image_ids=image_sources[:2], predicted_masks=pred)
+        k_overall_metrics_single_img.append(segmenter.evaluateDisaggregated(cur_single_image_data))
         k_metrics_times_single_img.append(time.time() - metrics_start_time)
         logger.info(f"[Single Image] Metrics calculation finished in {k_metrics_times_single_img[i]:.2f} seconds.")
 
@@ -217,7 +218,8 @@ try:
     for i, pred in enumerate(k_predictions):
         logger.info(f"Calculating metrics for prediction {i + 1}...")
         metrics_start_time = time.time()
-        k_overall_metrics.append(segmenter.evaluate(pred, gt_masks))
+        new_images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=image_sources, masks=gt_masks, predicted_masks=pred)
+        k_overall_metrics.append(segmenter.evaluateDisaggregated(new_images))
         k_metrics_times.append(time.time() - metrics_start_time)
         logger.info(f"Metrics calculation finished in {k_metrics_times[i]:.2f} seconds.")
 
@@ -227,7 +229,11 @@ try:
         k_overall_metrics = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics]
     
     # --- Log Metrics ---
-    logger.info("All overall metrics: %s", json.dumps(k_overall_metrics if k_overall_metrics else 'N/A', indent=2))
+    if k_overall_metrics:
+        avg_precision_values = [metric.get('average_precision', 'N/A') for metric in k_overall_metrics]
+        logger.info("All overall metrics: average_precision: %s", avg_precision_values)
+    else:
+        logger.info("All overall metrics: average_precision: []")
 
     # --- CHANGE: Save Results ONLY on SUCCESS (End of Try Block) ---
     # Check if metrics were actually calculated (not empty)
