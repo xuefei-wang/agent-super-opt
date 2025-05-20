@@ -7,5 +7,5 @@ PyWavelets
 numpy
 zarr
 torch
-ag2[openai]
+ag2[openai,together]
 optuna
