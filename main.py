@@ -343,6 +343,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "n_worst": n_worst,
          "n_last": n_last,
          "sample_k": args.k,
+         "sample_k_word": args.k_word,
          "advantage_enabled": args.enable_advantage,
          "llm_model": llm_model,
          "warm_start": args.warm_start,
