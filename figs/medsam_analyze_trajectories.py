@@ -289,7 +289,6 @@ def plot_line_graph(output_path, new_json, combined_metric):
     print(f"\nSaved line graph to {output_path}")
 
 def main(json_path, k, modality, gpu_id):
-    # output paths
     timestamp_path = os.path.dirname(json_path)
     analysis_results_path = os.path.join(timestamp_path, 'analysis_results')
     os.makedirs(analysis_results_path, exist_ok=True)
@@ -299,7 +298,7 @@ def main(json_path, k, modality, gpu_id):
     line_graph_output_path = os.path.join(analysis_results_path, 'line_graph.png')
     scatter_output_path = os.path.join(analysis_results_path, 'scatter_plot.png')
 
-    test_data_path = os.path.join(_PROJECT_ROOT, f"medsam_data/resized_{modality}_test.pkl")
+    test_data_path = os.path.join(_PROJECT_ROOT, f"data/resized_{modality}_test.pkl")
     baseline_json = os.path.join(_PROJECT_ROOT, f"scratch/{modality}_baseline.json")
 
     with open(baseline_json, 'r') as f:
