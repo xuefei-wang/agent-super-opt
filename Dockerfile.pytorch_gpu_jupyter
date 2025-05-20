@@ -11,15 +11,6 @@
 #   -v /path/to/your/data:/workspace/data:ro \
 #   sciseek-gpu
 
-# Example command to run the container:
-# docker run -d --name sciseek-container-jupyter --gpus all \
-#   -p 8888:8888 \
-#   -e AUTOGEN_CACHE_DIR=/workspace/output/cache \
-#   -e PYTHONPATH=/workspace/repo \
-#   -v /home/alexfarhang/git/alex_fork/sci-agent:/workspace/repo:ro \
-#   -v /home/alexfarhang/git/alex_fork/output:/workspace/output:rw \
-#   -v /home/alexfarhang/data/cellpose/train:/workspace/data:ro \
-#   sciseek-gpu-jupyter
 
 # Use Jupyter's scipy notebook as base
 FROM quay.io/jupyter/scipy-notebook

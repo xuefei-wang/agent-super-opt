@@ -149,8 +149,9 @@ if __name__ == "__main__":
     # set_gpu_device(device)
     cellpose_tool = CellposeTool(model_name="cyto3", device=device)
     num_files = 100
-    # files = [f'/home/alexfarhang/data/cellpose/train/{num:03d}_img.png' for num in range(num_files)]
-    files = sorted(glob.glob('/home/alexfarhang/data/cellpose/train/*_img.png'))[:num_files]
+    base_dir = ''
+    directory = os.path.join(base_dir, 'cellpose/train')
+    files = sorted(glob.glob(os.path.join(directory, '*_img.png')))[:num_files]
     # raw_images = np.array([imread(f) for f in files], dtype=object)
     # raw_images = np.array([imread(f) for f in files])
     raw_images = [imread(f) for f in files]

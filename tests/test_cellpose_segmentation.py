@@ -47,7 +47,7 @@ class TestCellposeSegmentation(unittest.TestCase):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run Cellpose segmentation tests with custom parameters')
-    parser.add_argument('--data_path', type=str, default='/home/alex/data/cellpose/my_split/val_set/',
+    parser.add_argument('--data_path', type=str, required=True,
                       help='Path to the dataset directory')
     parser.add_argument('--device', type=int, default=1,
                       help='GPU ID to use.')
