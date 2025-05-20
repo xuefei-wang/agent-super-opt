@@ -42,6 +42,11 @@ class CellposeTool(BaseSegmenter):
         # R: cytoplasm, G: nucleus
         self.channels = channels = [2,1]
 
+        if self.model_name == "cyto3":
+            self.segmenter = models.Cellpose(model_type='cyto3',device=self.device, gpu=True)
+        elif self.model_name == "denoise_cyto3":
+            self.segmenter = denoise.CellposeDenoiseModel(model_type='cyto3', restore_type='denoise_cyto3', device=self.device, gpu=True)        
+
         assert self.model_name in ["cyto3", "denoise_cyto3"], f"Model name {self.model_name} not recognized"
 
     def predict(self, images: ImageData, batch_size: int = 8) -> Tuple[List[np.ndarray], List[List[np.ndarray]], List[np.ndarray], Any]:
@@ -66,10 +71,8 @@ class CellposeTool(BaseSegmenter):
         to_normalize = False
         raw_list=images.raw
         if self.model_name == "cyto3":
-            self.segmenter = models.Cellpose(model_type='cyto3',device=self.device, gpu=True)
             masks, flows, styles, extra = self.segmenter.eval(raw_list, diameter=None, channels=self.channels, normalize=to_normalize, batch_size=batch_size)
         elif self.model_name == "denoise_cyto3":
-            self.segmenter = denoise.CellposeDenoiseModel(model_type='cyto3', restore_type='denoise_cyto3', device=self.device, gpu=True)
             masks, flows, styles, extra = self.segmenter.eval(raw_list, diameter=None, channels=self.channels, normalize=to_normalize, batch_size=batch_size)
               
         return masks#, flows, styles, extra
@@ -133,7 +136,7 @@ class CellposeTool(BaseSegmenter):
         gt_masks = [np.expand_dims(mask, axis=2) for mask in gt_masks]
         return raw_images, gt_masks
     
-    def loadCombinedDataset(self, data_path: str, dataset_size: int = 256) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def loadCombinedDataset(self, data_path: str, dataset_size: int = 256) -> Tuple[List[np.ndarray], List[np.ndarray], List[str]]:
         """Used with combined datasets."""
         # Load all images and masks
         file = glob.glob(os.path.join(data_path, '*'))
@@ -141,9 +144,48 @@ class CellposeTool(BaseSegmenter):
             data = pickle.load(f)
         images = data['images'][:dataset_size]
         masks = data['masks'][:dataset_size]
-        return images, masks   
-    
+        image_ids = data['image_ids'][:dataset_size]
+        return images, masks, image_ids       
 
+    def evaluateDisaggregated(self, imageData_obj: ImageData, avg_precision_idx: int = 0) -> Tuple[Dict[str, float], Dict[str, float]]:
+        """Evaluate the performance of the model on a disaggregated dataset"""
+        metrics = {}
+        losses = {}
+        pred_masks = imageData_obj.predicted_masks
+        gt_masks = imageData_obj.masks
+        ap, tp, fp, fn  = average_precision(pred_masks, gt_masks)
+
+        img_source_ids = np.array(imageData_obj.image_ids) 
+        metrics = {'average_precision': np.nanmean(ap, axis=0)[0].item()}
+
+        bool_mask = img_source_ids == 'cellpose'
+        cp_only_ap = ap[bool_mask]  
+
+        bool_mask = img_source_ids == 'bact_phase'
+        bp_only_ap = ap[bool_mask]  
+
+        bool_mask = img_source_ids == 'bact_fluor'
+        bf_only_ap = ap[bool_mask]  
+
+        bool_mask = img_source_ids == 'tissuenet'
+        tn_only_ap = ap[bool_mask]  
+
+
+        per_dataset = {
+            'cellpose': np.nanmean(cp_only_ap, axis=0)[avg_precision_idx].item(),
+            'bact_phase': np.nanmean(bp_only_ap, axis=0)[avg_precision_idx].item(),
+            'bact_fluor': np.nanmean(bf_only_ap, axis=0)[avg_precision_idx].item(),
+            'tissuenet': np.nanmean(tn_only_ap, axis=0)[avg_precision_idx].item()
+        }
+
+        metrics['disaggregated_average_precision'] = {}
+        for name, data in per_dataset.items():
+            mean_result = np.nanmean(data, axis=0)
+            value = mean_result 
+            metrics['disaggregated_average_precision'][name] = None if np.isnan(value) else float(value)
+
+        return metrics
+    
 if __name__ == "__main__":
     device = 1  
     # set_gpu_device(device)
