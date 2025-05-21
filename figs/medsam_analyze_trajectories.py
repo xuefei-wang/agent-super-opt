@@ -291,7 +291,6 @@ def plot_line_graph(output_path, new_json, combined_metric):
     print(f"\nSaved line graph to {output_path}")
 
 def main(json_path, k, modality, gpu_id):
-    # output paths
     timestamp_path = os.path.dirname(json_path)
     analysis_results_path = os.path.join(timestamp_path, 'analysis_results')
     os.makedirs(analysis_results_path, exist_ok=True)
@@ -300,7 +299,6 @@ def main(json_path, k, modality, gpu_id):
     bar_output_path = os.path.join(analysis_results_path, 'bar_plot.png')
     line_graph_output_path = os.path.join(analysis_results_path, 'line_graph.png')
     scatter_output_path = os.path.join(analysis_results_path, 'scatter_plot.png')
-
     test_data_path = os.path.join(_PROJECT_ROOT, f"medsam_data/resized_{modality}_test.pkl")
     baseline_json = os.path.join(_PROJECT_ROOT, f"scratch/{modality}_baseline.json")
 
@@ -336,11 +334,6 @@ if __name__ == "__main__":
         main(json_bank_path, k=10, modality="dermoscopy", gpu_id=0)
 
     # ======= get aggregate k functions JSON ======
-    import os
-    import json
-    from typing import List, Dict, Callable
-    import matplotlib.pyplot as plt
-
     base_dir = "../output/no-task-prompt-details/medSAM_segmentation"
     timestamps = sorted(os.listdir(base_dir))[:-1]  # exclude the last item which is the `latest` symlink
     list_of_directories = [os.path.join(base_dir, ts) for ts in timestamps]
@@ -350,7 +343,6 @@ if __name__ == "__main__":
 
     # Read all json files in the directories
     # Let's store them flat, so we have a list of dicts instead of a list of lists
-
     def aggregate_top_k_functions(list_of_directories: List[str], metric_lambda: Callable[[Dict], float], k: int = 10) -> List[Dict]:
         all_results = []
         for directory in list_of_directories:
@@ -397,7 +389,6 @@ if __name__ == "__main__":
             with open(os.path.join(file_path, 'preprocessing_func_bank.json'), 'r') as f:
                 curr_iter_list = json.load(f)
             
-            
             # Per rollout
             rolling_max = []
             current_max = float('-inf')
@@ -421,13 +412,10 @@ if __name__ == "__main__":
         return mean_rolling_max, std_rolling_max
 
     mean, std = analyze_json_files(list_of_directories)
-    # Plot mean and std deviation range over each iteration
-    
-    # Load baseline from the first directory
+
     with open('../data/dermoscopy_baseline_expert.json', 'r') as f:
         reference_expert_baseline_performances = json.load(f)
-    
-    
+
     baseline_val = reference_expert_baseline_performances['expert_baseline_val_avg_metric']
     baseline_test = reference_expert_baseline_performances['expert_baseline_test_avg_metric']
 
