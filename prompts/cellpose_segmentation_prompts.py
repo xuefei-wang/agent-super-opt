@@ -199,6 +199,20 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
     8. Do not write any code outside of the preprocessing functions.
     9. Do not modify the masks under any circumstances.  
     10. The preprocessing functions written must return an ImageData object with each image in the batch having the same image resolution (H,W) as the original image.
+    """ if self.k > 1 else """
+    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions (APIs provided).
+    It might make sense to start the process with small preprocessing functions, and then build up to more complex functions depending on the performance of the previous functions.
+
+    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below). Successful strategies can include improving upon high performing functions (including tuning the parameters of the function), or exploring the image processing space for novel or different image processing approaches. You can feel free to combine OpenCV functions or suggest novel combinations that can lead to improvements, or modify the parameters of the existing extremely successful functions.
+    2. Remember, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged.
+    3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing function.
+    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
+    5. Do not terminate the conversation until the new preprocessing function is evaluated and the numerical performance metrics are logged.
+    6. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND its results are written to the function bank.
+    7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
+    8. Do not write any code outside of the preprocessing function.
+    9. Do not modify the masks under any circumstances.  
+    10. The preprocessing function written must return an ImageData object with each image in the batch having the same image resolution (H,W) as the original image.
     """
 
     def get_pipeline_metrics_info(self):
