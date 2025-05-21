@@ -640,7 +640,8 @@ def main(args: argparse.Namespace):
             "--batch_size", str(args.batch_size)
         ], env=env)
     elif args.experiment_name == "medSAM_segmentation":
-        # os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset} --device {args.gpu_id}")
+        # modality = "dermoscopy" if args.dataset.startswith("dermoscopy") else "xray"
+        # os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --modality {modality} --gpu_id {args.gpu_id}")
         pass
     elif args.experiment_name == "spot_detection":
         os.system(f"python figs/spot_detection_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset}")
