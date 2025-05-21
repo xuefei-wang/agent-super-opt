@@ -1,69 +1,11 @@
-# Sci-agent
-Automate Scientific Data Analysis using LLM agents
+# Agentic Superoptimization of Scientific Analysis Workflows
 
-All code will be run inside a Docker container.  Mount paths to data, codebase, and output; gpus enabled.  Data and output directory should not be within the codebase folder.
+## Setup (For fully local execution)
 
-## Docker Setup: 
-### One time per image (```Dockerfile.pytorch_gpu_cmdline``` or ```Dockerfile.pytorch_gpu_jupyter```)
-```bash
-# Build the image
-docker build -f Dockerfile.pytorch_gpu_cmdline -t sciseek-gpu .
-# or
-docker build -f Dockerfile.pytorch_gpu_jupyter -t sciseek-gpu-jupyter .
-```
+We will use a virtual environment for this project. There are two requirements files - one shared and one task-dependent. 
+You should add your task packages in `requirements_specific_{task_name}.txt` to run the following commands to set up the environment.
 
-## Running Docker container
-```bash
-# Start the Docker container
-docker run -d --name sciseek-container-cmdline --gpus all \
-  -e AUTOGEN_CACHE_DIR=/workspace/output/cache \
-  -e PYTHONPATH=/workspace/repo \
-  -v /path/to/your/local/repo:/workspace/repo:ro \
-  -v /path/to/your/output_dir:/workspace/output:rw \
-  -v /path/to/your/data:/workspace/data:ro \
-  sciseek-gpu
-
-# Enter the container
-docker exec -it sciseek-container-cmdline /bin/bash
-
-# Run main.py
-cd /workspace/repo
-python main.py --dataset /workspace/data/ --output /workspace/output/ --experiment_name {experiment_name}
-
-# Exit the container 
-exit
-
-# Stop and remove container
-docker stop sciseek-container-cmdline
-docker rm sciseek-container-cmdline
-
-# Make output directory writeable by anyone 
-sudo chmod -R 777 /path/to/your/output_dir/
-```
-
-## Docker Setup (For ```Dockerfile```)
-```bash
-# Build image from Dockerfile. You only need to run this once. 
-docker build -t sciseek .
-
-# Start the Docker container. This will output the container ID.
-docker run -d -p 8888:8888 sciseek
-
-# Open an interactive terminal session inside your running Docker container.
-docker exec -it <container_id> /bin/bash
-
-# To run the Jupyter server, copy the link from the output into your web browser.
-# The link will look like this: http://127.0.0.1:8888/tree?token=<some_token>
-docker logs <container_id>
-
-# Stop the container
-docker stop <container_id>
-```
-
-## Setup (For fully local)
-
-We will use virtual environment for this project. There are two requirements files - one shared and one task-dependent. 
-You should add your task pacakges in the `requirements_specific.txt` to run the following commands to set up the environment.
+The AG2 Local Commandline Executor has been modified to support script template insertion, to help prevent the LLM from modifying the execution template.
 
 ```bash
 # Create virtual environment
@@ -74,7 +16,7 @@ source .venv/bin/activate
 
 # Merge two requirement files into one
 rm -f requirements.txt
-cat requirements_shared.txt requirements_specific.txt > requirements.txt
+cat requirements_shared.txt requirements_specific_{task_name}.txt > requirements.txt
 
 # Install packages
 pip install -r requirements.txt
@@ -101,29 +43,25 @@ You can find the attribute `dataset_path` under `TaskPrompts`.
     python -m tests.test_X
     ```
 
-2. Collect the docstrings
-   
-   The following commands will collect the doctrings from `src/` into a markdown file. (For this iteration, we are not using this, but will in the future.)
-    
-    ```bash
-    # Default, non-recursively
-    python collect_docstrings.py --input_path src --output_file artifacts/docs.md
+2. Create your task specific prompts class with skeletonization
 
-    # Alternative, recursively (collect docstrings from all subfolders)
-    python collect_docstrings.py --input_path src --output_file artifacts/docs.md --recursive
-    ```
+   Create a file under `prompts/` folder and wrap your task specific prompts following the pattern below, and provide comprehensive docstrings.
+   ```
+   TaskPrompts -> TaskPrompts -> YourSkeletonizedTaskPrompts
+   ``` 
+   You must also make a {task_name}_execution-template.py.txt file under `prompts/` folder. This file contains the execution template for your task, including data loading, model initialization, and evaluation.
 
-3. Intialize the function bank
-   
-   create an output folder and initialize an empty json file as the funtion bank:
+
+3. Run the agent with the standard pipeline
    
     ```bash
-    mkdir output
-    echo "[]" > output/preprocessing_func_bank.json
-    ```
-
-4. Run the agent
-   
-    ```bash
-    python main.py --dataset YOUR_DATA_PATH --output YOUR_OUTPUT_FOLDER
-    ```
+      python main.py \
+            --output $OUTPUT_DIR \
+            --dataset $DATASET_PATH \
+            --gpu_id $gpu_id \
+            --experiment_name $EXPERIMENT_NAME \ # For example, "cellpose_segmentation"
+            --random_seed $seed \
+            --history_threshold $HISTORY_THRESHOLD \ # 5
+            --k $K \ # 3
+            --k_word $K_WORD  # "three" 
+            ```
