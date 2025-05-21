@@ -1,3 +1,2 @@
-monai
-torchvision
-pandas
+deepcell
+deepcell-spots
