@@ -1,0 +1,7 @@
+cellpose[gui] # Cell segmentation
+tensorflow
+pandas
+matplotlib
+scipy
+python-dotenv
+jupyterlab
