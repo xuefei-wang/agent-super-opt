@@ -5,6 +5,7 @@ from typing import List, Dict, Callable
 import numpy as np
 import cv2 as cv
 import pandas as pd
+import argparse
 import sys
 
 _CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -16,6 +17,7 @@ from src.medsam_segmentation import MedSAMTool
 from src.data_io import ImageData
 import io
 import contextlib
+import csv
 import matplotlib.pyplot as plt
 
 def get_baseline(data_path):
@@ -297,8 +299,7 @@ def main(json_path, k, modality, gpu_id):
     bar_output_path = os.path.join(analysis_results_path, 'bar_plot.png')
     line_graph_output_path = os.path.join(analysis_results_path, 'line_graph.png')
     scatter_output_path = os.path.join(analysis_results_path, 'scatter_plot.png')
-
-    test_data_path = os.path.join(_PROJECT_ROOT, f"data/resized_{modality}_test.pkl")
+    test_data_path = os.path.join(_PROJECT_ROOT, f"medsam_data/resized_{modality}_test.pkl")
     baseline_json = os.path.join(_PROJECT_ROOT, f"scratch/{modality}_baseline.json")
 
     with open(baseline_json, 'r') as f:
@@ -411,10 +412,10 @@ if __name__ == "__main__":
         return mean_rolling_max, std_rolling_max
 
     mean, std = analyze_json_files(list_of_directories)
-    
+
     with open('../data/dermoscopy_baseline_expert.json', 'r') as f:
         reference_expert_baseline_performances = json.load(f)
-    
+
     baseline_val = reference_expert_baseline_performances['expert_baseline_val_avg_metric']
     baseline_test = reference_expert_baseline_performances['expert_baseline_test_avg_metric']
 

@@ -10,7 +10,7 @@ class MedSAMSegmentationPrompts(TaskPrompts):
         ```markdown
 
         This is large-scale medical image segmentation dataset covering the 
-        microscopy modality. The images have dimensions (H, W, C) = (height, width, channel).
+        dermoscopy/xray modality. The images have dimensions (H, W, C) = (height, width, channel).
         ```
     """
     
@@ -147,20 +147,19 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         ```markdown
 
         This is large-scale medical image segmentation dataset covering the 
-        microscopy modality. The images have dimensions (H, W, C) = (height, width, channel).
+        dermoscopy/xray modality. The images have dimensions (H, W, C) = (height, width, channel).
         ```
     """
 
-    def get_task_details(self):
-        return f"""
-    All of you should work together to write {self.k_word} preprocessing functions to {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance using OpenCV functions.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest {self.k_word} new unique preprocessing functions using OpenCV functions (APIs provided below){self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average")}.
-    2. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing functions.
-    3. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
-    4. For this task, if all {self.k_word} functions are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
-    5. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
-    6. Extremely important: Do not terminate the conversation until each of the {self.k_word} new preprocessing functions are evaluated AND their results are written to the function bank.
-    7. Recall, this is not a stateful kernel, so all functions, imports, etc. must be provided in the script to be executed.
+    task_details = """
+    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
+    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
+    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
+    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
+    6. Do not terminate the conversation until the new preprocessing function is evaluated.
+    7. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND it must be written to the function bank by calling the write_results function.
+    8. Recall, this is not a stateful kernel, so all functions, imports, etc. must be provided in the script to be executed.
     """
 
     def get_pipeline_metrics_info(self):

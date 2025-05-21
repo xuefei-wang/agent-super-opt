@@ -1,3 +1,2 @@
 deepcell
 deepcell-spots
-git+https://github.com/sstilz/MedSAM.git

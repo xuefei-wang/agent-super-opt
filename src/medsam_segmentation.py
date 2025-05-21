@@ -71,17 +71,30 @@ class MedSAMTool():
             
         self.kwargs = kwargs
     
-    def predict(self, images: ImageData, scaled_boxes, used_for_baseline) -> np.ndarray:
+    def predict(self, images: ImageData, scaled_boxes, used_for_baseline, is_rgb=True) -> np.ndarray:
         medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
         medsam_model.to(self.device)
         medsam_model.eval()
        
         resized_imgs = images.raw
-        if used_for_baseline:   # also run min-max normalization
-            for i, img_1024 in enumerate(resized_imgs):
-                resized_imgs[i] = (img_1024 - img_1024.min()) / np.clip(
-                    img_1024.max() - img_1024.min(), a_min=1e-8, a_max=None
-                )
+        if used_for_baseline and is_rgb:
+            print("Is RGB - normalizing but not clipping.")
+            # "if they were already within the expected intensity range of [0, 255], their intensities remained unchanged. However, if they fell outside this range, we utilized max-min normalization to rescale the intensity values to [0, 255]"
+            # based from: https://github.com/bowang-lab/MedSAM/blob/d71e8a1a99ad751840a22a7fa3ecfb4166fb1488/utils/pre_grey_rgb.py#L49
+            for i in range(len(resized_imgs)):
+                img_np = resized_imgs[i]
+                resized_imgs[i] = np.uint8((img_np - img_np.min()) / (np.max(img_np)-np.min(img_np)) * 255.0)
+        if used_for_baseline and not is_rgb:
+            print("Is not RGB - normalizing AND clipping.")
+            for i in range(len(resized_imgs)):
+                img_np = resized_imgs[i]
+                # "we clipped the intensity values to the range between the 0.5th and 99.5th percentiles before rescaling them to the range of [0, 255]"
+                # based from: https://github.com/bowang-lab/MedSAM/blob/d71e8a1a99ad751840a22a7fa3ecfb4166fb1488/utils/pre_grey_rgb.py#L59C9-L63C50
+                lower_bound, upper_bound = np.percentile(img_np[img_np > 0], 0.5), np.percentile(img_np[img_np > 0], 99.5)
+                img_np_pre = np.clip(img_np, lower_bound, upper_bound)
+                img_np_pre = (img_np_pre - np.min(img_np_pre)) / (np.max(img_np_pre) - np.min(img_np_pre)) * 255.0
+                img_np_pre[img_np == 0] = 0
+                resized_imgs[i] = np.uint8(img_np_pre)
 
         img_batch = torch.stack([
             torch.tensor(img).float().permute(2, 0, 1)  # (3, H, W)
