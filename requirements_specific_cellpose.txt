@@ -1,4 +1,4 @@
-cellpose[gui] # Cell segmentation
+cellpose[gui]==3.1.1.1  # Cell segmentation
 tensorflow
 pandas
 matplotlib
