@@ -65,3 +65,10 @@ You can find the attribute `dataset_path` under `TaskPrompts`.
             --k $K \ # 3
             --k_word $K_WORD  # "three" 
    ```
+
+
+## Data
+
+To reproduce the results, download the data using the scripts and instructions found in `utils/{task_name}_data.py`.
+
+
