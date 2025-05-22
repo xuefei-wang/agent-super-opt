@@ -8,7 +8,9 @@ from cellpose.io import imread
 from dotenv import load_dotenv
 import glob
 from numpy.testing import assert_array_equal
-### To run from project root directory: python -m tests.test_cellpose_segmentation
+''' 
+To run from project root directory: python -m tests.test_cellpose_segmentation
+'''
 
 class TestCellposeSegmentation(unittest.TestCase):
     # Class variables to store command line arguments

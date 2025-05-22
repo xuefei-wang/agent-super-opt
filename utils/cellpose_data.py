@@ -244,13 +244,12 @@ def main(data_dir: str, save_dir: str, to_save: bool):
             pickle.dump({'images': test_images, 'masks': test_masks, 'image_ids': test_image_source}, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == '__main__':
-
     # Download Data from:
     # Omnipose (bact_phase and bact_fluor): https://osf.io/xmury/
     # Cellpose : https://www.cellpose.org/
     # Tissuenet: : https://datasets.deepcell.org/data
     # Requires data_dir to have the following structure:
-    # data_dir/
+    # data/
     #   cellpose/
     #   bact_phase/
     #   bact_fluor/

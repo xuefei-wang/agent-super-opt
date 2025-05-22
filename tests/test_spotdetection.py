@@ -4,8 +4,9 @@ from src.spot_detection import DeepcellSpotsDetector
 from src.data_io import ImageData
 
 from dotenv import load_dotenv
-
-### To run from project root directory: python -m tests.test_spotdetection
+'''
+To run from project root directory: python -m tests.test_spotdetection
+'''
 
 class TestSpotDetection(unittest.TestCase):
     def test_pipeline(self):
