@@ -12,7 +12,7 @@ from numpy.testing import assert_array_equal
 
 class TestCellposeSegmentation(unittest.TestCase):
     # Class variables to store command line arguments
-    data_path = '/home/alex/data/cellpose/my_split/val_set/'
+    data_path = '../data/cellpose/my_split/val_set/'
     device = 1
     model_name = "cyto3"
     num_files = 8
@@ -47,7 +47,7 @@ class TestCellposeSegmentation(unittest.TestCase):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run Cellpose segmentation tests with custom parameters')
-    parser.add_argument('--data_path', type=str, default='/home/alex/data/cellpose/my_split/val_set/',
+    parser.add_argument('--data_path', type=str, default='../data/cellpose/my_split/val_set/',
                       help='Path to the dataset directory')
     parser.add_argument('--device', type=int, default=1,
                       help='GPU ID to use.')

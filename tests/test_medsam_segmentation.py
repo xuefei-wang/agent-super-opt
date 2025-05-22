@@ -45,8 +45,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Run MedSAM segmentation tests with custom parameters')
     parser.add_argument('--device', type=int, default=0,
                       help='GPU device ID to run on.')
-    parser.add_argument('--checkpoint_path', type=str, default='/workspace/data/medsam_vit_b.pth', help='Path to the model checkpoint file.')
-    parser.add_argument('--data_path', type=str, default='/workspace/data/medsam_exp_data', help='Path to dataset.')
+    parser.add_argument('--checkpoint_path', type=str, default='../data/medsam_vit_b.pth', help='Path to the model checkpoint file.')
+    parser.add_argument('--data_path', type=str, default='../data/medsam_exp_data', help='Path to dataset.')
     
     # This allows unittest arguments to be passed through
     args, unittest_args = parser.parse_known_args()

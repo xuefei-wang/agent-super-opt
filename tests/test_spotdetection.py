@@ -12,7 +12,7 @@ class TestSpotDetection(unittest.TestCase):
         '''Test if prediction and evaluation pipeline completes without errors'''
         load_dotenv()
 
-        spots_data = np.load('spot_data/SpotNet-v1_1/val.npz', allow_pickle=True)
+        spots_data = np.load('../data/SpotNet-v1_1/val.npz', allow_pickle=True)
 
         images = ImageData(raw = spots_data['X'], batch_size = spots_data['X'].shape[0], image_ids = [i for i in range(spots_data['X'].shape[0])])
         spots_truth = spots_data['y']
