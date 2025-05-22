@@ -1,4 +1,0 @@
-deepcell
-deepcell-spots
-numpy==1.24.1
-scipy==1.13.1
