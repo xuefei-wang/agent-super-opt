@@ -171,10 +171,5 @@ cython_debug/
 # VS Code
 .vscode/
 
-# Project folders
-data/
-output/
-artifacts/
-
 # Generated requirements file
 requirements.txt
