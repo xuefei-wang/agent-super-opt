@@ -10,37 +10,6 @@ except ImportError:
     from src.data_io import ImageData
 
 
-class ChannelSpec:
-    """Specification for channel selection in cell segmentation models.
-
-    This class defines which imaging channels should be used for segmentation,
-    specifically mapping the nuclear stain and membrane/cytoplasm markers required
-    by segmentation algorithms like Mesmer.
-
-    The channel names provided must exactly match names in the ImageData object's
-    channel_names attribute. This ensures correct channel selection even when
-    the raw data contains additional channels not used for segmentation.
-
-    Attributes:
-        nuclear (str): Name of the nuclear staining channel (e.g., "DAPI", "Hoechst")
-        membrane (List[str]): List of channels to combine for membrane/cytoplasm signal.
-                            Multiple channels will be summed to create a composite
-                            membrane signal.
-
-    Examples:
-        >>> # Basic usage with single membrane channel
-        >>> spec = ChannelSpec(nuclear="DAPI", membrane=["CD44"])
-        
-        >>> # Using multiple membrane markers
-        >>> spec = ChannelSpec(
-        ...     nuclear="Hoechst",
-        ...     membrane=["Na/K-ATPase", "E-cadherin"]
-        ... )
-    """
-    def __init__(self, nuclear: str, membrane: List[str]):
-        self.nuclear = nuclear
-        self.membrane = membrane
-
 
 class BaseSegmenter(ABC):
     """Abstract base class defining the interface for cell segmentation models.
@@ -48,11 +17,6 @@ class BaseSegmenter(ABC):
     This class provides a standardized interface that all segmentation model
     implementations must follow. It defines the core methods needed for image
     preprocessing and cell segmentation prediction while remaining model-agnostic.
-
-    The interface is designed to support both:
-    1. Channel-based segmentation (e.g., Mesmer) that requires specific imaging
-       channels like nuclear and membrane markers
-    2. Direct image segmentation (e.g., SAM2) that can work with any image input
 
     All implementations must handle batched inputs and outputs consistently,
     following the shape conventions defined in the ImageData class.
@@ -63,11 +27,11 @@ class BaseSegmenter(ABC):
 
     Example Implementation:
         >>> class MySegmenter(BaseSegmenter):
-        ...     def preprocess(self, image_data, channel_spec=None):
+        ...     def preprocess(self, image_data):
         ...         # Implementation
         ...         pass
         ...
-        ...     def predict(self, image_data, channel_spec=None, **kwargs):
+        ...     def predict(self, image_data, **kwargs):
         ...         # Implementation
         ...         pass
 
@@ -81,7 +45,6 @@ class BaseSegmenter(ABC):
     def preprocess(
         self,
         image_data: ImageData,
-        channel_spec: Optional[ChannelSpec] = None
     ) -> np.ndarray:
         """Prepare images for model input.
         
@@ -89,7 +52,6 @@ class BaseSegmenter(ABC):
         
         Args:
             image_data: Input images and metadata
-            channel_spec: Optional channel specification
             
         Returns:
             Preprocessed array in model's expected format
@@ -100,7 +62,6 @@ class BaseSegmenter(ABC):
     def predict(
         self,
         image_data: ImageData,
-        channel_spec: Optional[ChannelSpec] = None,
         **kwargs
     ) -> ImageData:
         """Generate segmentation predictions.
@@ -109,7 +70,6 @@ class BaseSegmenter(ABC):
         
         Args:
             image_data: Input images and metadata
-            channel_spec: Optional channel specification
             **kwargs: Additional model parameters
             
         Returns:
