@@ -11,52 +11,6 @@ from typing import List, Dict, Optional, Union, Tuple, Iterator
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
-def standardize_mask(mask: np.ndarray) -> Optional[np.ndarray]:
-    """Standardize mask shape to (B, 1, H, W) format.
-
-    Args:
-        mask: Input mask with shape (B, H, W), (B, H, W, 1),
-              (B, 1, H, W), or (B, 1, H, W, 1)
-
-    Returns:
-        np.ndarray: Standardized mask with shape (B, 1, H, W)
-
-    Raises:
-        ValueError: If mask dimensions are invalid
-    """
-    if mask.ndim == 3:  # (B, H, W)
-        return mask[:, np.newaxis, ...]
-    elif mask.ndim == 4:
-        if mask.shape[1] == 1:  # (B, 1, H, W)
-            return mask
-        elif mask.shape[-1] == 1:  # (B, H, W, 1)
-            return np.transpose(mask, (0, 3, 1, 2))
-        else: 
-            raise ValueError(f"Invalid mask shape {mask.shape}")
-    else:
-        raise ValueError(f"Invalid mask shape {mask.shape}")
-
-def standardize_raw_image(raw: np.ndarray) -> np.ndarray:
-    """Standardize raw image shape to (B, H, W, C) format.
-
-    Args:
-        raw: Input image array with shape (B, H, W), (B, H, W, C),
-             or (B, C, H, W)
-
-    Returns:
-        np.ndarray: Standardized array with shape (B, H, W, C)
-
-    Raises:
-        ValueError: If input array dimensions are not 3 or 4
-    """
-    if raw.ndim == 3:  # (B, H, W)
-        return raw[:, :, :, np.newaxis]
-    elif raw.ndim == 4:
-        if raw.shape[1] == min(raw.shape[1:]):  # (B, C, H, W)
-            raw = np.transpose(raw, (0, 2, 3, 1))
-        return raw
-    else:
-        raise ValueError(f"Invalid raw image shape {raw.shape}")
 
 @dataclass
 class ImageData:
