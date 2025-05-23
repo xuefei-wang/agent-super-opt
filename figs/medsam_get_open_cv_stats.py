@@ -1,14 +1,11 @@
 import ast
-import types
-import inspect
 import json
 
 import cv2 as cv
 import numpy as np
-import logging
-import traceback
 import os
 from collections import Counter
+import matplotlib.pyplot as plt
 
 all_folders = os.listdir('../output/dermoscopy-main/medSAM_segmentation')
 good_folders = [f for f in all_folders if '-' in f]
@@ -104,10 +101,6 @@ for idx, parsed_data in enumerate(all_parsed_data):
 
 
 print('done')
-
-import matplotlib.pyplot as plt
-import numpy as np
-from collections import Counter
 
 # Assuming you already have these Counter objects from your code
 # total_counter_top_10 and total_counter_bottom_10
