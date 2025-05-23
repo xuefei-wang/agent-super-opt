@@ -20,6 +20,11 @@ cat requirements_shared.txt requirements_specific_{task_name}.txt > requirements
 
 # Install packages
 pip install -r requirements.txt
+
+# For MedSAM, you'll need to additionally run the following:
+git clone https://github.com/sstilz/MedSAM.git
+cd MedSAM
+pip install -e .
 ```
 
 ## Getting Started
@@ -65,6 +70,8 @@ You can find the attribute `dataset_path` under `TaskPrompts`.
             --k $K \ # 3
             --k_word $K_WORD  # "three" 
    ```
+
+   For MedSAM, you'll also need to download the model checkpoint [medsam_vit_b.pth](https://drive.google.com/file/d/1UAmWL88roYR7wKlnApw5Bcuzf2iQgk6_/view?usp=drive_link) and pass in the path using `--checkpoint_path`.
 
 
 ## Data
