@@ -3,6 +3,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Optional
 
+_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
 
 @dataclass
 class TaskPrompts:
