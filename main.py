@@ -556,42 +556,44 @@ def main(args: argparse.Namespace):
                 
         
     update_run_info_with_end_timestamp(run_output_dir)
-    if args.experiment_name == "cellpose_segmentation":
-        clear_gpu_memory()
-        import subprocess
-        env = os.environ.copy()
-        env['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 
-        # Pass the parent directory (without val_set/)
-        if args.dataset.endswith('/val_set/'):
-            parent_path = args.dataset[:-8]  # Remove '/val_set/'
-        elif args.dataset.endswith('/val_set'):
-            parent_path = args.dataset[:-7]  # Remove '/val_set'
-        else:
-            parent_path = os.path.dirname(args.dataset)
+    if args.auto_analyze_trajectory:
+        if args.experiment_name == "cellpose_segmentation":
+            clear_gpu_memory()
+            import subprocess
+            env = os.environ.copy()
+            env['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
 
-        # Convert paths to absolute
-        script_path = os.path.abspath("figs/cellpose_analyze_trajectories.py")
-        json_path = os.path.abspath(output_function_bank)
-        parent_path_abs = os.path.abspath(parent_path)
+            # Pass the parent directory (without val_set/)
+            if args.dataset.endswith('/val_set/'):
+                parent_path = args.dataset[:-8]  # Remove '/val_set/'
+            elif args.dataset.endswith('/val_set'):
+                parent_path = args.dataset[:-7]  # Remove '/val_set'
+            else:
+                parent_path = os.path.dirname(args.dataset)
 
-        print(f"DEBUG: Passing parent path to analysis: {parent_path_abs}")
+            # Convert paths to absolute
+            script_path = os.path.abspath("figs/cellpose_analyze_trajectories.py")
+            json_path = os.path.abspath(output_function_bank)
+            parent_path_abs = os.path.abspath(parent_path)
 
-        subprocess.run([
-            "python", script_path,
-            "--json_path", json_path,
-            "--data_path", parent_path_abs,
-            "--device", "0",
-            "--dataset_size", str(args.dataset_size),
-            "--batch_size", str(args.batch_size)
-        ], env=env)
-    elif args.experiment_name == "medSAM_segmentation":
-        # modality = "dermoscopy" if args.dataset.startswith("dermoscopy") else "xray"
-        # os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --modality {modality} --gpu_id {args.gpu_id}")
-        pass
-    elif args.experiment_name == "spot_detection":
-        os.system(f"python figs/spot_detection_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset}")
-        pass
+            print(f"DEBUG: Passing parent path to analysis: {parent_path_abs}")
+
+            subprocess.run([
+                "python", script_path,
+                "--json_path", json_path,
+                "--data_path", parent_path_abs,
+                "--device", "0",
+                "--dataset_size", str(args.dataset_size),
+                "--batch_size", str(args.batch_size)
+            ], env=env)
+        elif args.experiment_name == "medSAM_segmentation":
+            modality = "dermoscopy" if args.dataset.startswith("dermoscopy") else "xray"
+            os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --modality {modality} --gpu_id {args.gpu_id}")
+            pass
+        elif args.experiment_name == "spot_detection":
+            os.system(f"python figs/spot_detection_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset}")
+            pass
 
 if __name__ == "__main__":
 
@@ -742,6 +744,12 @@ if __name__ == "__main__":
         type=int,
         default=16,
         help="Batch size for Cellpose."
+    )
+
+    parser.add_argument(
+        "--auto_analyze_trajectory",
+        action="store_true",
+        help="Whether to automativally analyze the learning trajectory."
     )
 
 
