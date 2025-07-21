@@ -5,8 +5,6 @@
 We will use a virtual environment for this project. There are two requirements files - one shared and one task-dependent. 
 You should add your task packages in `requirements_specific_{task_name}.txt` to run the following commands to set up the environment.
 
-The AG2 Local Commandline Executor has been modified to support script template insertion, to help prevent the LLM from modifying the execution template.
-
 ```bash
 # Create virtual environment
 python -m venv .venv
@@ -35,10 +33,7 @@ You can find the attribute `dataset_path` under `TaskPrompts`.
 
 0. Implement your tool
    
-   Create a file under `src/`, wrap your tool following the pattern below, and provide comprehensive docstrings. 
-   ```
-   BaseTool -> BaseTaskTool -> YourTaskTool
-   ```
+   Create a file under `src/`, wrap your tool into a class and provide comprehensive docstrings. Your tool should have `__init__`, `evaluate()`, `predict()` methods.
 
 1. Test that your tool works as expected
    
@@ -50,9 +45,9 @@ You can find the attribute `dataset_path` under `TaskPrompts`.
 
 2. Create your task specific prompts class with skeletonization
 
-   Create a file under `prompts/` folder and wrap your task specific prompts following the pattern below, and provide comprehensive docstrings.
+   Create a file under `prompts/` folder and wrap your task specific prompts following the pattern below, and provide comprehensive docstrings. 
    ```
-   TaskPrompts -> TaskPrompts -> YourSkeletonizedTaskPrompts
+   TaskPrompts -> YourTaskPrompts -> YourSkeletonizedTaskPrompts
    ``` 
    You must also make a {task_name}_execution-template.py.txt file under `prompts/` folder. This file contains the execution template for your task, including data loading, model initialization, and evaluation.
 
@@ -77,5 +72,3 @@ You can find the attribute `dataset_path` under `TaskPrompts`.
 ## Data
 
 To reproduce the results, download the data using the scripts and instructions found in `utils/{task_name}_data.py`.
-
-
