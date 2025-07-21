@@ -148,7 +148,7 @@ This file contains the "function bank" of all functions explored and their assoc
 
 ## 📄 License
 
-This project is licensed under the [Insert Liscence name here].
+This project is licensed under the Apache License 2.0.
 
 
 ## Citation 
