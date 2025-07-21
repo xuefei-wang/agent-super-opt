@@ -597,7 +597,7 @@ def main(args: argparse.Namespace):
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description="SciSeek Agent pipeline")
+    parser = argparse.ArgumentParser(description="Agent pipeline")
         
     parser.add_argument(
         "-d", "--dataset",
