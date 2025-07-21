@@ -649,17 +649,20 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--warm_start",
-        action='store_true'
+        action='store_true',
+        help="Whether to include the expert baseline function in the function bank as a warm start."
     )
 
     parser.add_argument(
         "--metric_only",
-        action="store_true"
+        action="store_true",
+        help="Add baseline metric in the prompt (only works when warm_start=True)."
     )
 
     parser.add_argument(
         "--enable_advantage",
-        action="store_true"
+        action="store_true",
+        help="Store the relative score within each iteration of `k` samples."
     )
 
     parser.add_argument(
@@ -687,7 +690,7 @@ if __name__ == "__main__":
         "--history_threshold",
         type=int,
         default=5,
-        help="Number of history threshold to show in the function bank."
+        help="The number of iterations to wait before showing the function bank history."
     )
     
     parser.add_argument(
