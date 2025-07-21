@@ -1,101 +1,158 @@
 # Agentic Superoptimization of Scientific Analysis Workflows
 
-This repository contains the code for our paper, "Agentic Superoptimization of Scientific Analysis Workflows." [TODO: Add link when available] Our method uses AI agents to automatically write and optimize data analysis code for complex scientific workflows, generating solutions that can surpass manually-tuned, expert-written code.
+## 💡 Overview
+
+This repository contains the code for our paper, "Agentic Superoptimization of Scientific Analysis Workflows" ([TODO: Add link when available]). This work introduces a novel paradigm where AI agents autonomously write and optimize data analysis code for complex scientific tasks. Our method generates solutions that can surpass manually-tuned, expert-written code, significantly accelerating the pace of scientific discovery.
 
 
 ## 🚀 Getting Started
-We provide two distinct guides below. Please follow the one that best matches your goal:
 
-For CS/AI Researchers (Reproducibility) 💻: Follow these instructions if you want to reproduce the experimental results reported in our paper (Polaris, Cellpose, MedSAM).
+To get started, follow these steps. We'll first cover the environment setup, which is common for all users, then dive into specific usage guides.
 
-For Scientists (Your Own Data) 🧪: Follow these instructions if you want to apply our AI agent to optimize your own analysis workflow.
+We strongly recommend using a virtual environment to manage dependencies for this project.
 
-## For CS/AI Researchers: Reproducing Paper Results 💻
-This guide will walk you through setting up the environment and running the experiments from our paper.
+1.  **Create and Activate Virtual Environment**:
 
-We will use a virtual environment for this project. There are two requirements files - one shared and one task-dependent. 
-You should add your task packages in `requirements_specific_{task_name}.txt` to run the following commands to set up the environment.
-
-```bash
-# Create virtual environment
-python -m venv .venv
-
-# Activate virtual environment
-source .venv/bin/activate
-
-# Merge two requirement files into one
-rm -f requirements.txt
-cat requirements_shared.txt requirements_specific_{task_name}.txt > requirements.txt
-
-# Install packages
-pip install -r requirements.txt
-
-# For MedSAM, you'll need to additionally run the following:
-git clone https://github.com/sstilz/MedSAM.git
-cd MedSAM
-pip install -e .
-```
-
-Set up your LLM API key as an environment variable. By default, we are using OpenAI models and therefore requires a `OPENAI_API_KEY`. You can change the backbone LLMs by updating the `llm_config` for all agents in main.py.
-
-## Getting Started
-
-All commands should be executed from the project's root directory.
-You data should be located outside the repo. The data path will be provided in `--dataset`.
-
-0. Implement your tool
-   
-   Create a file under `src/`, wrap your tool into a class and provide comprehensive docstrings. Your tool should have `__init__`, `evaluate()`, `predict()` methods.
-
-1. Test that your tool works as expected
-   
-   Basic version of tests is a manual pipeline testing that your tools works as expected. Additional unit tests are at your discretion. You can create a file under `tests/` folder and run the following command:
-   
     ```bash
-    python -m tests.test_X
+    python -m venv .venv
+    source .venv/bin/activate
     ```
 
-2. Create your task specific prompts class with skeletonization
+2.  **Prepare Requirements Files**: This project uses a shared `requirements_shared.txt` and a task-specific `requirements_specific_{task_name}.txt`. You'll need to specify your task when setting up.
 
-   Create a task specific prompt file `{task_name}_prompts.py` under `prompts/` folder, the prompt class should inherit from `TaskPrompts` class.
-
-   Make a `{task_name}_execution-template.py.txt` file under `prompts/` folder. This file contains the execution template for your task, including data loading, model initialization, and evaluation. Refer to `base_execution-template.py.txt` as an example. Your expert baseline function should be provided in `prompts/{task_name}_expert.py.txt`. 
-
-   The new prompt class, along with a `sampling_function` that defines your metric for optimization should be provided in `main.py`.
-
-
-3. Run the agent with the standard pipeline
-   
     ```bash
-      python main.py \
-            --dataset $DATASET_PATH \
-            --gpu_id $gpu_id \
-            --experiment_name $EXPERIMENT_NAME \ # For example, "cellpose_segmentation"
-            --random_seed $seed \
-            --history_threshold $HISTORY_THRESHOLD \ # For example, 5
-            --k $K \ # For example, 3
-            --k_word $K_WORD  # For example, "three"
-   ```
+    # Replace {task_name} with your desired task (e.g., cellpose_segmentation, spot_detection, medSAM_segmentation)
+    rm -f requirements.txt
+    cat requirements_shared.txt requirements_specific_{task_name}.txt > requirements.txt
+    ```
 
-   For MedSAM, you'll also need to download the model checkpoint [medsam_vit_b.pth](https://drive.google.com/file/d/1UAmWL88roYR7wKlnApw5Bcuzf2iQgk6_/view?usp=drive_link) and pass in the path using `--checkpoint_path`.
+3.  **Install Python Packages**:
 
-   More arguments can be found in `main.py`. Specifically, 
-   - `history_threshold` is a parameter for when to start incorporating function bank hisotry into the prompt.
-   - `k` and `k_word` is the number of samples to be generate per iteration.
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4.  **Set Up LLM API Key**: This framework uses OpenAI models by default, so you'll need to set your `OPENAI_API_KEY` as an environment variable. If you prefer other LLMs, you can update the `llm_config` for agents in `main.py`.
+
+    ```bash
+    export OPENAI_API_KEY="your_openai_api_key_here"
+    ```
+
+## 📖 Usage Guides
+
+This repository offers two main modes of operation: 
+
+* For CS/AI researchers: reproducing our paper's results
+
+* For scientists: applying the framework to your own custom data analysis workflows
+
+Please follow the one that best matches your goal:
+
+### For CS/AI Researchers: Reproducing Paper Results 💻
+
+This guide provides instructions for replicating the experimental results presented in our paper, covering Polaris, Cellpose, and MedSAM workflows.
+
+1.  **Data Preparation**
+
+    Download the necessary datasets using the provided scripts and instructions for each task. You'll find these in `utils/{task_name}_data.py`. The path to your downloaded dataset will be passed using the `--dataset` argument during execution.
+
+2.  **Additional Setup (Task-Specific)**
+
+      * **MedSAM**: Download the model checkpoint [medsam\_vit\_b.pth](https://drive.google.com/file/d/1UAmWL88roYR7wKlnApw5Bcuzf2iQgk6_/view?usp=drive_link) and specify its path using `--checkpoint_path`.
+      * **Polaris**: Set your `DEEPCELL_ACCESS_TOKEN` environment variable. Instructions are available [here](https://deepcell.readthedocs.io/en/master/API-key.html).
+
+3.  **Run the Experiments**
+
+    Execute the `main.py` script with the relevant arguments:
+
+    ```bash
+    python main.py \
+          --dataset $DATASET_PATH \
+          --gpu_id $GPU_ID \
+          --experiment_name $EXPERIMENT_NAME \ # E.g., "cellpose_segmentation", "spot_detection", "medSAM_segmentation"
+          --random_seed $SEED \
+          --history_threshold $HISTORY_THRESHOLD \ # E.g., 5. When to start incorporating function bank history into the prompt.
+          --k $K \ # E.g., 3. Number of samples (functions) to generate per iteration.
+          --k_word $K_WORD # E.g., "three". The word representation of 'k'.
+    ```
+
+### For Scientists: Applying to Your Own Data 🧪
+
+This guide explains how to adapt this agentic framework to optimize a data preprocessing workflow for your specific scientific tool and dataset.
+
+To integrate your custom workflow, you'll need to implement the following components:
+
+1.  **Tool Wrapper**: Create `src/{task_name}.py`. This file acts as a Python wrapper for your scientific tool, exposing `__init__`, `evaluate()`, and `predict()` methods.
+
+      * **Example**: See `src/cellpose_segmentation.py` for a reference implementation.
+
+2.  **Prompts**: Define your task-specific prompts in `prompts/{task_name}_prompts.py`. This file should inherit from `TaskPrompts` and provide detailed instructions about your data, task objectives, and evaluation metrics to the AI agent.
+
+      * **Example**: Refer to `prompts/cellpose_segmentation_prompts.py`.
+
+3.  **Execution Template**: Set up an execution template in `prompts/{task_name}_execution-template.py.txt`. This template outlines the overall workflow where your tool will be used, and the agent-generated preprocessing functions will be "plugged in."
+
+      * **Example**: Check `prompts/cellpose_segmentation_execution-template.py.txt`.
+
+4.  **Expert Baseline**: Provide an expert-written baseline implementation in `prompts/{task_name}_expert.py.txt`.
+
+      * **Example**: See `prompts/cellpose_segmentation_expert.py.txt`.
+
+Once you've implemented these components, you can run the optimization:
+
+```bash
+python main.py \
+      --dataset $DATASET_PATH \
+      --gpu_id $GPU_ID \
+      --experiment_name $YOUR_CUSTOM_TASK_NAME \ # E.g., "my_new_experiment"
+      --random_seed $SEED \
+      --history_threshold $HISTORY_THRESHOLD \ # When to start incorporating function bank history into the prompt (default: 5).
+      --k $K \ # Number of samples (functions) to generate per iteration (default: 3).
+      --k_word $K_WORD # The word representation of 'k' (default: "three").
+```
+
+## ⚙️ Understanding `main.py` Arguments
+
+The `main.py` script is the entry point for running the framework and offers a variety of command-line arguments to customize the optimization process.
+
+  * `--dataset (-d)`: Path to your dataset.
+  * `--output (-o)`: Path to the output folder where all results will be saved.
+  * `--experiment_name`: Name of the experiment. For reproducibility, choose from `"spot_detection"`, `"cellpose_segmentation"`, or `"medSAM_segmentation"`. For custom workflows, use the name you defined for your task.
+  * `--checkpoint_path`: Path to a model checkpoint file. Currently used only for MedSAM segmentation.
+  * `--gpu_id`: The ID of the GPU to use (default: `0`).
+  * `--random_seed`: The random seed for reproducibility (default: `42`).
+  * `--warm_start`: A boolean flag. If set, the expert baseline function will be included in the function bank as a warm start for the agent.
+  * `--metric_only`: A boolean flag. If set, only the baseline metric will be added to the prompt (requires `--warm_start` to be `True`).
+  * `--enable_advantage`: A boolean flag. If set, the relative score will be stored for each of the `k` samples generated within an iteration.
+  * `--n_top`: The number of top-performing functions to display in the function bank (default: `3`).
+  * `--n_worst`: The number of worst-performing functions to display in the function bank (default: `3`).
+  * `--n_last`: The number of last functions to show in the function bank (default: `0`).
+  * `--history_threshold`: The number of iterations to wait before incorporating the accumulated function bank history into the agent's prompt (default: `5`).
+  * `--hyper_optimize`: A boolean flag. If set, a hyperparameter search will be initiated after the main optimization trial concludes.
+  * `--n_hyper_optimize`: The number of functions to optimize during the post-trial hyperparameter search (default: `3`).
+  * `--n_hyper_optimize_trials`: The number of trials to run for each function during hyperparameter optimization (default: `15`).
+  * `--k`: The preprocessing function group size, representing the number of new functions to generate per iteration (default: `3`).
+  * `--k_word`: The English word representation of `k` (e.g., `"three"`) (default: `"three"`). This is used for prompt phrasing.
+  * `--dataset_size`: A Cellpose-specific argument to determine the size of the validation/test set (default: `100`).
+  * `--batch_size`: A Cellpose-specific argument to determine the batch size (default: `16`).
+  * `--auto_analyze_trajectory`: A boolean flag. If set, the learning trajectory will be automatically analyzed.
 
 
-## Data
+## 📦 Output Structure
 
-To reproduce the results, download the data using the scripts and instructions found in `utils/{task_name}_data.py`.
+Upon successful execution, you will find results saved into your designated output directory. Experiments folders are timestamped. Inside the folder, you can find the preprocessing functions stored in a JSON file:
+
+`{task_name}/preprocessing_func_bank.json`
+
+This file contains the "function bank" of all functions explored and their associated performance metrics throughout the optimization process.
+
+## 📄 License
+
+This project is licensed under the [Insert Liscence name here].
 
 
-## For Scientists: Applying to Your Own Data 🧪
-This guide explains how to use our agentic framework to optimize a data preprocessing workflow for your own scientific tool and dataset.
+## Citation 
 
-Step 1: Prepare Your Data and Environment
-First, set up a basic environment. You only need the shared requirements to start.
-
-(e.g.)
-a tool class like this
-a prompt class like this
-an execution template like this
+```
+[Insert citation once available]
+```
