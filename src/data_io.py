@@ -209,6 +209,18 @@ class ImageData:
             predicted_classes=[self.predicted_classes[idx]] if self.predicted_classes is not None else None
         )
     
+    def to_numpy(self) -> 'ImageDataNP':
+        """Convert ImageData to ImageDataNP.  Beware, this won't handle datasets 
+        with variable image sizes."""
+        if isinstance(self.spatial_shape, list):
+            raise ValueError("Cannot convert ImageData with variable image sizes to ImageDataNP")
+        
+        return ImageDataNP(
+            raw=np.array(self.raw),
+            masks=np.array(self.masks) if self.masks is not None else None,
+            predicted_masks=np.array(self.predicted_masks) if self.predicted_masks is not None else None,
+        )
+    
     def __len__(self) -> int:
         """Get dataset size."""
         return len(self.raw)
@@ -217,3 +229,35 @@ class ImageData:
         """Iterate over items in dataset."""
         for i in range(len(self)):
             yield self.get_item(i)
+
+
+
+@dataclass
+class ImageDataNP:
+    """stripped down ImageData class for numpy arrays"""
+    raw: np.ndarray
+    masks: Optional[np.ndarray] = None
+    predicted_masks: Optional[np.ndarray] = None
+    predicted_classes: Optional[np.ndarray] = None
+
+    def __post_init__(self):
+        """Convert lists to numpy arrays"""
+        if isinstance(self.raw, list):
+            self.raw = np.array(self.raw)
+        if isinstance(self.masks, list):
+            self.masks = np.array(self.masks)
+        if isinstance(self.predicted_masks, list):
+            self.predicted_masks = np.array(self.predicted_masks)
+
+    def __len__(self) -> int:
+        """Get dataset size."""
+        return self.raw.shape[0]
+    
+    def __getitem__(self, idx: int) -> 'ImageDataNP':
+        """Get item from dataset."""
+        return ImageDataNP(
+            raw=self.raw[idx],
+            masks=self.masks[idx] if self.masks is not None else None,
+            predicted_masks=self.predicted_masks[idx] if self.predicted_masks is not None else None,
+            predicted_classes=self.predicted_classes[idx] if self.predicted_classes is not None else None
+        )
