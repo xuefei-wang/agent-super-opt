@@ -7,9 +7,6 @@ import json
 import cv2 as cv
 import numpy as np
 from src.data_io import ImageData
-# from src.spot_detection import DeepcellSpotsDetector
-# from src.cellpose_segmentation import CellposeTool
-# from src.medsam_segmentation import MedSAMTool
 from assets.opencv_arg_rules import OPENCV_ARG_RULES
 from prompts.task_prompts import TaskPrompts
 import logging

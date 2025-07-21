@@ -22,7 +22,7 @@ from prompts.agent_prompts import sys_prompt_code_writer
 
 from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 
-from optimize import hyperparameter_search, transform_opencv_constants, save_to_function_bank
+from hyper_optimize import hyperparameter_search, transform_opencv_constants, save_to_function_bank
 
 # Load environment variables
 load_dotenv()
