@@ -643,13 +643,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--work_dir",
-        type=str,
-        required=False,
-        help="The working directory for the agent to access source code."
-    )
-
-    parser.add_argument(
         "--warm_start",
         action='store_true',
         help="Whether to include the expert baseline function in the function bank as a warm start."
@@ -759,10 +752,6 @@ if __name__ == "__main__":
     if args.k == 3 and args.k_word != "three" or args.k != 3 and args.k_word == "three":
         raise ValueError("k and k_word must be set to be equivalent.")
 
-    # Work directory
-    if args.work_dir is None:
-        work_dir = args.output
-    else:
-        work_dir = args.work_dir
+    work_dir = os.getcwd()
 
     main(args)
