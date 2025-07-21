@@ -1,5 +1,4 @@
-from prompts.task_prompts import TaskPrompts
-_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
+from prompts.task_prompts import TaskPrompts, _PREPROCESSING_FUNCTION_PLACEHOLDER
 import textwrap
 import os
 

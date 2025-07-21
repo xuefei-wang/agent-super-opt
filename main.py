@@ -4,32 +4,25 @@ import torch
 import json
 import argparse
 import uuid
+import time
 import random
 from datetime import datetime
 import os
 import re
 
-from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager, UserProxyAgent
-from autogen.coding import CodeBlock, CodeExecutor, DockerCommandLineCodeExecutor, LocalCommandLineCodeExecutor
+from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager
+from autogen.coding import CodeBlock, CodeExecutor, LocalCommandLineCodeExecutor
 from utils.executors import TemplatedLocalCommandLineCodeExecutor
 from autogen.coding.jupyter import (
-    DockerJupyterServer,
     JupyterCodeExecutor,
-    LocalJupyterServer,
 )
 
-from prompts.task_prompts import TaskPrompts
-
-from src.utils import set_gpu_device
-from prompts.agent_prompts import (
-    sys_prompt_code_writer,
-    # sys_prompt_code_verifier,
-)
+from prompts.task_prompts import TaskPrompts, _PREPROCESSING_FUNCTION_PLACEHOLDER
+from prompts.agent_prompts import sys_prompt_code_writer
 
 from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 
 from optimize import hyperparameter_search, transform_opencv_constants, save_to_function_bank
-import time
 
 # Load environment variables
 load_dotenv()
@@ -49,31 +42,18 @@ def set_up_agents(executor: CodeExecutor, llm_model: str, k, k_word):
             "executor": executor
         }, 
         human_input_mode="NEVER",  # Never take human input for this agent
-        # is_termination_msg=lambda msg: "TERMINATE" in msg["content"] if msg["content"] else False,
     )
     code_writer_agent = ConversableAgent(
         "code_writer",
         system_message=code_writer_prompt,
         llm_config={
             "config_list": [
-                # {"model": "gpt-4o", "api_key": os.environ["OPENAI_API_KEY"]}
                 {"model": llm_model, "api_key": os.environ["OPENAI_API_KEY"]}
             ]
         },
         code_execution_config=False,  # Turn off code execution for this agent.
         human_input_mode="NEVER",
     )
-    # code_verifier_agent = ConversableAgent(
-    #     "code_verifier",
-    #     system_message=sys_prompt_code_verifier,
-    #     llm_config={
-    #         "config_list": [
-    #             {"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}
-    #         ]
-    #     },
-    #     code_execution_config=False,  # Turn off code execution for
-    #     human_input_mode="NEVER",
-    # )
     
     def state_transition(last_speaker, groupchat):
         ''' Transition between speakers in an agent groupchat '''
@@ -94,11 +74,6 @@ def set_up_agents(executor: CodeExecutor, llm_model: str, k, k_word):
     
     # return code_executor_agent, code_writer_agent, code_verifier_agent, state_transition
     return code_executor_agent, code_writer_agent, state_transition
-
-
-# Load documentation and dataset information
-# with open("artifacts/docs.md", "r") as file:
-#     documentation = file.read()
 
 
 # Load openCV function APIs
@@ -356,11 +331,9 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
                  "dataset_info": prompts_instance.dataset_info,
                  "task_details": prompts_instance.get_task_details(),
                  "pipeline_metrics_info": prompts_instance.get_pipeline_metrics_info(),
-                 # "summary_prompt": prompts_instance.summary_prompt if hasattr(prompts_instance, 'summary_prompt') else None,
              },
              "agent_system_prompts": {
                  "code_writer": sys_prompt_code_writer(args.k, args.k_word),
-                 # "code_verifier": sys_prompt_code_verifier,
              },
              "executable_pipeline_script_template": prompts_instance.run_pipeline_prompt(), # Call the method to get the script string
          }
@@ -413,7 +386,6 @@ def clear_gpu_memory():
     # Force garbage collection first
     gc.collect()
 
-
     # PyTorch-specific GPU cleanup
     if torch.cuda.is_available():
         # Empty the cache
@@ -438,53 +410,41 @@ def main(args: argparse.Namespace):
     os.makedirs(run_output_dir, exist_ok=True)
 
     # Update output paths to use the new directory structure
-    # output_function_bank = os.path.join(run_output_dir, "preprocessing_func_bank.json")
     output_function_bank = os.path.abspath(os.path.join(run_output_dir, "preprocessing_func_bank.json"))
     # Initialize function bank with empty list if it doesn't exist
     if not os.path.exists(output_function_bank):
         with open(output_function_bank, "w") as file:
             json.dump([], file)
 
-
     # Configuration
-    my_gpu_id = args.gpu_id # GPU ID to use
     cache_seed = 4 # Cache seed for caching the results
-    random_seed = args.random_seed # Random seed for reproducibility
     num_optim_iter = 20 # Number of optimization iterations
-    max_round = 20  # Maximum number of rounds for the conversation, defined in GroupChat - default is 10
+    max_round = 20  # Maximum number of rounds for the conversation
     checkpoint_path = args.checkpoint_path
-    # history_threshold = 5
     llm_model = "gpt-4.1" # Do not modify this string
-    # llm_model = "gemini-2.5-pro"
-    # llm_model = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
     
     # Load task prompts
     if args.experiment_name == "spot_detection":
-        from prompts.spot_detection_prompts import SpotDetectionPrompts, SpotDetectionPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
+        from prompts.spot_detection_prompts import SpotDetectionPromptsWithSkeleton
         prompt_class = SpotDetectionPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['f1_score']
         kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word, "advantage_enabled": args.enable_advantage}
-        # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/spot_detection_expert.py.txt"
     elif args.experiment_name == "cellpose_segmentation":
-        from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
-        prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
+        from prompts.cellpose_segmentation_prompts import CellposeSegmentationPromptsWithSkeleton
+        prompt_class = CellposeSegmentationPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['average_precision']
         kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word, "dataset_size": args.dataset_size, "batch_size": args.batch_size, "advantage_enabled": args.enable_advantage}
-        # prompts = prompt_class(gpu_id=args.gpu_id, seed=args.random_seed, dataset_path=args.dataset, function_bank_path=output_function_bank)
         baseline_function_path = "prompts/cellpose_segmentation_expert.py.txt"
     elif args.experiment_name == "medSAM_segmentation":
-        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
-        prompt_class = MedSAMSegmentationPromptsWithSkeleton #MedSAMSegmentationPrompts
+        from prompts.medsam_segmentation_prompts import MedSAMSegmentationPromptsWithSkeleton
+        prompt_class = MedSAMSegmentationPromptsWithSkeleton
         baseline_function_path = "prompts/medsam_segmentation_expert.py.txt"
         sampling_function = lambda x: x['overall_metrics']['dsc_metric'] + x['overall_metrics']['nsd_metric']
         kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": args.k, "k_word": args.k_word, "advantage_enabled": args.enable_advantage}
 
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
-
-    # Set GPU device
-    # set_gpu_device(my_gpu_id)
     
     initial_prompts = prompt_class(**kwargs_for_prompt_class)
     save_run_info(args, run_output_dir, num_optim_iter, initial_prompts, cur_time, history_threshold=args.history_threshold, max_round=max_round, llm_model=llm_model, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last)
@@ -497,7 +457,7 @@ def main(args: argparse.Namespace):
     # Run pipeline development and optimization
     with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{args.output}/cache") as cache:
         
-        notes_shared = prepare_notes_shared(my_gpu_id, max_rounds=max_round)
+        notes_shared = prepare_notes_shared(args.gpu_id, max_rounds=max_round)
 
         # Run baseline and insert to function bank first
         baseline_metric = ""
@@ -542,10 +502,7 @@ def main(args: argparse.Namespace):
             )
 
             # Set up agents
-            # code_executor_agent, code_writer_agent, code_verifier_agent, state_transition = set_up_agents(executor_instance)
             code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model, args.k, args.k_word)
-
-            
 
             group_chat = GroupChat(
                 agents=[
@@ -575,7 +532,6 @@ def main(args: argparse.Namespace):
             prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)}"
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
-                                            # summary_args={"summary_prompt": prompts.summary_prompt},
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, run_output_dir)
 
@@ -806,25 +762,5 @@ if __name__ == "__main__":
         work_dir = args.output
     else:
         work_dir = args.work_dir
-    # server = LocalJupyterServer(log_file=os.path.join("..", args.output, "jupyter_gateway.log"))
-    # server = LocalJupyterServer(log_file=None)
-    # executor = JupyterCodeExecutor(server, output_dir=args.output, timeout=300) # very high timeout for long running tasks
-    # executor = LocalCommandLineCodeExecutor(work_dir=work_dir, timeout=300)
-
-
-    # if args.experiment_name == "spot_detection":
-    #     from prompts.spot_detection_prompts import SpotDetectionPrompts
-    #     prompt_class = SpotDetectionPrompts
-    # elif args.experiment_name == "cellpose_segmentation":
-    #     from prompts.cellpose_segmentation_prompts import CellposeSegmentationPrompts, CellposeSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
-    #     prompt_class = CellposeSegmentationPromptsWithSkeleton #CellposeSegmentationPrompts
-    # elif args.experiment_name == "medSAM_segmentation":
-    #     from prompts.medsam_segmentation_prompts import MedSAMSegmentationPrompts, MedSAMSegmentationPromptsWithSkeleton, _PREPROCESSING_FUNCTION_PLACEHOLDER
-    #     prompt_class = MedSAMSegmentationPromptsWithSkeleton
-    # else:
-    #     raise ValueError(f"Experiment name {args.experiment_name} not supported")
-
-    # executor = TemplatedLocalCommandLineCodeExecutor(template_script_func=prompt_class, placeholder=_PREPROCESSING_FUNCTION_PLACEHOLDER, work_dir=work_dir, timeout=300)
-
 
     main(args)
