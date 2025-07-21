@@ -1,6 +1,17 @@
 # Agentic Superoptimization of Scientific Analysis Workflows
 
-## Setup (For fully local execution)
+This repository contains the code for our paper, "Agentic Superoptimization of Scientific Analysis Workflows." [TODO: Add link when available] Our method uses AI agents to automatically write and optimize data analysis code for complex scientific workflows, generating solutions that can surpass manually-tuned, expert-written code.
+
+
+## 🚀 Getting Started
+We provide two distinct guides below. Please follow the one that best matches your goal:
+
+For CS/AI Researchers (Reproducibility) 💻: Follow these instructions if you want to reproduce the experimental results reported in our paper (Polaris, Cellpose, MedSAM).
+
+For Scientists (Your Own Data) 🧪: Follow these instructions if you want to apply our AI agent to optimize your own analysis workflow.
+
+## For CS/AI Researchers: Reproducing Paper Results 💻
+This guide will walk you through setting up the environment and running the experiments from our paper.
 
 We will use a virtual environment for this project. There are two requirements files - one shared and one task-dependent. 
 You should add your task packages in `requirements_specific_{task_name}.txt` to run the following commands to set up the environment.
@@ -76,3 +87,15 @@ You data should be located outside the repo. The data path will be provided in `
 ## Data
 
 To reproduce the results, download the data using the scripts and instructions found in `utils/{task_name}_data.py`.
+
+
+## For Scientists: Applying to Your Own Data 🧪
+This guide explains how to use our agentic framework to optimize a data preprocessing workflow for your own scientific tool and dataset.
+
+Step 1: Prepare Your Data and Environment
+First, set up a basic environment. You only need the shared requirements to start.
+
+(e.g.)
+a tool class like this
+a prompt class like this
+an execution template like this
