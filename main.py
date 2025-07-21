@@ -315,9 +315,9 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "llm_model": llm_model,
          "warm_start": args.warm_start,
          "metric_only": args.metric_only,
-         "hyperparameter_optimization": args.optimize,
-         "n_optimize": args.n_optimize,
-         "n_optimize_trials": args.n_optimize_trials,
+         "hyperparameter_optimization": args.hyper_optimize,
+         "n_hyper_optimize": args.n_hyper_optimize,
+         "n_hyper_optimize_trials": args.n_hyper_optimize_trials,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
@@ -431,10 +431,9 @@ def main(args: argparse.Namespace):
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPromptsWithSkeleton
         prompt_class = MedSAMSegmentationPromptsWithSkeleton
-        baseline_function_path = "prompts/medsam_segmentation_expert.py.txt"
         sampling_function = lambda x: x['overall_metrics']['dsc_metric'] + x['overall_metrics']['nsd_metric']
         kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": args.k, "k_word": args.k_word, "advantage_enabled": args.enable_advantage}
-
+        baseline_function_path = "prompts/medsam_segmentation_expert.py.txt"
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
     
@@ -512,7 +511,6 @@ def main(args: argparse.Namespace):
             group_chat_manager = GroupChatManager(
                 groupchat=group_chat,
                 llm_config={
-                    # "config_list": [{"model": "gemini-1.5-pro", "api_key": os.environ["GEMINI_API_KEY"], "api_type": "google"}],
                     "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
                 },
                 is_termination_msg=lambda msg: (
@@ -528,9 +526,9 @@ def main(args: argparse.Namespace):
             save_chat_history(chat_result.chat_history, i, run_output_dir)
 
         # Run an optimization study on the best 3 function in the function bank
-        if args.optimize:
+        if args.hyper_optimize:
             print("Starting hyperparameter search")
-            for result in top_n(output_function_bank, sorting_function=sampling_function, n=args.n_optimize):
+            for result in top_n(output_function_bank, sorting_function=sampling_function, n=args.n_hyper_optimize):
                 func_to_optimize = result['preprocessing_function']
                 
                 _, params, _ = transform_opencv_constants(func_to_optimize)
@@ -545,7 +543,7 @@ def main(args: argparse.Namespace):
                         args.experiment_name,
                         args.dataset,
                         os.path.join(os.path.dirname(output_function_bank), "pipeline_run.log"),
-                        args.n_optimize_trials,
+                        args.n_hyper_optimize_trials,
                         **kwargs_for_prompt_class
                     )
                     optimize_time = time.time() - optimize_time
@@ -693,19 +691,20 @@ if __name__ == "__main__":
     )
     
     parser.add_argument(
-        '--optimize',
-        action='store_true'
+        '--hyper_optimize',
+        action='store_true',
+        help="Whether to run a hyperparameter search after the trial is over."
     )
     
     parser.add_argument(
-        '--n_optimize',
+        '--n_hyper_optimize',
         type=int,
         default=3,
         help="Number of functions to optimize."
     )
     
     parser.add_argument(
-        '--n_optimize_trials',
+        '--n_hyper_optimize_trials',
         type=int,
         default=15,
         help="Number of trials for each function to optimize."
