@@ -1,3 +1,4 @@
+""" Baseline AutoML Search """
 import argparse
 import os
 from datetime import timedelta
