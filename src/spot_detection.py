@@ -7,16 +7,12 @@ from deepcell_spots.point_metrics import point_F1_score
 from tensorflow.keras.utils import to_categorical
 import numpy as np
 
-try:
-    from tools import BaseSpotDetector
-except ImportError:
-    from src.tools import BaseSpotDetector
 
 
 from src.data_io import ImageData
 
 
-class DeepcellSpotsDetector(BaseSpotDetector):
+class DeepcellSpotsDetector():
     """Abstract base class defining the interface for cell spot detection models.
 
     This class provides a standardized interface that all spot detection model

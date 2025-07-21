@@ -13,11 +13,6 @@ except ImportError:
     from src.data_io import ImageData
 
 try:
-    from tools import BaseSegmenter
-except ImportError:
-    from src.tools import BaseSegmenter
-
-try:
     from utils import set_gpu_device
 except ImportError:
     from src.utils import set_gpu_device
@@ -26,7 +21,7 @@ from cellpose import models, denoise
 from cellpose.io import imread
 from cellpose.metrics import average_precision, mask_ious, boundary_scores, aggregated_jaccard_index, flow_error
 
-class CellposeTool(BaseSegmenter):
+class CellposeTool():
     """
     CellposeTool is a class that provides a simple interface for the Cellpose model. 
     """
