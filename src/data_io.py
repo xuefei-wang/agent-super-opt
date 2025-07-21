@@ -33,10 +33,7 @@ class ImageData:
         
         image_ids (Union[List[int], List[str], None]): Unique identifier(s) for images
             in the batch as a list. If None, auto-generated integer IDs [0,1,2,...] will be created.
-        
-        channel_names (Optional[List[str]]): Names of imaging channels in order matching
-            raw data channels. Length must equal number of channels.
-        
+
         masks (Optional[Union[List[np.ndarray], np.ndarray]]): Ground truth segmentation masks.
             Integer-valued arrays where 0 is background and positive integers are unique 
             object identifiers. Each mask should have shape (H, W, 1) or (H, W).
@@ -50,7 +47,6 @@ class ImageData:
     raw: Union[List[np.ndarray], np.ndarray]
     batch_size: Optional[int] = None
     image_ids: Optional[Union[int, str, List[Union[int, str]]]] = None
-    channel_names: Optional[List[str]] = None
     masks: Optional[Union[List[np.ndarray], np.ndarray]] = None
     predicted_masks: Optional[Union[List[np.ndarray], np.ndarray]] = None
     predicted_classes: Optional[List[Dict[int, str]]] = None
@@ -154,15 +150,6 @@ class ImageData:
 
 
 
-        # Validate channel_names
-        if self.channel_names is not None:
-            # Assuming all images have the same number of channels
-            if len(self.channel_names) != self.raw[0].shape[2]:
-                raise ValueError(
-                    f"Number of channel names ({len(self.channel_names)}) does not match "
-                    f"number of channels ({self.raw[0].shape[2]})"
-                )
-        
         # Validate predicted_classes if provided
         if self.predicted_classes is not None and len(self.predicted_classes) != total_size:
             raise ValueError(
@@ -217,22 +204,9 @@ class ImageData:
             raw=[self.raw[idx]],
             batch_size=1,
             image_ids=[self.image_ids[idx]],
-            channel_names=self.channel_names,
             masks=[self.masks[idx]] if self.masks is not None else None,
             predicted_masks=[self.predicted_masks[idx]] if self.predicted_masks is not None else None,
             predicted_classes=[self.predicted_classes[idx]] if self.predicted_classes is not None else None
-        )
-    
-    def to_numpy(self) -> 'ImageDataNP':
-        """Convert ImageData to ImageDataNP.  Beware, this won't handle datasets 
-        with variable image sizes."""
-        if isinstance(self.spatial_shape, list):
-            raise ValueError("Cannot convert ImageData with variable image sizes to ImageDataNP")
-        
-        return ImageDataNP(
-            raw=np.array(self.raw),
-            masks=np.array(self.masks) if self.masks is not None else None,
-            predicted_masks=np.array(self.predicted_masks) if self.predicted_masks is not None else None,
         )
     
     def __len__(self) -> int:
@@ -243,33 +217,3 @@ class ImageData:
         """Iterate over items in dataset."""
         for i in range(len(self)):
             yield self.get_item(i)
-
-@dataclass
-class ImageDataNP:
-    """stripped down ImageData class for numpy arrays"""
-    raw: np.ndarray
-    masks: Optional[np.ndarray] = None
-    predicted_masks: Optional[np.ndarray] = None
-    predicted_classes: Optional[np.ndarray] = None
-
-    def __post_init__(self):
-        """Convert lists to numpy arrays"""
-        if isinstance(self.raw, list):
-            self.raw = np.array(self.raw)
-        if isinstance(self.masks, list):
-            self.masks = np.array(self.masks)
-        if isinstance(self.predicted_masks, list):
-            self.predicted_masks = np.array(self.predicted_masks)
-
-    def __len__(self) -> int:
-        """Get dataset size."""
-        return self.raw.shape[0]
-    
-    def __getitem__(self, idx: int) -> 'ImageDataNP':
-        """Get item from dataset."""
-        return ImageDataNP(
-            raw=self.raw[idx],
-            masks=self.masks[idx] if self.masks is not None else None,
-            predicted_masks=self.predicted_masks[idx] if self.predicted_masks is not None else None,
-            predicted_classes=self.predicted_classes[idx] if self.predicted_classes is not None else None
-        )

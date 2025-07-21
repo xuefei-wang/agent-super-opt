@@ -230,9 +230,6 @@ def prepare_prompt_pipeline_optimization(
         image_ids (Union[List[int], List[str], None]): Unique identifier(s) for images
             in the batch as a list. If None, auto-generated integer IDs [0,1,2,...] will be created.
         
-        channel_names (Optional[List[str]]): Names of imaging channels in order matching
-            raw data channels. Length must equal number of channels.
-        
         masks (Optional[Union[List[np.ndarray], np.ndarray]]): Ground truth segmentation masks.
             Integer-valued arrays where 0 is background and positive integers are unique 
             object identifiers. Each mask should have shape (H, W, 1) or (H, W).
@@ -242,11 +239,6 @@ def prepare_prompt_pipeline_optimization(
         
         predicted_classes (Optional[List[Dict[int, str]]]): List of mappings from
             object identifiers to predicted classes for each image.
-
-    Functions:
-        to_numpy (self) -> 'ImageDataNP': Converts ImageData to ImageDataNP, which has the same API but uses numpy arrays internally.
-            Better suited for datasets using numpy arrays.
-
     ```
     """
 
