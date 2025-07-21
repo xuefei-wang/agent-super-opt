@@ -57,7 +57,6 @@ You data should be located outside the repo. The data path will be provided in `
    
     ```bash
       python main.py \
-            --output $OUTPUT_DIR \
             --dataset $DATASET_PATH \
             --gpu_id $gpu_id \
             --experiment_name $EXPERIMENT_NAME \ # For example, "cellpose_segmentation"

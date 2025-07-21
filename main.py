@@ -609,7 +609,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-o", "--output",
         type=str,
-        required=True,
+        required=False,
         help="Path to the output folder."
     )
     parser.add_argument(
@@ -753,5 +753,7 @@ if __name__ == "__main__":
         raise ValueError("k and k_word must be set to be equivalent.")
 
     work_dir = os.getcwd()
+    if args.output is None:
+        args.output = work_dir
 
     main(args)
