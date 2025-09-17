@@ -74,7 +74,7 @@ class DeepcellSpotsDetector():
         Evaluate detections against ground truth using the model output.
 
         Parameters:
-            - pred: ndarray with two keys ['classification', 'offset_regression']
+            - pred: ndarray, list of  x and y coordinates of predicted spots per image
             - truth: ndarray, list of x and y coordinates of true spots per image
 
         Returns:
@@ -83,71 +83,10 @@ class DeepcellSpotsDetector():
                 - class_loss: Mean IoU of correctly matched objects
                 - regress_loss: Fraction of predicted objects that match ground truth
         """
-        class_preds = pred['classification']
-        regress_preds = pred['offset_regression']
-
         f1_list = []
-        for idx in range(len(truth)):
-            r_i = regress_preds[idx:idx + 1]
-            c_i = class_preds[idx:idx + 1]
-            all_preds = {"offset_regression": r_i, "classification": c_i}
-            points_list = y_annotations_to_point_list_max(all_preds, threshold=0.98)[0]
-            f1_list.append(point_F1_score(truth[idx], points_list, threshold=1))
-
-        def point_list_to_annotations(points, image_shape, dy=1, dx=1):
-            """ Generate label images used in loss calculation from point labels.
-
-            Args:
-                points (np.array): array of size (N, 2) which contains points in the format [y, x].
-                image_shape (tuple): shape of 2-dimensional image.
-                dy: pixel y width.
-                dx: pixel x width.
-
-            Returns:
-                annotations (dict): Dictionary with two keys, `detections` and `offset`.
-                    - `detections` is array of shape (image_shape,2) with pixels one hot encoding
-                    spot locations.
-                    - `offset` is array of shape (image_shape,2) with pixel values equal to
-                    signed distance to nearest spot in x- and y-directions.
-            """
-
-            contains_point = np.zeros(image_shape)
-            for ind, [y, x] in enumerate(points):
-                nearest_pixel_x_ind = int(round(x / dx))
-                nearest_pixel_y_ind = int(round(y / dy))
-                contains_point[nearest_pixel_y_ind, nearest_pixel_x_ind] = 1
-
-            delta_y, delta_x, _ = subpixel_distance_transform(
-                points, image_shape, dy=1, dx=1)
-            offset = np.stack((delta_y, delta_x), axis=-1)
-
-            one_hot_encoded_cp = to_categorical(contains_point)
-
-            annotations = {'detections': one_hot_encoded_cp, 'offset': offset}
-            return annotations
-
-        batch_class_loss = 0
-        batch_regress_loss = 0
-
-        losses = DotNetLosses()
-
-        for i in range(truth.shape[0]):
-            annotated_truth = point_list_to_annotations(truth[i], image_shape=class_preds.shape[1:3])
-
-            class_pred = class_preds[i]
-            regress_pred = regress_preds[i]
-
-            class_truth = annotated_truth['detections']
-            regress_truth = annotated_truth['offset']
-
-            class_loss = losses.classification_loss(class_truth, class_pred).numpy()
-            regress_loss = losses.regression_loss(regress_truth, regress_pred).numpy()
-
-            batch_class_loss += class_loss
-            batch_regress_loss += regress_loss
+        for p, t in zip(pred, truth):
+            f1_list.append(point_F1_score(p, t, threshold=1))
 
         return {
             "f1_score": np.mean(f1_list),
-            "class_loss": (batch_class_loss / truth.shape[0]),
-            "regress_loss": (batch_regress_loss / truth.shape[0]),
         }

@@ -17,7 +17,7 @@ from autogen.coding.jupyter import (
     JupyterCodeExecutor,
 )
 
-from prompts.task_prompts import TaskPrompts, _PREPROCESSING_FUNCTION_PLACEHOLDER
+from prompts.task_prompts import TaskPrompts, _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER
 from prompts.agent_prompts import sys_prompt_code_writer
 
 from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
@@ -94,7 +94,7 @@ def prepare_notes_shared(my_gpu_id, max_rounds):
 
 
 notes_pipeline_optimization = f"""
-    - THE PROVIDED EVALUATION PIPELINE WORKS OUT OF THE BOX, IF THERE IS AN ERROR IT IS WITH THE PREPROCESSING FUNCTION
+    - THE PROVIDED EVALUATION PIPELINE WORKS OUT OF THE BOX, IF THERE IS AN ERROR IT IS WITH THE PREPROCESSING OR POSTPROCESSING FUNCTION
 
 """
 
@@ -187,6 +187,15 @@ def prepare_prompt_pipeline_optimization(
         output_data = ImageData(raw=processed_images_list, batch_size=images.batch_size)
         return output_data
     ```
+
+    ## Postprocessing Functions Sample Function:
+    ```python
+    # Necessary imports for any function's logic (if any)
+    # All postprocessing function names should be of the form postprocess_preds_i where i enumerates the postprocessing function, beginning at 1
+    # Preprocessing and postprocessing functions should be paired, i.e. preprocess_images_1 with postprocess_preds_1
+    {prompts.get_postprocessing_function_api()}
+    ```
+    
     ## About the dataset: 
     {prompts.dataset_info}
     {baseline_metric}
@@ -460,7 +469,7 @@ def main(args: argparse.Namespace):
                     k=1,
                     k_word=None,
                 ),
-                _PREPROCESSING_FUNCTION_PLACEHOLDER
+                _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
             )
 
             baseline_metric_value = sampling_function(last_n(output_function_bank, n=1)[0])
@@ -487,7 +496,7 @@ def main(args: argparse.Namespace):
             
             executor_instance = TemplatedLocalCommandLineCodeExecutor(
                 template_script_func=prompts.run_pipeline_prompt,
-                placeholder=_PREPROCESSING_FUNCTION_PLACEHOLDER,
+                placeholder=_PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
                 work_dir=work_dir,
                 timeout=300 * 2.5 * args.k
             )

@@ -1,4 +1,4 @@
-from prompts.task_prompts import TaskPrompts, _PREPROCESSING_FUNCTION_PLACEHOLDER
+from prompts.task_prompts import TaskPrompts, _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER
 import textwrap
 import os
 
@@ -18,19 +18,18 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
 
     def get_task_details(self):
         return f"""
-    All of you should work together to write {self.k_word} preprocessing functions that {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance using OpenCV functions (APIs provided).
+    All of you should work together to write {self.k_word} pairs of preprocessing postprocessing functions that {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance. For preprocessing, we provide an API, and you can use any OpenCV functions to implement it; for postprocessing, we provide a sample function that you can modify.
     It might make sense to start the process with small preprocessing functions, and then build up to more complex functions depending on the performance of the previous functions.
 
-    1. Based on previous preprocessing functions and their performance (provided below), suggest {self.k_word} new unique preprocessing functions using OpenCV functions (APIs provided below){self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average.")}. Successful strategies can include improving upon high performing functions (including tuning the parameters of the function), or exploring the image processing space for novel or different image processing approaches. You can feel free to combine OpenCV functions or suggest novel combinations that can lead to improvements, or modify the parameters of the existing extremely successful functions.
-    2. Remember, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged.
-    3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing functions.
-    4. For this task, if all {self.k_word} functions are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
-    5. Do not terminate the conversation until the new preprocessing functions are evaluated and the numerical performance metrics are logged.
-    6. Extremely important: Do not terminate the conversation until each of the {self.k_word} new preprocessing functions are evaluated AND their results are written to the function bank.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest {self.k_word} new unique preprocessing & postprocessing function pairs {self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average.")}.
+    2. For preprocessing, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged. For postprocessing, it is also critical to maintain the output format as the sample function provided.
+    3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing and postprocessing function pairs.
+    4. For this task, if all {self.k_word} function pairs are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
+    5. Do not terminate the conversation until the new functions are evaluated and the numerical performance metrics are logged.
+    6. Extremely important: Do not terminate the conversation until each of the {self.k_word} new function pairs are evaluated AND their results are written to the function bank.
     7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
-    8. Do not write any code outside of the preprocessing functions.
-    9. Do not modify the masks under any circumstances.  
-    10. The preprocessing functions written must return an ImageData object with each image in the batch having the same image resolution (H,W) as the original image.
+    8. Do not write any code outside of the preprocessing and postprocessing functions.
+    9. Do not modify the masks under any circumstances.
     """
 
     def get_pipeline_metrics_info(self):
@@ -91,7 +90,7 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             "seed": str(self.seed),
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
-            "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
             "baseline_metric_value": str(self.baseline_metric_value),
             "advantage_enabled": str(self.advantage_enabled),
             "sample_k": str(self.k),
@@ -109,3 +108,9 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
         return dedented_script.strip()
     
     
+    def get_postprocessing_function_api(self):
+        api_file_path = os.path.join(os.path.dirname(__file__), "cellpose_segmentation_expert_postprocessing.py.txt")
+        with open(api_file_path, 'r') as f:
+            template_content = f.read()
+
+        return textwrap.dedent(template_content)

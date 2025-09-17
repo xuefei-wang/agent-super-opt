@@ -3,7 +3,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Optional
 
-_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
+_PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
 
 @dataclass
 class TaskPrompts:
@@ -41,3 +41,6 @@ class TaskPrompts:
 
     def if_advantage(self, enabled_string, disabled_string=""):
         return enabled_string if self.advantage_enabled else disabled_string
+
+    def get_postprocessing_function_api(self):
+        pass

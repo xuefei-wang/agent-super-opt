@@ -1,4 +1,4 @@
-from prompts.task_prompts import TaskPrompts, _PREPROCESSING_FUNCTION_PLACEHOLDER
+from prompts.task_prompts import TaskPrompts, _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER
 import textwrap
 import os
 
@@ -7,23 +7,26 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
 
     # --- Define these as CLASS attributes ---
     dataset_info = """
-        ```markdown
+    ```markdown
 
-        This is large-scale medical image segmentation dataset covering the 
-        dermoscopy/xray modality. The images have dimensions (H, W, C) = (height, width, channel).
-        ```
+    This is large-scale medical image segmentation dataset covering the 
+    dermoscopy/xray modality. The images have dimensions (H, W, C) = (height, width, channel).
+    ```
     """
 
-    task_details = """
-    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
-    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
-    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
-    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
-    6. Do not terminate the conversation until the new preprocessing function is evaluated.
-    7. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND it must be written to the function bank by calling the write_results function.
-    8. Recall, this is not a stateful kernel, so all functions, imports, etc. must be provided in the script to be executed.
-    """
+    def get_task_details(self):
+        return  f"""
+        All of you should work together to write {self.k_word} preprocessing and postprocessing function pairs to {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance.  For preprocessing, we provide an API, and you can use any OpenCV functions to implement it; for postprocessing, we provide a sample function that you can modify.
+        1. Based on previous preprocessing and postprocessing functions and their performance (provided below), suggest {self.k_word} new unique function pairs using{self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average")}.
+        2. The environment will handle all data loading, evaluation, and logging of the results. Your only job is to write the preprocessing and postprocessing functions.
+        3. Do not terminate the conversation until the new functions are evaluated and the numerical performance metrics are logged.
+        4. For this task, if all {self.k_word} functions are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
+        5. Do not terminate the conversation until the new functions are evaluated and the numerical performance metrics are logged.
+        6. Extremely important: Do not terminate the conversation until each of the {self.k_word} new function pairs are evaluated AND their results are written to the function bank.
+        7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
+        8. Do not write any code outside of the preprocessing and postprocessing functions.
+        9. For preprocessing, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged. For postprocessing, it is also critical to maintain the output format as the sample function provided.
+        """
 
     def get_pipeline_metrics_info(self):
         return f"""
@@ -79,7 +82,7 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
             "checkpoint_path": self.checkpoint_path.replace("\\", "/"),
-            "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
             "sample_k": str(self.k),
             "baseline_metric_value": str(self.baseline_metric_value),
             "advantage_enabled": str(self.advantage_enabled),
@@ -93,3 +96,10 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         # --- FIX: Apply dedent and strip before returning ---
         dedented_script = textwrap.dedent(script_with_config)
         return dedented_script.strip()
+    
+    def get_postprocessing_function_api(self):
+        api_file_path = os.path.join(os.path.dirname(__file__), "medsam_segmentation_expert_postprocessing.py.txt")
+        with open(api_file_path, 'r') as f:
+            template_content = f.read()
+
+        return textwrap.dedent(template_content)
