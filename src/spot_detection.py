@@ -6,7 +6,7 @@ from deepcell_spots.utils.postprocessing_utils import y_annotations_to_point_lis
 from deepcell_spots.point_metrics import point_F1_score
 from tensorflow.keras.utils import to_categorical
 import numpy as np
-
+import tensorflow as tf
 
 
 from src.data_io import ImageData
@@ -59,7 +59,14 @@ class DeepcellSpotsDetector():
         - classification prediction: image array of one-hot encoded classifications
         - regression prediction: image array of regression distance from predicted points
     """
-        app = SpotDetection()
+        model_path = '~/.deepcell/models/SpotDetection-8'
+        model = tf.keras.models.load_model(
+            model_path, custom_objects={
+                'regression_loss': DotNetLosses.regression_loss,
+                'classification_loss': DotNetLosses.classification_loss
+            }
+        )
+        app = SpotDetection(model)
         
         # Disable default preprocessing and postprocessing
         app.preprocessing_fn = None
