@@ -1,4 +1,5 @@
 from typing import Optional
+import os
 from deepcell_spots.applications import SpotDetection
 from deepcell_spots.dotnet_losses import DotNetLosses
 from deepcell_spots.utils.augmentation_utils import subpixel_distance_transform
@@ -59,7 +60,8 @@ class DeepcellSpotsDetector():
         - classification prediction: image array of one-hot encoded classifications
         - regression prediction: image array of regression distance from predicted points
     """
-        model_path = '~/.deepcell/models/SpotDetection-8'
+        home_dir = os.path.expanduser("~")
+        model_path = os.path.join(home_dir, '.deepcell/models/SpotDetection-8')
         model = tf.keras.models.load_model(
             model_path, custom_objects={
                 'regression_loss': DotNetLosses.regression_loss,
