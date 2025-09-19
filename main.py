@@ -420,7 +420,7 @@ def main(args: argparse.Namespace):
 
     # Configuration
     cache_seed = 4 # Cache seed for caching the results
-    num_optim_iter = 20 # Number of optimization iterations
+    num_optim_iter = 40 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation
     checkpoint_path = args.checkpoint_path
     llm_model = "gpt-4.1" # Do not modify this string
