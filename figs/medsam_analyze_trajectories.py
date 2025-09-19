@@ -60,15 +60,6 @@ def find_rolling_highest(json_array: List[Dict], metric_lambda: Callable[[Dict],
         rolling_highest.append(current_highest)
     return rolling_highest
 
-def dump_functions_to_txt(json_array: List[Dict], metric_lambda: Callable[[Dict], float], output_path: str):
-    '''Print preprocessing functions and their metric values to a text file for readability'''
-    with open(output_path, 'w') as file:
-        for obj in json_array:
-            metric_value = metric_lambda(obj)
-            file.write('\n')
-            file.write(f'Value: {metric_value}\n')
-            file.write(obj['preprocessing_function'])
-            file.write('\n')
 
 def get_new_json(json_path):
     with open(json_path, 'r') as file:
@@ -77,7 +68,8 @@ def get_new_json(json_path):
     # Handle json ambiguities
     new_json = []
     for i in range(len(json_array)):
-        data_for_json = {'preprocessing_function': json_array[i]['preprocessing_function']}
+        data_for_json = {'preprocessing_function': json_array[i]['preprocessing_function'],
+                         'postprocessing_function': json_array[i]['postprocessing_function']}
         try:
             dsc_metric = json_array[i]['dsc_metric']['dsc_metric']
         except:
@@ -116,7 +108,7 @@ def get_new_json(json_path):
 def extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_data_path):
     new_json = get_new_json(json_path)
     top_fns = find_top_k(new_json, lambda x: x['dsc_metric'] + x['nsd_metric'], k)  # Top 3
-    print(f"Finished locating the top k = {k} preprocessing functions in the rollout.")
+    print(f"Finished locating the top k = {k} preprocessing & postprocessing functions in the rollout.")
 
     result_entries = []
 
@@ -135,11 +127,14 @@ def extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_
                 masks=spliced_masks,
                 predicted_masks=spliced_masks,
             )
-            fn_str = json_dict['preprocessing_function']
-            preprocessing_fn = convert_string_to_function(fn_str, 'preprocess_images')
+            fn_str_preprocess = json_dict['preprocessing_function']
+            fn_str_postprocess = json_dict['postprocessing_function']
+            preprocessing_fn = convert_string_to_function(fn_str_preprocess, 'preprocess_images')
+            postprocessing_fn = convert_string_to_function(fn_str_postprocess, 'postprocess_preds')
             images = preprocessing_fn(images)
             pred_masks = segmenter.predict(images, spliced_boxes, used_for_baseline=False)
-            segmenter.evaluate(pred_masks, spliced_masks)
+            pred_masks_final = postprocessing_fn(pred_masks)                
+            segmenter.evaluate(pred_masks_final, spliced_masks)
 
         stdout_output = stdout_capture.getvalue()
         agent_dsc, agent_nsd = None, None
@@ -154,7 +149,8 @@ def extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_
 
         entry = {
             "rank": i + 1,
-            "preprocessing_function": fn_str,
+            "preprocessing_function": fn_str_preprocess,
+            "postprocessing_function": fn_str_postprocess,
             "combined_test": combined_test,
             "combined_val": combined_val
         }
@@ -290,7 +286,18 @@ def plot_line_graph(output_path, new_json, combined_metric):
     plt.close()
     print(f"\nSaved line graph to {output_path}")
 
-def main(json_path, k, modality, gpu_id):
+def postprocessing_preds_expert(preds):
+    """
+    Post-process the low-resolution probability predictions to obtain final segmentation masks.
+    """
+    import torch.nn.functional as F
+    upsampled = F.interpolate(preds, size=(512, 512), mode='bilinear', align_corners=False)
+    upsampled = upsampled.squeeze(1)
+    seg = (upsampled > 0.5).int()
+    return seg
+
+    
+def main(json_path, k, modality, gpu_id, val_baseline, test_baseline, test_data_path, checkpoint_path):
     timestamp_path = os.path.dirname(json_path)
     analysis_results_path = os.path.join(timestamp_path, 'analysis_results')
     os.makedirs(analysis_results_path, exist_ok=True)
@@ -299,17 +306,9 @@ def main(json_path, k, modality, gpu_id):
     bar_output_path = os.path.join(analysis_results_path, 'bar_plot.png')
     line_graph_output_path = os.path.join(analysis_results_path, 'line_graph.png')
     scatter_output_path = os.path.join(analysis_results_path, 'scatter_plot.png')
-    test_data_path = os.path.join(_PROJECT_ROOT, f"medsam_data/resized_{modality}_test.pkl")
-    baseline_json = os.path.join(_PROJECT_ROOT, f"scratch/{modality}_baseline.json")
+    
 
-    with open(baseline_json, 'r') as f:
-        json_array = json.load(f)
-        val_baseline = json_array['expert_baseline_val_avg_metric']
-        test_baseline = json_array['expert_baseline_test_avg_metric']
-        print("val_baseline", val_baseline)
-        print("test_baseline", test_baseline)
-
-    segmenter = MedSAMTool(gpu_id=gpu_id, checkpoint_path=os.path.join(_PROJECT_ROOT, "../data/medsam_vit_b.pth"))
+    segmenter = MedSAMTool(gpu_id=gpu_id, checkpoint_path=checkpoint_path)
 
     print("\n\nExtracting top k=10 functions from the 20 chat histories in a timestamp rollout")
     results_k = extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_data_path)
@@ -327,105 +326,119 @@ def main(json_path, k, modality, gpu_id):
     plot_bar_graph(top_1_json_output_path, val_baseline, test_baseline, bar_output_path)
 
 if __name__ == "__main__":
-    outer_folder_path = "../output/no-task-prompt-details/medSAM_segmentation"
-    for i, rollout_timestamp in enumerate(os.listdir(outer_folder_path)):
-        print(f"\nProcessing rollout timestamp: {i + 1}/20")
-        json_bank_path = os.path.join(outer_folder_path, rollout_timestamp, "preprocessing_func_bank.json")
-        main(json_bank_path, k=10, modality="dermoscopy", gpu_id=0)
+    parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
+    parser.add_argument('--checkpoint_path', type=str, required=True, default="", help='Path to the MedSAM checkpoint.')
+    parser.add_argument('--val_data_path', type=str, required=True, default="", help='Path to validation dataset.')
+    parser.add_argument('--test_data_path', type=str, required=True, default="", help='Path to test dataset.')
+    parser.add_argument('--gpu_id', type=int, required=True, default=0, help='GPU ID to use.')
 
-    # ======= get aggregate k functions JSON ======
-    base_dir = "../output/no-task-prompt-details/medSAM_segmentation"
-    timestamps = sorted(os.listdir(base_dir))[:-1]  # exclude the last item which is the `latest` symlink
-    list_of_directories = [os.path.join(base_dir, ts) for ts in timestamps]
+    args = parser.parse_args()
 
-    # per task metric lambda
-    metric_lambda = lambda obj: obj['combined_val']
 
-    # Read all json files in the directories
-    # Let's store them flat, so we have a list of dicts instead of a list of lists
-    def aggregate_top_k_functions(list_of_directories: List[str], metric_lambda: Callable[[Dict], float], k: int = 10) -> List[Dict]:
-        all_results = []
-        for directory in list_of_directories:
-            if not os.path.exists(os.path.join(directory, 'analysis_results', 'top_k_functions_results.json')):
-                os.makedirs(os.path.dirname(os.path.join(directory, 'analysis_results')), exist_ok=True)
-            
-            if not os.path.exists(os.path.join(directory, 'analysis_results')):
-                os.makedirs(os.path.join(directory, 'analysis_results'), exist_ok=True)
+    checkpoint_path = args.checkpoint_path
+    val_data_path = args.val_data_path
+    test_data_path = args.test_data_path
+    gpu_id = args.gpu_id
+                        
 
-            with open(os.path.join(directory, 'analysis_results', 'top_k_functions_results.json'), 'r') as f:
-                obj = json.load(f)
-                for function in obj:
-                    function['source_directory'] = directory.split('/')[-1]
-                    all_results.append(function)
-
-        # Sort the results by the sorting function
-        def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k: int) -> List[Dict]:
-            '''Returns object containing the top k highest metric values from a list of JSON objects.'''
-            sorted_results = sorted(json_array, key=metric_lambda, reverse=True)[:k]
-            # add key "aggregate_rank" to each object
-            for i, result in enumerate(sorted_results):
-                result['aggregate_rank'] = i
-            return sorted_results
-
-        top_k_functions = find_top_k(all_results, metric_lambda, k=10)
-        return top_k_functions
-
-    top_k_functions = aggregate_top_k_functions(list_of_directories, metric_lambda, k=10)
-    output_file_path = '../output/no-task-prompt-details/medSAM_segmentation/top_k_agg_functions.json'
-    if not os.path.exists(os.path.dirname(output_file_path)):
-        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-    with open(output_file_path, 'w') as output_file:
-        json.dump(top_k_functions, output_file, indent=4)
+    segmenter = MedSAMTool(gpu_id=gpu_id, checkpoint_path=checkpoint_path)
 
     
-    # ======= get mean/std plot ======
-    rolling_best_output_filepath = os.path.join(base_dir, 'mean_std_rolling_best.png')
+    
+    imgs, boxes, masks = segmenter.loadData(val_data_path)
+    spliced_imgs = imgs
+    spliced_boxes = boxes
+    spliced_masks = masks
+    images = ImageData(
+        raw=spliced_imgs,
+        batch_size=min(8, len(spliced_imgs)),
+        image_ids=[i for i in range(len(spliced_imgs))],
+        masks=spliced_masks,
+        predicted_masks=spliced_masks,
+    )
+    pred_masks = segmenter.predict(images, spliced_boxes, used_for_baseline=True, is_rgb=True)
+    pred_masks_final = postprocessing_preds_expert(pred_masks)
+    metrics_dict = segmenter.evaluate(pred_masks_final, spliced_masks)
 
-    def analyze_json_files(file_paths):
-        rolling_maximums = []
+    val_baseline = metrics_dict['dsc_metric'] + metrics_dict['nsd_metric']
 
-        for file_path in file_paths:
-            # Load baseline from the first directory
-            with open(os.path.join(file_path, 'preprocessing_func_bank.json'), 'r') as f:
-                curr_iter_list = json.load(f)
+    imgs, boxes, masks = segmenter.loadData(test_data_path)
+    spliced_imgs = imgs
+    spliced_boxes = boxes
+    spliced_masks = masks
+    images = ImageData(
+        raw=spliced_imgs,
+        batch_size=min(8, len(spliced_imgs)),
+        image_ids=[i for i in range(len(spliced_imgs))],
+        masks=spliced_masks,
+        predicted_masks=spliced_masks,
+    )
+    pred_masks = segmenter.predict(images, spliced_boxes, used_for_baseline=True, is_rgb=True)
+    pred_masks_final = postprocessing_preds_expert(pred_masks)
+    metrics_dict = segmenter.evaluate(pred_masks_final, spliced_masks)
+
+    test_baseline = metrics_dict['dsc_metric'] + metrics_dict['nsd_metric']
+
+    metrics_filepath = f"medSAM_segmentation/expert_baseline_performances.json"
+    with open(metrics_filepath, "w") as f:
+        json_output = {
+            "expert_baseline_val_avg_metric": val_baseline,
+            "expert_baseline_test_avg_metric": test_baseline,
+            "expert_baseline_val_avg_dsc": metrics_dict['dsc_metric'],
+            "expert_baseline_val_avg_nsd": metrics_dict['nsd_metric'],
+            "expert_baseline_test_avg_dsc": metrics_dict['dsc_metric'],
+            "expert_baseline_test_avg_nsd": metrics_dict['nsd_metric'],
+        }
+        json.dump(json_output, f)
+
+    outer_folder_path = "medSAM_segmentation"
+    all_expr_folders = os.listdir(outer_folder_path)
+    for i, rollout_timestamp in enumerate(all_expr_folders):
+        if rollout_timestamp.startswith('2025'):
+            print(f"\nProcessing rollout timestamp: {i + 1}/20, {rollout_timestamp}")
+            json_bank_path = os.path.join(outer_folder_path, rollout_timestamp, "preprocessing_func_bank.json")
+            main(json_bank_path, k=10, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)
+
+    # # ======= get aggregate k functions JSON ======
+    # base_dir = "medSAM_segmentation"
+    # timestamps = sorted(os.listdir(base_dir))[:-1]  # exclude the last item which is the `latest` symlink
+    # list_of_directories = [os.path.join(base_dir, ts) for ts in timestamps]
+
+    # # per task metric lambda
+    # metric_lambda = lambda obj: obj['combined_val']
+
+    # # Read all json files in the directories
+    # # Let's store them flat, so we have a list of dicts instead of a list of lists
+    # def aggregate_top_k_functions(list_of_directories: List[str], metric_lambda: Callable[[Dict], float], k: int = 10) -> List[Dict]:
+    #     all_results = []
+    #     for directory in list_of_directories:
+    #         if not os.path.exists(os.path.join(directory, 'analysis_results', 'top_k_functions_results.json')):
+    #             os.makedirs(os.path.dirname(os.path.join(directory, 'analysis_results')), exist_ok=True)
             
-            # Per rollout
-            rolling_max = []
-            current_max = float('-inf')
-            for obj in curr_iter_list:
-                combined_score = obj['overall_metrics']['dsc_metric'] + obj['overall_metrics']['nsd_metric']
-                current_max = max(current_max, combined_score)
-                rolling_max.append(current_max)
-            
-            # All rollouts
-            rolling_maximums.append(rolling_max)
-        
-        # Trim to same length iteration
-        min_len = min(len(lst) for lst in rolling_maximums)
-        trimmed_lists = [lst[:min_len] for lst in rolling_maximums]
+    #         if not os.path.exists(os.path.join(directory, 'analysis_results')):
+    #             os.makedirs(os.path.join(directory, 'analysis_results'), exist_ok=True)
 
-        # Compute mean and standard deviation of rolling maximums at each index
-        trimmed_lists = np.array(trimmed_lists)
-        mean_rolling_max = np.mean(trimmed_lists, axis=0)
-        std_rolling_max = np.std(trimmed_lists, axis=0)
+    #         with open(os.path.join(directory, 'analysis_results', 'top_k_functions_results.json'), 'r') as f:
+    #             obj = json.load(f)
+    #             for function in obj:
+    #                 function['source_directory'] = directory.split('/')[-1]
+    #                 all_results.append(function)
 
-        return mean_rolling_max, std_rolling_max
+    #     # Sort the results by the sorting function
+    #     def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k: int) -> List[Dict]:
+    #         '''Returns object containing the top k highest metric values from a list of JSON objects.'''
+    #         sorted_results = sorted(json_array, key=metric_lambda, reverse=True)[:k]
+    #         # add key "aggregate_rank" to each object
+    #         for i, result in enumerate(sorted_results):
+    #             result['aggregate_rank'] = i
+    #         return sorted_results
 
-    mean, std = analyze_json_files(list_of_directories)
+    #     top_k_functions = find_top_k(all_results, metric_lambda, k=10)
+    #     return top_k_functions
 
-    with open('../data/dermoscopy_baseline_expert.json', 'r') as f:
-        reference_expert_baseline_performances = json.load(f)
-
-    baseline_val = reference_expert_baseline_performances['expert_baseline_val_avg_metric']
-    baseline_test = reference_expert_baseline_performances['expert_baseline_test_avg_metric']
-
-    plt.figure(figsize=(10, 5))
-    plt.plot(mean, label='Mean Rolling Maximum', color='blue')
-    plt.fill_between(range(len(mean)), mean - std, mean + std, color='blue', alpha=0.2, label='Standard Deviation')
-    plt.axhline(y=baseline_val, color='red', linestyle='--', label=f'Baseline Val (Test: {baseline_test:.4f})')
-    plt.title('Mean and Standard Deviation of Rolling Maximum Combined DSC + NSD Sum Scores')
-    plt.xlabel('Iterations')
-    plt.ylabel('DSC + NSD Sum Score')
-    plt.legend()
-    plt.grid()
-    plt.savefig(rolling_best_output_filepath)
+    # top_k_functions = aggregate_top_k_functions(list_of_directories, metric_lambda, k=10)
+    # output_file_path = 'medSAM_segmentation/top_k_agg_functions.json'
+    # if not os.path.exists(os.path.dirname(output_file_path)):
+    #     os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+    # with open(output_file_path, 'w') as output_file:
+    #     json.dump(top_k_functions, output_file, indent=4)

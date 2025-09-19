@@ -26,7 +26,16 @@ if _PROJECT_ROOT not in sys.path:
 from src.spot_detection import DeepcellSpotsDetector
 from src.data_io import ImageData
 
+from skimage.feature import peak_local_max
 
+
+def ensure_3d_image(img):
+    # img can be (H,W) or (H,W,1) or already (H,W,C)
+    if img.ndim == 2:
+        img = np.expand_dims(img, axis=-1)
+    if img.shape[-1] != 1:
+        img = img[..., :1]
+    return img
 
 import os
 # Analyze a agent search trajectory
@@ -65,17 +74,6 @@ def find_rolling_highest(json_array: List[Dict], metric_lambda: Callable[[Dict],
             current_highest = metric_value
         rolling_highest.append(current_highest)
     return rolling_highest
-
-def dump_functions_to_txt(json_array: List[Dict], metric_lambda: Callable[[Dict], float], output_path: str):
-    '''Print preprocessing functions and their metric values to a text file for readability'''
-    with open(output_path, 'w') as file:
-        for obj in json_array:
-            metric_value = metric_lambda(obj)
-            file.write('\n')
-            file.write(f'Value: {metric_value}\n')
-            file.write(obj['preprocessing_function'])
-            file.write('\n')
-
     
 def convert_string_to_function(func_str, func_name):
     # Create a namespace dictionary to store the function
@@ -87,7 +85,35 @@ def convert_string_to_function(func_str, func_name):
     # Return the function object from the namespace
     return namespace[func_name]
 
-    
+def postprocess_preds_expert(preds):
+    """Convert raw prediction to a predicted point list using
+    ``skimage.feature.peak_local_max`` to determine local maxima in classification
+    prediction image, and their corresponding regression values will be used to
+    create a final spot position prediction which will be added to the output spot
+    center coordinates list.
+
+    Args:
+        preds (array): a dictionary of predictions with keys `'classification'` and
+            `'offset_regression'` 
+
+    Returns:
+        array: spot center coordinates of the format [[y0, x0], [y1, x1],...]
+    """
+    import numpy as np
+    from skimage.feature import peak_local_max
+    dot_centers = []
+    for ind in range(np.shape(preds['classification'])[0]):
+        dot_pixel_inds = peak_local_max(preds['classification'][ind, ..., 1],
+                                        min_distance=2,
+                                        threshold_abs=0.98)
+
+        delta_y = preds['offset_regression'][ind, ..., 0]
+        delta_x = preds['offset_regression'][ind, ..., 1]
+        dot_centers.append(np.array(
+            [[y_ind + delta_y[y_ind, x_ind],
+            x_ind + delta_x[y_ind, x_ind]] for y_ind, x_ind in dot_pixel_inds]))
+
+    return dot_centers
 
 def main(json_path: str, data_path: str, output_dir: str, k):
     # Let's save these results into a new subfolder of output_dir
@@ -99,20 +125,22 @@ def main(json_path: str, data_path: str, output_dir: str, k):
         
     # --- Initialize spot detector tool ---
     deepcell_spot_detector = DeepcellSpotsDetector()
-    spots_data = np.load(f"{data_path}", allow_pickle=True)
+    spots_data = np.load(f"{data_path}/val.npz", allow_pickle=True)
 
     # --- Prepare ImageData ---
     batch_size = spots_data['X'].shape[0]
     images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
     pred = deepcell_spot_detector.predict(images)
+    pred_final = postprocess_preds_expert(pred)
 
-    metrics_val = deepcell_spot_detector.evaluate(pred, spots_data['y'])
+    metrics_val = deepcell_spot_detector.evaluate(pred_final, spots_data['y'])
 
 
     # handle json ambiguities
     new_json = []
     for i in range(len(json_array)):
-        data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function']}
+        data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function'], 
+                         'postprocessing_function' : json_array[i]['postprocessing_function']}
         try:
             avg_prec = json_array[i]['f1_score']['f1_score']
         except:
@@ -153,21 +181,26 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     # Now begin the image analysis and attempt to convert string to function
 
     best_preprocessing_function = highest_metric_obj['preprocessing_function']
+    best_postprocessing_function = highest_metric_obj['postprocessing_function']
     best_preprocessing_function = convert_string_to_function(best_preprocessing_function, 'preprocess_images')
+    best_postprocessing_function = convert_string_to_function(best_postprocessing_function, 'postprocess_preds')
 
     # Print a dump of the function to a text file
-    with open(os.path.join(output_dir, 'best_preprocessing_function.txt'), 'w') as file:
+    with open(os.path.join(output_dir, 'best_function.txt'), 'w') as file:
         file.write(highest_metric_obj['preprocessing_function'])
+        file.write('\n\n')
+        file.write(highest_metric_obj['postprocessing_function'])
     
 
     # Baseline on test
-    test_path = os.path.join(os.path.dirname(data_path), 'test.npz')
+    test_path = f'{data_path}/test.npz'
 
     spots_data = np.load(f"{test_path}", allow_pickle=True)
     batch_size = spots_data['X'].shape[0]
     images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
     pred = deepcell_spot_detector.predict(images)
-    metrics_test_baseline = deepcell_spot_detector.evaluate(pred, spots_data['y'])
+    pred_final = postprocess_preds_expert(pred)
+    metrics_test_baseline = deepcell_spot_detector.evaluate(pred_final, spots_data['y'])
 
 
     # Agent on test    
@@ -179,7 +212,8 @@ def main(json_path: str, data_path: str, output_dir: str, k):
 
     best_preprocessed_images = best_preprocessing_function(images)
     pred_test = deepcell_spot_detector.predict(best_preprocessed_images)
-    metrics_test_our_function = deepcell_spot_detector.evaluate(pred_test, spots_data['y'])
+    pred_final_test = best_postprocessing_function(pred_test)
+    metrics_test_our_function = deepcell_spot_detector.evaluate(pred_final_test, spots_data['y'])
 
 
 
@@ -194,11 +228,15 @@ def main(json_path: str, data_path: str, output_dir: str, k):
 
     # Save the best preprocessing function to a text file
     best_preprocessing_function_str = highest_metric_obj['preprocessing_function']
+    best_postprocessing_function_str = highest_metric_obj['postprocessing_function']
     best_preprocessing_function = convert_string_to_function(best_preprocessing_function_str, 'preprocess_images')
+    best_postprocessing_function = convert_string_to_function(best_postprocessing_function_str, 'postprocess_preds')
 
     # Print a dump of the function to a text file
-    with open(os.path.join(output_dir, 'best_preprocessing_function.txt'), 'w') as file:
+    with open(os.path.join(output_dir, 'best_function.txt'), 'w') as file:
         file.write(highest_metric_obj['preprocessing_function'])
+        file.write('\n\n')
+        file.write(highest_metric_obj['postprocessing_function'])
         
     # Save the baseline metrics to a text file
     expert_baseline_performances = {
@@ -223,14 +261,15 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     top_k_functions_str = []
 
     for function_item in top_k_functions:
-        current_function_str = function_item['preprocessing_function']
+        current_function_str = (function_item['preprocessing_function'], function_item['postprocessing_function'])
         current_metrics_val_float = function_item['f1_score']
 
-        if current_function_str == best_preprocessing_function_str: # Compare strings to avoid issues with function object comparison
+        if current_function_str == (best_preprocessing_function_str, best_postprocessing_function_str): # Compare strings to avoid issues with function object comparison
             current_metrics_test_dict = metrics_test_our_function # Use already computed result for the best function
             function_str_to_save = current_function_str
         else:
-            cur_preprocessing_fn_obj = convert_string_to_function(current_function_str, 'preprocess_images')
+            cur_preprocessing_fn_obj = convert_string_to_function(current_function_str[0], 'preprocess_images')
+            cur_postprocessing_fn_obj = convert_string_to_function(current_function_str[1], 'postprocess_preds')
             
             # Ensure fresh ImageData object for each preprocessing
             batch_size = spots_data['X'].shape[0]
@@ -239,7 +278,8 @@ def main(json_path: str, data_path: str, output_dir: str, k):
             cur_preprocessed_images_test = cur_preprocessing_fn_obj(images)
             # Evaluate with non_privileged_segmenter, same as the best agent function
             pred_indiv_test = deepcell_spot_detector.predict(cur_preprocessed_images_test)
-            current_metrics_test_dict = deepcell_spot_detector.evaluate(pred_indiv_test, spots_data['y'])
+            pred_indiv_test_final = cur_postprocessing_fn_obj(pred_indiv_test)
+            current_metrics_test_dict = deepcell_spot_detector.evaluate(pred_indiv_test_final, spots_data['y'])
             function_str_to_save = current_function_str
         
         top_k_functions_results_test.append(current_metrics_test_dict)
@@ -252,13 +292,15 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     top_k_functions_results_output = []
     for i in range(len(top_k_functions)):
         rank = i + 1
-        preprocessing_function_string = top_k_functions_str[i]
+        preprocessing_function_string = top_k_functions_str[i][0]
+        postprocessing_function_string = top_k_functions_str[i][1]
         test_metrics_dict = top_k_functions_results_test[i]
         val_metric_float = top_k_functions_results_val[i]
 
         top_k_functions_results_output.append({
             "rank": rank,
             "preprocessing_function": preprocessing_function_string,
+            "postprocessing_function": postprocessing_function_string,
             "average_f1_test": test_metrics_dict['f1_score'],
             "average_f1_val": val_metric_float
         })
@@ -270,12 +312,21 @@ def main(json_path: str, data_path: str, output_dir: str, k):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
-    parser.add_argument('--json_path', type=str, required=True, help='Path to the JSON file containing the function bank.')
-    parser.add_argument('--data_path', type=str, required=True, help='Path to the data directory.')
-    parser.add_argument('--k', type=int, required=False, default=10, help='Number of top performing functions to evaluate on the test set.')
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        required=True,
+        help="Path to directory that contains the val and test npz files."
+    )
     args = parser.parse_args()
     
-    output_dir = os.path.dirname(args.json_path)
-    json_path = args.json_path
     data_path = args.data_path
-    main(json_path, data_path, output_dir, args.k)
+    
+
+    meta_dir = 'spot_detection'
+    for path in os.listdir(meta_dir):
+        if path.startswith('2025'):
+            json_path = os.path.join(meta_dir, path, 'preprocessing_func_bank.json')
+            print(json_path)
+            output_dir = os.path.dirname(json_path)
+            main(json_path, data_path, output_dir, 10)

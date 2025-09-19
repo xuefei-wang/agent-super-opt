@@ -1,22 +1,9 @@
-def postprocessing_preds(low_res_pred):
+def postprocessing_preds(preds):
     """
     Post-process the low-resolution probability predictions to obtain final segmentation masks.
-    Args:
-        low_res_pred (torch.Tensor): Low-resolution probability predictions of shape (N, 256, 256).
-    Returns:
-        torch.Tensor: Final segmentation masks of shape (N, 512, 512) with binary values (0 or 1).
     """
-    import torch
-    import numpy as np
     import torch.nn.functional as F
-    all_segmentations = []
-    for pred in low_res_pred: 
-        upsampled_pred = F.interpolate(
-                pred,
-                size=(512, 512),
-                mode="bilinear",
-                align_corners=False,
-            )
-        seg = (upsampled_pred > 0.5).astype(np.uint8)
-        all_segmentations.append(seg)
-    return torch.cat(all_segmentations, dim=0)
+    upsampled = F.interpolate(preds, size=(512, 512), mode='bilinear', align_corners=False)
+    upsampled = upsampled.squeeze(1)
+    seg = (upsampled > 0.5).int()
+    return seg

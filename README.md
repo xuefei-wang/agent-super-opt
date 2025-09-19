@@ -77,6 +77,41 @@ This guide provides instructions for replicating the experimental results presen
           --k_word $K_WORD # E.g., "three". The word representation of 'k'.
     ```
 
+4. **Analyze the trajectories**
+
+      Run the following two commands to: 
+      
+      First, analyze trajectories - It will create a `analysis_results` folder under each timestamped result folder, evaluate the functions on test sets and generate plots. This might a while, feel free to parallize the runs if needed.
+
+      Second, aggregates all results into the global function json file and generate a learning curve plot.
+
+      
+      - For Cellpose: 
+            ```
+            python figs/cellpose_analyze_trajectories.py \
+                  --data_path=$DATA_FOLDER
+            python aggregate_results_across_reps.py --task_name cellpose_segmentation
+            ```
+
+      - For Polaris:
+            ```
+            python figs/spot_detection_analyze_trajectories.py \
+                  --checkpoint_path=$CHECKPOINT_FILE \
+                  --val_data_path=$VAL_DATA_FILE \
+                  --test_data_path=$TEST_DATA_FILE \
+                  --gpu_id=$GPU_ID
+            python aggregate_results_across_reps.py --task_name spot_detection.py
+            ```
+
+      - For MedSAM:
+            ```
+            python figs/spot_detection_analyze_trajectories.py \
+                  --data_path=$DATA_FOLDER \ # this should be the folder where val/ and test/ are stored
+                  --gpu_id $GPU_ID
+            python aggregate_results_across_reps.py --task_name spot_detection.py
+            ```
+
+
 ### For Scientists: Applying to Your Own Data 🧪
 
 This guide explains how to adapt this agentic framework to optimize a data preprocessing workflow for your specific scientific tool and dataset.
@@ -136,7 +171,6 @@ The `main.py` script is the entry point for running the framework and offers a v
   * `--k_word`: The English word representation of `k` (e.g., `"three"`) (default: `"three"`). This is used for prompt phrasing.
   * `--dataset_size`: A Cellpose-specific argument to determine the size of the validation/test set (default: `100`).
   * `--batch_size`: A Cellpose-specific argument to determine the batch size (default: `16`).
-  * `--auto_analyze_trajectory`: A boolean flag. If set, the learning trajectory will be automatically analyzed.
 
 
 ## 📦 Output Structure

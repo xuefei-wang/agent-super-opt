@@ -88,6 +88,8 @@ def prepare_notes_shared(my_gpu_id, max_rounds):
     - Use GPU {my_gpu_id} for running the pipeline, set `cuda: {my_gpu_id}` in the code snippet!
     - You only have {max_rounds} rounds of each conversation to optimize the preprocessing function.
     - Don't suggest trying larger models as the model size is fixed.
+    - Import all necessary libraries inside the function. If you need to write a helper function, write it inside the main preprocessing or postprocessing function as well.
+    - No need to import ImageData, it has already been imported.
     """
     return notes_shared
 
@@ -173,12 +175,10 @@ def prepare_prompt_pipeline_optimization(
     
     ## Preprocessing Functions API:
     ```python
-    # Necessary imports for any function's logic (if any)
-    # Do not import ImageData in the functions, it is already imported in the environment
     # All preprocessing function names should be of the form preprocess_images_i where i enumerates the preprocessing function, beginning at 1
-    import cv2 as cv
+    # Import all necessary libraries inside the function, except for ImageData, which has already been imported.
     def preprocess_images_i(images: ImageData) -> ImageData:
-        # Function logic here
+        import cv2 as cv
         processed_images_list = []
         for img_array in images.raw:
             img_array = np.copy(img_array) # Make a copy of the image array to avoid modifying the original
@@ -193,6 +193,7 @@ def prepare_prompt_pipeline_optimization(
     # Necessary imports for any function's logic (if any)
     # All postprocessing function names should be of the form postprocess_preds_i where i enumerates the postprocessing function, beginning at 1
     # Preprocessing and postprocessing functions should be paired, i.e. preprocess_images_1 with postprocess_preds_1
+    # Import all necessary libraries inside the function.
     {prompts.get_postprocessing_function_api()}
     ```
     
@@ -566,43 +567,6 @@ def main(args: argparse.Namespace):
         
     update_run_info_with_end_timestamp(run_output_dir)
 
-    if args.auto_analyze_trajectory:
-        if args.experiment_name == "cellpose_segmentation":
-            clear_gpu_memory()
-            import subprocess
-            env = os.environ.copy()
-            env['CUDA_VISIBLE_DEVICES'] = str(args.gpu_id)
-
-            # Pass the parent directory (without val_set/)
-            if args.dataset.endswith('/val_set/'):
-                parent_path = args.dataset[:-8]  # Remove '/val_set/'
-            elif args.dataset.endswith('/val_set'):
-                parent_path = args.dataset[:-7]  # Remove '/val_set'
-            else:
-                parent_path = os.path.dirname(args.dataset)
-
-            # Convert paths to absolute
-            script_path = os.path.abspath("figs/cellpose_analyze_trajectories.py")
-            json_path = os.path.abspath(output_function_bank)
-            parent_path_abs = os.path.abspath(parent_path)
-
-            print(f"DEBUG: Passing parent path to analysis: {parent_path_abs}")
-
-            subprocess.run([
-                "python", script_path,
-                "--json_path", json_path,
-                "--data_path", parent_path_abs,
-                "--device", "0",
-                "--dataset_size", str(args.dataset_size),
-                "--batch_size", str(args.batch_size)
-            ], env=env)
-        elif args.experiment_name == "medSAM_segmentation":
-            modality = "dermoscopy" if args.dataset.startswith("dermoscopy") else "xray"
-            os.system(f"python figs/medsam_analyze_trajectories.py --json_path {output_function_bank} --modality {modality} --gpu_id {args.gpu_id}")
-            pass
-        elif args.experiment_name == "spot_detection":
-            os.system(f"python figs/spot_detection_analyze_trajectories.py --json_path {output_function_bank} --data_path {args.dataset}")
-            pass
 
 if __name__ == "__main__":
 
@@ -748,11 +712,6 @@ if __name__ == "__main__":
         help="Batch size for Cellpose."
     )
 
-    parser.add_argument(
-        "--auto_analyze_trajectory",
-        action="store_true",
-        help="Whether to automativally analyze the learning trajectory."
-    )
 
 
     args = parser.parse_args()
