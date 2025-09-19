@@ -523,6 +523,35 @@ def main(args: argparse.Namespace):
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             cache=cache)
+            
+            # Run an optimization study per iteration
+            if args.optimize and args.optimize_per_iteration:
+                print("Starting hyperparameter search")
+                for result in last_n(output_function_bank, n=1):
+                    func_to_optimize = result['preprocessing_function']
+                    
+                    _, params, _ = transform_opencv_constants(func_to_optimize)
+                    
+                    if len(params) == 0:
+                        # Skip if no parameters to optimize
+                        print("No parameters to optimize, skipping hyperparameter search")
+                    else:
+                        optimize_time = time.time()
+                        opt_code, opt_metrics = hyperparameter_search(
+                            func_to_optimize,
+                            args.experiment_name,
+                            args.dataset,
+                            os.path.join(os.path.dirname(output_function_bank), "pipeline_run.log"),
+                            args.n_optimize_trials,
+                            **kwargs_for_prompt_class
+                        )
+                        optimize_time = time.time() - optimize_time
+                        save_to_function_bank(
+                            opt_code,
+                            opt_metrics,
+                            output_function_bank,
+                            optimize_time,
+                        )
             save_chat_history(chat_result.chat_history, i, run_output_dir)
 
         # Run an optimization study on the best 3 function in the function bank
@@ -706,6 +735,11 @@ if __name__ == "__main__":
         type=int,
         default=15,
         help="Number of trials for each function to optimize."
+    )
+    
+    parser.add_argument(
+        '--optimize_per_iteration',
+        action='store_true'
     )
         
 
