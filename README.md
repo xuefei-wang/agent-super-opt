@@ -100,7 +100,7 @@ This guide provides instructions for replicating the experimental results presen
                   --val_data_path=$VAL_DATA_FILE \
                   --test_data_path=$TEST_DATA_FILE \
                   --gpu_id=$GPU_ID
-            python aggregate_results_across_reps.py --task_name spot_detection.py
+            python aggregate_results_across_reps.py --task_name spot_detection
             ```
 
       - For MedSAM:
@@ -108,7 +108,7 @@ This guide provides instructions for replicating the experimental results presen
             python figs/spot_detection_analyze_trajectories.py \
                   --data_path=$DATA_FOLDER \ # this should be the folder where val/ and test/ are stored
                   --gpu_id $GPU_ID
-            python aggregate_results_across_reps.py --task_name spot_detection.py
+            python aggregate_results_across_reps.py --task_name medSAM_segmentation
             ```
 
 
