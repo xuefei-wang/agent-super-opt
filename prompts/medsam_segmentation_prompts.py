@@ -16,7 +16,8 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
 
     def get_task_details(self):
         return  f"""
-        All of you should work together to write {self.k_word} preprocessing and postprocessing function pairs to {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance.  For preprocessing, we provide an API, and you can use any OpenCV functions to implement it; for postprocessing, we provide a sample function that you can modify.
+        All of you should work together to write {self.k_word} preprocessing and postprocessing function pairs to {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance.
+        We provided APIs for both preprocessing and postprocessing functions. You should use functions from useful libraries including but not limited to OpenCV, NumPy, Skimage, Scipy, to implement novel and effective functions.
         1. Based on previous preprocessing and postprocessing functions and their performance (provided below), suggest {self.k_word} new unique function pairs using{self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average")}.
         2. The environment will handle all data loading, evaluation, and logging of the results. Your only job is to write the preprocessing and postprocessing functions.
         3. Do not terminate the conversation until the new functions are evaluated and the numerical performance metrics are logged.
@@ -98,7 +99,7 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         return dedented_script.strip()
     
     def get_postprocessing_function_api(self):
-        api_file_path = os.path.join(os.path.dirname(__file__), "medsam_segmentation_expert_postprocessing.py.txt")
+        api_file_path = os.path.join(os.path.dirname(__file__), "medsam_segmentation_expert_postprocessing_skeleton.py.txt")
         with open(api_file_path, 'r') as f:
             template_content = f.read()
 

@@ -11,14 +11,14 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
     This is a three-channel image dataset for biological segmentation, consisting of images from different experiments and different settings - a heterogenous dataset of many different object types.  There is a particular focus on biological microscopy images, including cells, sometimes with nuclei labeled in a separate channel.
     The images have pixel values between 0 and 1 and are in float32 format.
     Channel[0] is the nucleus, channel[1] is the cytoplasm, and channel[2] is empty, however not all images have any nuclear data.
-    Our goal is to improve the segmentation performance of the neural network by using OpenCV preprocessing functions to improve the quality of the images for downstream segmentation.
     We want to increase the neural network tool's performance at segmenting cells with cell perimeter masks that have high Intersection over Union (IoU) with the ground truth masks.
     The cell images have dimensions (B, L, W, C) = (batch, length, width, channel). To correctly predict masks, the images provided must be in the format of standard ImageData object and must maintain channel dimensions and ordering.   
     """
 
     def get_task_details(self):
         return f"""
-    All of you should work together to write {self.k_word} pairs of preprocessing postprocessing functions that {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance. For preprocessing, we provide an API, and you can use any OpenCV functions to implement it; for postprocessing, we provide a sample function that you can modify.
+    All of you should work together to write {self.k_word} pairs of preprocessing postprocessing functions that {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance. 
+    We provided APIs for both preprocessing and postprocessing functions. You should use functions from useful libraries including but not limited to OpenCV, NumPy, Skimage, Scipy, to implement novel and effective functions.
     It might make sense to start the process with small preprocessing functions, and then build up to more complex functions depending on the performance of the previous functions.
 
     1. Based on previous preprocessing functions and their performance (provided below), suggest {self.k_word} new unique preprocessing & postprocessing function pairs {self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average.")}.
@@ -109,7 +109,7 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
     
     
     def get_postprocessing_function_api(self):
-        api_file_path = os.path.join(os.path.dirname(__file__), "cellpose_segmentation_expert_postprocessing.py.txt")
+        api_file_path = os.path.join(os.path.dirname(__file__), "cellpose_segmentation_expert_postprocessing_skeleton.py.txt")
         with open(api_file_path, 'r') as f:
             template_content = f.read()
 

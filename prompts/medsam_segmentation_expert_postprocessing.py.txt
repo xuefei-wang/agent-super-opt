@@ -1,4 +1,4 @@
-def postprocessing_preds(preds):
+def postprocess_preds(preds):
     """
     Post-process the low-resolution probability predictions to obtain final segmentation masks.
     """

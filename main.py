@@ -171,8 +171,9 @@ def prepare_prompt_pipeline_optimization(
         baseline_metric: str = ""):
 
     prompt_pipeline_optimization = f"""
+    Your task is to implement {prompts.k_word} pairs of preprocessing and postprocessing functions to optimize the performance of a machine learning pipeline on a specific dataset.
+    We provided the APIs for both preprocessing and postprocessing functions. You should use functions from useful libraries including but not limited to OpenCV, NumPy, Skimage, Scipy, to implement novel and effective functions.
 
-    
     ## Preprocessing Functions API:
     ```python
     # All preprocessing function names should be of the form preprocess_images_i where i enumerates the preprocessing function, beginning at 1
@@ -188,7 +189,7 @@ def prepare_prompt_pipeline_optimization(
         return output_data
     ```
 
-    ## Postprocessing Functions Sample Function:
+    ## Postprocessing Functions API:
     ```python
     # Necessary imports for any function's logic (if any)
     # All postprocessing function names should be of the form postprocess_preds_i where i enumerates the postprocessing function, beginning at 1
@@ -210,7 +211,7 @@ def prepare_prompt_pipeline_optimization(
     ## Function bank sample:
     {function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations)}
 
-    ## OpenCV Function APIs:
+    ## Useful primitive functions API that can be used in the preprocessing and postprocessing functions:
     {opencv_APIs}
 
     ## Additional Notes:
@@ -420,7 +421,7 @@ def main(args: argparse.Namespace):
 
     # Configuration
     cache_seed = 4 # Cache seed for caching the results
-    num_optim_iter = 40 # Number of optimization iterations
+    num_optim_iter = 1 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation
     checkpoint_path = args.checkpoint_path
     llm_model = "gpt-4.1" # Do not modify this string
@@ -462,29 +463,33 @@ def main(args: argparse.Namespace):
 
         # Run baseline and insert to function bank first
         baseline_metric = ""
-        if args.warm_start or args.enable_advantage:
-            warm_start(
-                baseline_function_path,
-                prompt_class(
-                    **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}},
-                    k=1,
-                    k_word=None,
-                ),
-                _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
-            )
 
-            baseline_metric_value = sampling_function(last_n(output_function_bank, n=1)[0])
-            kwargs_for_prompt_class["baseline_metric_value"] = baseline_metric_value
+        if args.warm_start:
+            raise NotImplementedError("Warm start is currently disabled.")
+        
+        # if args.warm_start or args.enable_advantage:
+        #     warm_start(
+        #         baseline_function_path,
+        #         prompt_class(
+        #             **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}},
+        #             k=1,
+        #             k_word=None,
+        #         ),
+        #         _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
+        #     )
 
-        if args.warm_start and args.metric_only:
-            # Get baseline metric and reset function bank
-            if args.experiment_name == "cellpose_segmentation":
-                baseline_metric = "Expert average precision score: "
-            elif args.experiment_name == "medSAM_segmentation":
-                baseline_metric = "Expert DSC + NSD score: "
-            elif args.experiment_name == "spot_detection":
-                baseline_metric = "Expert F1 score: "
-            baseline_metric += str(baseline_metric_value)
+        #     baseline_metric_value = sampling_function(last_n(output_function_bank, n=1)[0])
+        #     kwargs_for_prompt_class["baseline_metric_value"] = baseline_metric_value
+
+        # if args.warm_start and args.metric_only:
+        #     # Get baseline metric and reset function bank
+        #     if args.experiment_name == "cellpose_segmentation":
+        #         baseline_metric = "Expert average precision score: "
+        #     elif args.experiment_name == "medSAM_segmentation":
+        #         baseline_metric = "Expert DSC + NSD score: "
+        #     elif args.experiment_name == "spot_detection":
+        #         baseline_metric = "Expert F1 score: "
+        #     baseline_metric += str(baseline_metric_value)
 
         if (args.enable_advantage and not args.warm_start) or (args.warm_start and args.metrics_only):
             with open(output_function_bank, "w") as file:
@@ -537,32 +542,33 @@ def main(args: argparse.Namespace):
 
         # Run an optimization study on the best 3 function in the function bank
         if args.hyper_optimize:
-            print("Starting hyperparameter search")
-            for result in top_n(output_function_bank, sorting_function=sampling_function, n=args.n_hyper_optimize):
-                func_to_optimize = result['preprocessing_function']
+            raise NotImplementedError("Hyperparameter optimization is currently disabled.")
+            # print("Starting hyperparameter search")
+            # for result in top_n(output_function_bank, sorting_function=sampling_function, n=args.n_hyper_optimize):
+            #     func_to_optimize = result['preprocessing_function']
                 
-                _, params, _ = transform_opencv_constants(func_to_optimize)
+            #     _, params, _ = transform_opencv_constants(func_to_optimize)
                 
-                if len(params) == 0:
-                    # Skip if no parameters to optimize
-                    print("No parameters to optimize, skipping hyperparameter search")
-                else:
-                    optimize_time = time.time()
-                    opt_code, opt_metrics = hyperparameter_search(
-                        func_to_optimize,
-                        args.experiment_name,
-                        args.dataset,
-                        os.path.join(os.path.dirname(output_function_bank), "pipeline_run.log"),
-                        args.n_hyper_optimize_trials,
-                        **kwargs_for_prompt_class
-                    )
-                    optimize_time = time.time() - optimize_time
-                    save_to_function_bank(
-                        opt_code,
-                        opt_metrics,
-                        output_function_bank,
-                        optimize_time,
-                    )
+            #     if len(params) == 0:
+            #         # Skip if no parameters to optimize
+            #         print("No parameters to optimize, skipping hyperparameter search")
+            #     else:
+            #         optimize_time = time.time()
+            #         opt_code, opt_metrics = hyperparameter_search(
+            #             func_to_optimize,
+            #             args.experiment_name,
+            #             args.dataset,
+            #             os.path.join(os.path.dirname(output_function_bank), "pipeline_run.log"),
+            #             args.n_hyper_optimize_trials,
+            #             **kwargs_for_prompt_class
+            #         )
+            #         optimize_time = time.time() - optimize_time
+            #         save_to_function_bank(
+            #             opt_code,
+            #             opt_metrics,
+            #             output_function_bank,
+            #             optimize_time,
+            #         )
                 
         
     update_run_info_with_end_timestamp(run_output_dir)
