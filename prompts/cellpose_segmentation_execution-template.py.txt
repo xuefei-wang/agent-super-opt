@@ -283,7 +283,7 @@ try:
         logger.info("Saving successful results to function bank...")
         # Access the code string variable injected by the executor
         generated_code_str = globals().get("_GENERATED_CODE_STRING", None)
-        pattern = r'(^\s*def\s+preprocess_images_\d+.*?)(?=\n^\s*def|\Z)'
+        pattern = r'(^(?P<indent>\s*)def\s+preprocess_images_\d+.*?)(?=\n(?P=indent)def\s|\Z)'
         all_function_chunks = re.findall(
             pattern,
             generated_code_str,
@@ -293,12 +293,12 @@ try:
             re.sub(
                 r'^(\s*def\s+)preprocess_images_\d+(\s*\()',
                 r'\1preprocess_images\2',
-                chunk.strip(),
+                chunk[0].strip(),
                 flags=re.MULTILINE
             )
             for chunk in all_function_chunks
         ]
-        pattern = r'(^\s*def\s+postprocess_preds_\d+.*?)(?=\n^\s*def|\Z)'
+        pattern = r'(^(?P<indent>\s*)def\s+postprocess_preds_\d+.*?)(?=\n(?P=indent)def\s|\Z)'
         all_function_chunks = re.findall(
             pattern,
             generated_code_str,
@@ -308,7 +308,7 @@ try:
             re.sub(
                 r'^(\s*def\s+)postprocess_preds_\d+(\s*\()',
                 r'\1postprocess_preds\2',
-                chunk.strip(),
+                chunk[0].strip(),
                 flags=re.MULTILINE
             )
             for chunk in all_function_chunks
