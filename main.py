@@ -191,7 +191,6 @@ def prepare_prompt_pipeline_optimization(
 
     ## Postprocessing Functions API:
     ```python
-    # Necessary imports for any function's logic (if any)
     # All postprocessing function names should be of the form postprocess_preds_i where i enumerates the postprocessing function, beginning at 1
     # Preprocessing and postprocessing functions should be paired, i.e. preprocess_images_1 with postprocess_preds_1
     # Import all necessary libraries inside the function.
