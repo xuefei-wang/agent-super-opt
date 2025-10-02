@@ -25,6 +25,9 @@ BATCH_SIZE = {batch_size}
 SEED = {seed}
 script_start_time = time.time()
 
+# Define the sampling function (metric extraction function)
+{sampling_function_code}
+
 # --- Parameterized AutoML Preprocessing & Postprocessing Function Definition ---
 # This placeholder will be replaced by the executor
 {_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER}
@@ -135,7 +138,7 @@ try:
             set_gpu_device(kwargs.get('gpu_id'))
 
             detector = DeepcellSpotsDetector()
-            spots_data = np.load(f"{data_path}", allow_pickle=True)
+            spots_data = np.load(f"{{data_path}}", allow_pickle=True)
 
             batch_size = spots_data['X'].shape[0]
             images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
@@ -145,7 +148,7 @@ try:
             final_pred = postprocess_func(pred)
             metrics = detector.evaluate(final_pred, spots_data['y'])
 
-            return metrics
+            return {{'overall_metrics': metrics}}
 
         elif task == "cellpose_segmentation":
             from src.cellpose_segmentation import CellposeTool
@@ -163,7 +166,7 @@ try:
                                    image_ids=image_sources, masks=gt_masks, predicted_masks=final_pred)
             overall_metrics = segmenter.evaluateDisaggregated(new_images)
 
-            return overall_metrics
+            return {{'overall_metrics': overall_metrics}}
 
         elif task == "medSAM_segmentation":
             from src.medsam_segmentation import MedSAMTool
@@ -184,7 +187,7 @@ try:
 
             overall_metrics = segmenter.evaluate(final_pred, images.masks)
 
-            return overall_metrics
+            return {{'overall_metrics': overall_metrics}}
 
 
     def create_function_from_string(func_str: str, fn_name: str, module_name: str = "dynamic_module"):
@@ -204,6 +207,9 @@ try:
         return getattr(module, fn_name)
 
 
+    # Store full metrics for each trial
+    trial_metrics_storage = {{}}
+
     # --- Optuna Objective Function ---
     def objective(trial_obj):
         """Optimize both preprocessing and postprocessing functions"""
@@ -216,27 +222,25 @@ try:
             postprocess_func = create_function_from_string(current_postprocess_str, f'postprocess_preds_{{current_fn_idx + 1}}', f'dynamic_postprocess_{{current_fn_idx}}')
 
             # Run evaluation pipeline
-            kwargs = {
+            kwargs = {{
                 'gpu_id': GPU_ID,
                 'checkpoint_path': CHECKPOINT_PATH,
                 'dataset_size': DATASET_SIZE,
                 'batch_size': BATCH_SIZE
-            }
+            }}
 
             metrics = evaluate_pipeline(preprocess_func, postprocess_func, EXPERIMENT_NAME, DATASET_PATH, **kwargs)
 
-            # Return the appropriate metric based on experiment type
-            if EXPERIMENT_NAME == "spot_detection":
-                return metrics.get('f1_score', 0.0)
-            elif EXPERIMENT_NAME == "cellpose_segmentation":
-                return metrics.get('average_precision', 0.0)
-            elif EXPERIMENT_NAME == "medSAM_segmentation":
-                return metrics.get('dsc_metric', 0.0)
-            else:
-                return 0.0
+            # Store full metrics for this trial
+            trial_metrics_storage[trial_obj.number] = metrics
+
+            # Use sampling function to extract the optimization metric
+            optimization_score = sampling_function(metrics)
+
+            return optimization_score
 
         except Exception as e:
-            logger.error(f"Error in objective: {e}")
+            logger.error(f"Error in objective: {{e}}")
             logger.exception(e)
             return 0.0
 
@@ -258,10 +262,10 @@ try:
 
 
     # --- Main Optimization ---
-    logger.info(f"Starting Optuna optimization for {N_FNS} function pairs with {N_TRIALS} trials")
+    logger.info(f"Starting Optuna optimization for {{N_FNS}} function pairs with {{N_TRIALS}} trials")
 
     # Set random seeds
-    logger.info(f"Setting random seeds using integer seed: {SEED}")
+    logger.info(f"Setting random seeds using integer seed: {{SEED}}")
     np.random.seed(SEED)
     torch.manual_seed(SEED)
     if torch.cuda.is_available():
@@ -345,22 +349,14 @@ try:
         optimized_postprocessing_functions.append(optimized_postprocess)
         optimized_best_parameters.append(best_trial.params)
 
-        # Create metrics dictionary based on experiment type
-        if EXPERIMENT_NAME == "spot_detection":
-            metrics_dict = {"f1_score": best_trial.value}
-        elif EXPERIMENT_NAME == "cellpose_segmentation":
-            metrics_dict = {"average_precision": best_trial.value}
-        elif EXPERIMENT_NAME == "medSAM_segmentation":
-            metrics_dict = {"dsc_metric": best_trial.value}
-        else:
-            metrics_dict = {"score": best_trial.value}
-
-        optimized_metrics.append(metrics_dict)
+        # Retrieve full metrics for the best trial
+        best_metrics = trial_metrics_storage.get(best_trial.number, {{}})
+        optimized_metrics.append(best_metrics)
 
     # --- Save Results ---
     if optimized_metrics:
         logger.info("Saving optimized results to function bank...")
-        results_to_save = {
+        results_to_save = {{
             'preprocessing_function': optimized_preprocessing_functions,
             'postprocessing_function': optimized_postprocessing_functions,
             'overall_metrics': optimized_metrics,
@@ -374,14 +370,14 @@ try:
             'n_trials': [N_TRIALS] * N_FNS,
             'error': [None] * N_FNS,
             'traceback': [None] * N_FNS
-        }
+        }}
         save_results_to_json(function_bank_path, results_to_save)
-        logger.info(f"Successfully saved {N_FNS} optimized function pairs to function bank")
+        logger.info(f"Successfully saved {{N_FNS}} optimized function pairs to function bank")
     else:
         logger.warning("No metrics were generated. Not saving to bank.")
 
 except Exception as e:
-    pipeline_error = f"Error during AutoML pipeline execution: {str(e)}"
+    pipeline_error = f"Error during AutoML pipeline execution: {{str(e)}}"
     pipeline_traceback = traceback.format_exc()
     logger.error(f"!!! ERROR during AutoML pipeline execution:")
     logger.exception(e)

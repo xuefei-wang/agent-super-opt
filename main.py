@@ -593,6 +593,10 @@ def main(args: argparse.Namespace):
                     print("WARNING: Function bank is empty, cannot run AutoML optimization")
                 else:
                     # Create Optuna executor with the AutoML execution template
+                    # Create a string representation of the sampling function
+                    import inspect
+                    sampling_func_str = inspect.getsource(sampling_function).strip()
+
                     def run_automl_template():
                         with open("prompts/automl_execution_template.py.txt", "r") as f:
                             template = f.read()
@@ -609,6 +613,7 @@ def main(args: argparse.Namespace):
                             dataset_size=args.dataset_size,
                             batch_size=args.batch_size,
                             seed=args.random_seed,
+                            sampling_function_code=sampling_func_str,
                             _AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER=_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER
                         )
                         return formatted_template
