@@ -1,0 +1,390 @@
+import optuna
+import numpy as np
+import torch
+import cv2 as cv
+import logging
+import json
+import time
+import os
+import types
+import re
+import traceback
+from src.data_io import ImageData
+
+# --- Configuration ---
+function_bank_path = r"{function_bank_path}"
+N_TRIALS = {n_trials}
+N_FNS = {n_fns}
+STUDY_NAME = "automl_optimization"
+EXPERIMENT_NAME = "{experiment_name}"
+DATASET_PATH = r"{dataset_path}"
+GPU_ID = {gpu_id}
+CHECKPOINT_PATH = r"{checkpoint_path}"
+DATASET_SIZE = {dataset_size}
+BATCH_SIZE = {batch_size}
+SEED = {seed}
+script_start_time = time.time()
+
+# --- Parameterized AutoML Preprocessing & Postprocessing Function Definition ---
+# This placeholder will be replaced by the executor
+{_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER}
+# --- End of Generated Code ---
+
+
+# --- Saving Function Definition ---
+def save_results_to_json(file_path, results_dict):
+    '''Appends results dictionary to the JSON file specified.'''
+    print(f"(Saver) Attempting to save results to: {file_path}")
+    results_dict['timestamp'] = results_dict.get('timestamp', time.time())
+    try:
+        output_dir = os.path.dirname(file_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+            print(f"(Saver) Created directory: {output_dir}")
+        try:
+            if not os.path.exists(file_path):
+                 print(f"(Saver) Warning: JSON file '{file_path}' not found. Creating empty list.")
+                 existing_data = []
+                 with open(file_path, 'w') as f: json.dump(existing_data, f)
+            with open(file_path, 'r') as f:
+                existing_data = json.load(f)
+            if not isinstance(existing_data, list):
+                 print(f"(Saver) Warning: JSON file '{file_path}' did not contain a list. Re-initializing.")
+                 existing_data = []
+        except (FileNotFoundError, json.JSONDecodeError):
+             print(f"(Saver) Warning: Could not read or decode existing JSON '{file_path}'. Starting new list.")
+             existing_data = []
+        except Exception as read_err:
+             print(f"(Saver) Error reading existing file {file_path}: {read_err}. Starting new list.")
+             existing_data = []
+        results_list = [dict(zip(results_dict.keys(), values)) for values in zip(*results_dict.values())]
+        existing_data.extend(results_list)
+        with open(file_path, 'w') as f:
+            json.dump(existing_data, f, indent=4)
+        print(f"(Saver) Successfully appended results to {file_path}")
+    except Exception as e:
+        print(f"(Saver) !!! ERROR saving results to {file_path}: {e}\\n{traceback.format_exc()}")
+
+
+# --- Setup Logging ---
+logger = None
+log_file_path = os.path.join(os.path.dirname(function_bank_path), "pipeline_run.log")
+output_dir_for_log = os.path.dirname(log_file_path)
+if output_dir_for_log and not os.path.exists(output_dir_for_log):
+     try:
+         os.makedirs(output_dir_for_log, exist_ok=True)
+         print(f"Created log directory: {output_dir_for_log}")
+     except OSError as e:
+         print(f"Warning: Could not create log directory {output_dir_for_log}: {e}")
+         log_file_path = "pipeline_run.log" # Fallback
+
+print(f"Setting up logging to file: {log_file_path}")
+try:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler(log_file_path),
+            logging.StreamHandler()
+        ],
+        force=True
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Logging configured successfully.")
+except Exception as log_e:
+     print(f"Error configuring logging: {log_e}. Using basic print statements.")
+     class PrintLogger:
+         def info(self, msg, *args): print("INFO: " + (msg % args if args else msg))
+         def warning(self, msg, *args): print("WARNING: " + (msg % args if args else msg))
+         def error(self, msg, *args): print("ERROR: " + (msg % args if args else msg))
+         def exception(self, msg, *args): print("EXCEPTION: " + (msg % args if args else msg) + f"\\n{traceback.format_exc()}")
+     logger = PrintLogger()
+
+
+# Check if parameterized functions exist
+preprocess_images_fns = []
+postprocess_preds_fns = []
+
+try:
+    for i in range(N_FNS):
+        if f'preprocess_images_{i + 1}' not in globals() or not callable(globals().get(f'preprocess_images_{i + 1}', None)):
+            err_msg = f"FATAL: preprocess_images_{i + 1} function not defined correctly by generated code."
+            logger.error(err_msg)
+            raise NameError(err_msg)
+        else:
+            preprocess_images_fns.append(globals().get(f'preprocess_images_{i + 1}', None))
+            logger.info(f"preprocess_images_{i + 1} function appears to be defined.")
+
+    for i in range(N_FNS):
+        if f'postprocess_preds_{i + 1}' not in globals() or not callable(globals().get(f'postprocess_preds_{i + 1}', None)):
+            err_msg = f"FATAL: postprocess_preds_{i + 1} function not defined correctly by generated code."
+            logger.error(err_msg)
+            raise NameError(err_msg)
+        else:
+            postprocess_preds_fns.append(globals().get(f'postprocess_preds_{i + 1}', None))
+            logger.info(f"postprocess_preds_{i + 1} function appears to be defined.")
+
+
+    # --- Evaluation Pipeline ---
+    def evaluate_pipeline(preprocess_func: callable, postprocess_func: callable, task: str, data_path: str, **kwargs):
+        """Evaluate a preprocessing and postprocessing function pair"""
+
+        if task == "spot_detection":
+            from src.spot_detection import DeepcellSpotsDetector
+            from src.utils import set_gpu_device
+
+            set_gpu_device(kwargs.get('gpu_id'))
+
+            detector = DeepcellSpotsDetector()
+            spots_data = np.load(f"{data_path}", allow_pickle=True)
+
+            batch_size = spots_data['X'].shape[0]
+            images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
+
+            processed_img = preprocess_func(images)
+            pred = detector.predict(processed_img)
+            final_pred = postprocess_func(pred)
+            metrics = detector.evaluate(final_pred, spots_data['y'])
+
+            return metrics
+
+        elif task == "cellpose_segmentation":
+            from src.cellpose_segmentation import CellposeTool
+
+            segmenter = CellposeTool(model_name="cyto3", device=kwargs.get('gpu_id'))
+            raw_images, gt_masks, image_sources = segmenter.loadCombinedDataset(data_path, kwargs.get('dataset_size'))
+
+            images = ImageData(raw=raw_images, batch_size=kwargs.get('batch_size'), image_ids=image_sources)
+
+            processed_img = preprocess_func(images)
+            pred_masks = segmenter.predict(processed_img, batch_size=images.batch_size)
+            final_pred = postprocess_func(pred_masks)
+
+            new_images = ImageData(raw=raw_images, batch_size=kwargs.get('batch_size'),
+                                   image_ids=image_sources, masks=gt_masks, predicted_masks=final_pred)
+            overall_metrics = segmenter.evaluateDisaggregated(new_images)
+
+            return overall_metrics
+
+        elif task == "medSAM_segmentation":
+            from src.medsam_segmentation import MedSAMTool
+
+            segmenter = MedSAMTool(gpu_id=kwargs.get('gpu_id'), checkpoint_path=kwargs.get('checkpoint_path'))
+            raw_images, boxes, masks = segmenter.loadData(data_path)
+
+            batch_size = 8
+            images = ImageData(raw=raw_images,
+                        batch_size=batch_size,
+                        image_ids=[i for i in range(len(raw_images))],
+                        masks=masks,
+                        predicted_masks=masks)
+
+            processed_img = preprocess_func(images)
+            pred_masks = segmenter.predict(processed_img, boxes, used_for_baseline=False)
+            final_pred = postprocess_func(pred_masks)
+
+            overall_metrics = segmenter.evaluate(final_pred, images.masks)
+
+            return overall_metrics
+
+
+    def create_function_from_string(func_str: str, fn_name: str, module_name: str = "dynamic_module"):
+        """Create a callable function from string with trial object access"""
+        module = types.ModuleType(module_name)
+
+        # Add necessary imports to the module
+        module.trial = trial  # Make trial accessible
+        module.cv = cv
+        module.np = np
+        module.ImageData = ImageData
+
+        # Execute the function definition in the module
+        exec(func_str, module.__dict__)
+
+        # Get the function
+        return getattr(module, fn_name)
+
+
+    # --- Optuna Objective Function ---
+    def objective(trial_obj):
+        """Optimize both preprocessing and postprocessing functions"""
+        global trial
+        trial = trial_obj
+
+        try:
+            # Create the functions with trial access
+            preprocess_func = create_function_from_string(current_preprocess_str, f'preprocess_images_{current_fn_idx + 1}', f'dynamic_preprocess_{current_fn_idx}')
+            postprocess_func = create_function_from_string(current_postprocess_str, f'postprocess_preds_{current_fn_idx + 1}', f'dynamic_postprocess_{current_fn_idx}')
+
+            # Run evaluation pipeline
+            kwargs = {
+                'gpu_id': GPU_ID,
+                'checkpoint_path': CHECKPOINT_PATH,
+                'dataset_size': DATASET_SIZE,
+                'batch_size': BATCH_SIZE
+            }
+
+            metrics = evaluate_pipeline(preprocess_func, postprocess_func, EXPERIMENT_NAME, DATASET_PATH, **kwargs)
+
+            # Return the appropriate metric based on experiment type
+            if EXPERIMENT_NAME == "spot_detection":
+                return metrics.get('f1_score', 0.0)
+            elif EXPERIMENT_NAME == "cellpose_segmentation":
+                return metrics.get('average_precision', 0.0)
+            elif EXPERIMENT_NAME == "medSAM_segmentation":
+                return metrics.get('dsc_metric', 0.0)
+            else:
+                return 0.0
+
+        except Exception as e:
+            logger.error(f"Error in objective: {e}")
+            logger.exception(e)
+            return 0.0
+
+
+    def inject_best_parameters(function_code, best_params):
+        """Replace trial.suggest_* calls with optimal parameter values"""
+        optimized_code = function_code
+
+        for param_name, param_value in best_params.items():
+            # Replace trial.suggest_* calls with actual values
+            pattern = rf"trial\.suggest_\w+\(['\"]?{param_name}['\"]?[^)]*\)"
+            if isinstance(param_value, str):
+                replacement = f"'{param_value}'"
+            else:
+                replacement = str(param_value)
+            optimized_code = re.sub(pattern, replacement, optimized_code)
+
+        return optimized_code
+
+
+    # --- Main Optimization ---
+    logger.info(f"Starting Optuna optimization for {N_FNS} function pairs with {N_TRIALS} trials")
+
+    # Set random seeds
+    logger.info(f"Setting random seeds using integer seed: {SEED}")
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(SEED)
+
+    # Run optimization for each function pair
+    optimized_metrics = []
+    optimized_preprocessing_functions = []
+    optimized_postprocessing_functions = []
+    optimized_best_parameters = []
+    optimized_optimization_times = []
+
+    # Access the code string variable injected by the executor
+    generated_code_str = globals().get("_GENERATED_CODE_STRING", "")
+
+    for fn_idx in range(N_FNS):
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Optimizing function pair {fn_idx + 1}/{N_FNS}")
+        logger.info(f"{'='*60}")
+
+        optimization_start = time.time()
+
+        # Extract the specific preprocessing and postprocessing functions for this index
+        preprocess_pattern = rf'(^(?P<indent>\s*)def\s+preprocess_images_{fn_idx + 1}.*?)(?=\n(?P=indent)def\s|\Z)'
+        preprocess_match = re.findall(preprocess_pattern, generated_code_str, flags=re.MULTILINE | re.DOTALL)
+
+        postprocess_pattern = rf'(^(?P<indent>\s*)def\s+postprocess_preds_{fn_idx + 1}.*?)(?=\n(?P=indent)def\s|\Z)'
+        postprocess_match = re.findall(postprocess_pattern, generated_code_str, flags=re.MULTILINE | re.DOTALL)
+
+        if not preprocess_match:
+            logger.error(f"Could not find preprocess_images_{fn_idx + 1} in generated code")
+            continue
+
+        if not postprocess_match:
+            logger.error(f"Could not find postprocess_preds_{fn_idx + 1} in generated code")
+            continue
+
+        # Store the parameterized functions for this iteration (as global so objective can access them)
+        current_fn_idx = fn_idx
+        current_preprocess_str = preprocess_match[0][0].strip()
+        current_postprocess_str = postprocess_match[0][0].strip()
+
+        # Create Optuna study
+        study = optuna.create_study(
+            direction="maximize",
+            study_name=f"{STUDY_NAME}_{fn_idx + 1}",
+            sampler=optuna.samplers.TPESampler(seed=SEED + fn_idx)
+        )
+
+        # Run optimization
+        study.optimize(objective, n_trials=N_TRIALS)
+
+        # Get best trial results
+        best_trial = study.best_trial
+        logger.info(f"Function pair {fn_idx + 1} - Best trial: {best_trial.number}")
+        logger.info(f"Function pair {fn_idx + 1} - Best value: {best_trial.value}")
+        logger.info(f"Function pair {fn_idx + 1} - Best parameters: {best_trial.params}")
+
+        optimization_time = time.time() - optimization_start
+        optimized_optimization_times.append(optimization_time)
+
+        # Inject best parameters into functions
+        optimized_preprocess = inject_best_parameters(current_preprocess_str, best_trial.params)
+        optimized_postprocess = inject_best_parameters(current_postprocess_str, best_trial.params)
+
+        # Rename functions to standard names (remove _1, _2, etc.)
+        optimized_preprocess = re.sub(
+            r'^(\s*def\s+)preprocess_images_\d+(\s*\()',
+            r'\1preprocess_images\2',
+            optimized_preprocess,
+            flags=re.MULTILINE
+        )
+        optimized_postprocess = re.sub(
+            r'^(\s*def\s+)postprocess_preds_\d+(\s*\()',
+            r'\1postprocess_preds\2',
+            optimized_postprocess,
+            flags=re.MULTILINE
+        )
+
+        optimized_preprocessing_functions.append(optimized_preprocess)
+        optimized_postprocessing_functions.append(optimized_postprocess)
+        optimized_best_parameters.append(best_trial.params)
+
+        # Create metrics dictionary based on experiment type
+        if EXPERIMENT_NAME == "spot_detection":
+            metrics_dict = {"f1_score": best_trial.value}
+        elif EXPERIMENT_NAME == "cellpose_segmentation":
+            metrics_dict = {"average_precision": best_trial.value}
+        elif EXPERIMENT_NAME == "medSAM_segmentation":
+            metrics_dict = {"dsc_metric": best_trial.value}
+        else:
+            metrics_dict = {"score": best_trial.value}
+
+        optimized_metrics.append(metrics_dict)
+
+    # --- Save Results ---
+    if optimized_metrics:
+        logger.info("Saving optimized results to function bank...")
+        results_to_save = {
+            'preprocessing_function': optimized_preprocessing_functions,
+            'postprocessing_function': optimized_postprocessing_functions,
+            'overall_metrics': optimized_metrics,
+            'seed': [SEED] * N_FNS,
+            'timestamp': [script_start_time] * N_FNS,
+            'gpu_id': [GPU_ID] * N_FNS,
+            'timestamp_finish': [time.time()] * N_FNS,
+            'optimization_time': optimized_optimization_times,
+            'best_parameters': optimized_best_parameters,
+            'optuna_optimized': [True] * N_FNS,
+            'n_trials': [N_TRIALS] * N_FNS,
+            'error': [None] * N_FNS,
+            'traceback': [None] * N_FNS
+        }
+        save_results_to_json(function_bank_path, results_to_save)
+        logger.info(f"Successfully saved {N_FNS} optimized function pairs to function bank")
+    else:
+        logger.warning("No metrics were generated. Not saving to bank.")
+
+except Exception as e:
+    pipeline_error = f"Error during AutoML pipeline execution: {str(e)}"
+    pipeline_traceback = traceback.format_exc()
+    logger.error(f"!!! ERROR during AutoML pipeline execution:")
+    logger.exception(e)
+    exit(1)
+
+logger.info("--- AutoML Optimization Finished ---")
