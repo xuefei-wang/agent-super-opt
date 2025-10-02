@@ -34,36 +34,36 @@ script_start_time = time.time()
 # --- Saving Function Definition ---
 def save_results_to_json(file_path, results_dict):
     '''Appends results dictionary to the JSON file specified.'''
-    print(f"(Saver) Attempting to save results to: {file_path}")
+    print(f"(Saver) Attempting to save results to: {{file_path}}")
     results_dict['timestamp'] = results_dict.get('timestamp', time.time())
     try:
         output_dir = os.path.dirname(file_path)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
-            print(f"(Saver) Created directory: {output_dir}")
+            print(f"(Saver) Created directory: {{output_dir}}")
         try:
             if not os.path.exists(file_path):
-                 print(f"(Saver) Warning: JSON file '{file_path}' not found. Creating empty list.")
+                 print(f"(Saver) Warning: JSON file '{{file_path}}' not found. Creating empty list.")
                  existing_data = []
                  with open(file_path, 'w') as f: json.dump(existing_data, f)
             with open(file_path, 'r') as f:
                 existing_data = json.load(f)
             if not isinstance(existing_data, list):
-                 print(f"(Saver) Warning: JSON file '{file_path}' did not contain a list. Re-initializing.")
+                 print(f"(Saver) Warning: JSON file '{{file_path}}' did not contain a list. Re-initializing.")
                  existing_data = []
         except (FileNotFoundError, json.JSONDecodeError):
-             print(f"(Saver) Warning: Could not read or decode existing JSON '{file_path}'. Starting new list.")
+             print(f"(Saver) Warning: Could not read or decode existing JSON '{{file_path}}'. Starting new list.")
              existing_data = []
         except Exception as read_err:
-             print(f"(Saver) Error reading existing file {file_path}: {read_err}. Starting new list.")
+             print(f"(Saver) Error reading existing file {{file_path}}: {{read_err}}. Starting new list.")
              existing_data = []
         results_list = [dict(zip(results_dict.keys(), values)) for values in zip(*results_dict.values())]
         existing_data.extend(results_list)
         with open(file_path, 'w') as f:
             json.dump(existing_data, f, indent=4)
-        print(f"(Saver) Successfully appended results to {file_path}")
+        print(f"(Saver) Successfully appended results to {{file_path}}")
     except Exception as e:
-        print(f"(Saver) !!! ERROR saving results to {file_path}: {e}\\n{traceback.format_exc()}")
+        print(f"(Saver) !!! ERROR saving results to {{file_path}}: {{e}}\\n{{traceback.format_exc()}}")
 
 
 # --- Setup Logging ---
@@ -73,12 +73,12 @@ output_dir_for_log = os.path.dirname(log_file_path)
 if output_dir_for_log and not os.path.exists(output_dir_for_log):
      try:
          os.makedirs(output_dir_for_log, exist_ok=True)
-         print(f"Created log directory: {output_dir_for_log}")
+         print(f"Created log directory: {{output_dir_for_log}}")
      except OSError as e:
-         print(f"Warning: Could not create log directory {output_dir_for_log}: {e}")
+         print(f"Warning: Could not create log directory {{output_dir_for_log}}: {{e}}")
          log_file_path = "pipeline_run.log" # Fallback
 
-print(f"Setting up logging to file: {log_file_path}")
+print(f"Setting up logging to file: {{log_file_path}}")
 try:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s",
@@ -91,12 +91,12 @@ try:
     logger = logging.getLogger(__name__)
     logger.info("Logging configured successfully.")
 except Exception as log_e:
-     print(f"Error configuring logging: {log_e}. Using basic print statements.")
+     print(f"Error configuring logging: {{log_e}}. Using basic print statements.")
      class PrintLogger:
          def info(self, msg, *args): print("INFO: " + (msg % args if args else msg))
          def warning(self, msg, *args): print("WARNING: " + (msg % args if args else msg))
          def error(self, msg, *args): print("ERROR: " + (msg % args if args else msg))
-         def exception(self, msg, *args): print("EXCEPTION: " + (msg % args if args else msg) + f"\\n{traceback.format_exc()}")
+         def exception(self, msg, *args): print("EXCEPTION: " + (msg % args if args else msg) + f"\\n{{traceback.format_exc()}}")
      logger = PrintLogger()
 
 
@@ -106,22 +106,22 @@ postprocess_preds_fns = []
 
 try:
     for i in range(N_FNS):
-        if f'preprocess_images_{i + 1}' not in globals() or not callable(globals().get(f'preprocess_images_{i + 1}', None)):
-            err_msg = f"FATAL: preprocess_images_{i + 1} function not defined correctly by generated code."
+        if f'preprocess_images_{{i + 1}}' not in globals() or not callable(globals().get(f'preprocess_images_{{i + 1}}', None)):
+            err_msg = f"FATAL: preprocess_images_{{i + 1}} function not defined correctly by generated code."
             logger.error(err_msg)
             raise NameError(err_msg)
         else:
-            preprocess_images_fns.append(globals().get(f'preprocess_images_{i + 1}', None))
-            logger.info(f"preprocess_images_{i + 1} function appears to be defined.")
+            preprocess_images_fns.append(globals().get(f'preprocess_images_{{i + 1}}', None))
+            logger.info(f"preprocess_images_{{i + 1}} function appears to be defined.")
 
     for i in range(N_FNS):
-        if f'postprocess_preds_{i + 1}' not in globals() or not callable(globals().get(f'postprocess_preds_{i + 1}', None)):
-            err_msg = f"FATAL: postprocess_preds_{i + 1} function not defined correctly by generated code."
+        if f'postprocess_preds_{{i + 1}}' not in globals() or not callable(globals().get(f'postprocess_preds_{{i + 1}}', None)):
+            err_msg = f"FATAL: postprocess_preds_{{i + 1}} function not defined correctly by generated code."
             logger.error(err_msg)
             raise NameError(err_msg)
         else:
-            postprocess_preds_fns.append(globals().get(f'postprocess_preds_{i + 1}', None))
-            logger.info(f"postprocess_preds_{i + 1} function appears to be defined.")
+            postprocess_preds_fns.append(globals().get(f'postprocess_preds_{{i + 1}}', None))
+            logger.info(f"postprocess_preds_{{i + 1}} function appears to be defined.")
 
 
     # --- Evaluation Pipeline ---
@@ -212,8 +212,8 @@ try:
 
         try:
             # Create the functions with trial access
-            preprocess_func = create_function_from_string(current_preprocess_str, f'preprocess_images_{current_fn_idx + 1}', f'dynamic_preprocess_{current_fn_idx}')
-            postprocess_func = create_function_from_string(current_postprocess_str, f'postprocess_preds_{current_fn_idx + 1}', f'dynamic_postprocess_{current_fn_idx}')
+            preprocess_func = create_function_from_string(current_preprocess_str, f'preprocess_images_{{current_fn_idx + 1}}', f'dynamic_preprocess_{{current_fn_idx}}')
+            postprocess_func = create_function_from_string(current_postprocess_str, f'postprocess_preds_{{current_fn_idx + 1}}', f'dynamic_postprocess_{{current_fn_idx}}')
 
             # Run evaluation pipeline
             kwargs = {
@@ -247,9 +247,9 @@ try:
 
         for param_name, param_value in best_params.items():
             # Replace trial.suggest_* calls with actual values
-            pattern = rf"trial\.suggest_\w+\(['\"]?{param_name}['\"]?[^)]*\)"
+            pattern = rf"trial\.suggest_\w+\(['\"]?{{param_name}}['\"]?[^)]*\)"
             if isinstance(param_value, str):
-                replacement = f"'{param_value}'"
+                replacement = f"'{{param_value}}'"
             else:
                 replacement = str(param_value)
             optimized_code = re.sub(pattern, replacement, optimized_code)
@@ -278,25 +278,25 @@ try:
     generated_code_str = globals().get("_GENERATED_CODE_STRING", "")
 
     for fn_idx in range(N_FNS):
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Optimizing function pair {fn_idx + 1}/{N_FNS}")
-        logger.info(f"{'='*60}")
+        logger.info(f"\n{{'='*60}}")
+        logger.info(f"Optimizing function pair {{fn_idx + 1}}/{{N_FNS}}")
+        logger.info(f"{{'='*60}}")
 
         optimization_start = time.time()
 
         # Extract the specific preprocessing and postprocessing functions for this index
-        preprocess_pattern = rf'(^(?P<indent>\s*)def\s+preprocess_images_{fn_idx + 1}.*?)(?=\n(?P=indent)def\s|\Z)'
+        preprocess_pattern = rf'(^(?P<indent>\s*)def\s+preprocess_images_{{fn_idx + 1}}.*?)(?=\n(?P=indent)def\s|\Z)'
         preprocess_match = re.findall(preprocess_pattern, generated_code_str, flags=re.MULTILINE | re.DOTALL)
 
-        postprocess_pattern = rf'(^(?P<indent>\s*)def\s+postprocess_preds_{fn_idx + 1}.*?)(?=\n(?P=indent)def\s|\Z)'
+        postprocess_pattern = rf'(^(?P<indent>\s*)def\s+postprocess_preds_{{fn_idx + 1}}.*?)(?=\n(?P=indent)def\s|\Z)'
         postprocess_match = re.findall(postprocess_pattern, generated_code_str, flags=re.MULTILINE | re.DOTALL)
 
         if not preprocess_match:
-            logger.error(f"Could not find preprocess_images_{fn_idx + 1} in generated code")
+            logger.error(f"Could not find preprocess_images_{{fn_idx + 1}} in generated code")
             continue
 
         if not postprocess_match:
-            logger.error(f"Could not find postprocess_preds_{fn_idx + 1} in generated code")
+            logger.error(f"Could not find postprocess_preds_{{fn_idx + 1}} in generated code")
             continue
 
         # Store the parameterized functions for this iteration (as global so objective can access them)
@@ -307,7 +307,7 @@ try:
         # Create Optuna study
         study = optuna.create_study(
             direction="maximize",
-            study_name=f"{STUDY_NAME}_{fn_idx + 1}",
+            study_name=f"{{STUDY_NAME}}_{{fn_idx + 1}}",
             sampler=optuna.samplers.TPESampler(seed=SEED + fn_idx)
         )
 
@@ -316,9 +316,9 @@ try:
 
         # Get best trial results
         best_trial = study.best_trial
-        logger.info(f"Function pair {fn_idx + 1} - Best trial: {best_trial.number}")
-        logger.info(f"Function pair {fn_idx + 1} - Best value: {best_trial.value}")
-        logger.info(f"Function pair {fn_idx + 1} - Best parameters: {best_trial.params}")
+        logger.info(f"Function pair {{fn_idx + 1}} - Best trial: {{best_trial.number}}")
+        logger.info(f"Function pair {{fn_idx + 1}} - Best value: {{best_trial.value}}")
+        logger.info(f"Function pair {{fn_idx + 1}} - Best parameters: {{best_trial.params}}")
 
         optimization_time = time.time() - optimization_start
         optimized_optimization_times.append(optimization_time)
