@@ -535,6 +535,100 @@ def main(args: argparse.Namespace):
             with open(output_function_bank, "w") as file:
                 json.dump([], file)
 
+        # Define AutoML optimization function
+        def run_automl_optimization(iteration_num):
+            """Run AutoML hyperparameter optimization"""
+            print(f"Starting AutoML hyperparameter optimization at iteration {iteration_num}")
+
+            try:
+                # Check if function bank has any functions
+                with open(output_function_bank, 'r') as f:
+                    function_bank = json.load(f)
+
+                if len(function_bank) == 0:
+                    print("WARNING: Function bank is empty, cannot run AutoML optimization")
+                    return
+
+                # Create Optuna executor with the AutoML execution template
+                # Create a string representation of the sampling function
+                import inspect
+                sampling_func_str = inspect.getsource(sampling_function).strip()
+
+                def run_automl_template():
+                    with open("prompts/automl_execution_template.py.txt", "r") as f:
+                        template = f.read()
+
+                    # Fill in the template placeholders
+                    formatted_template = template.format(
+                        function_bank_path=output_function_bank,
+                        n_trials=args.n_hyper_optimize_trials,
+                        n_fns=args.n_hyper_optimize,
+                        experiment_name=args.experiment_name,
+                        dataset_path=args.dataset,
+                        gpu_id=args.gpu_id,
+                        checkpoint_path=args.checkpoint_path or "",
+                        dataset_size=args.dataset_size,
+                        batch_size=args.batch_size,
+                        seed=args.random_seed,
+                        sampling_function_code=sampling_func_str,
+                        _AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER=_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER
+                    )
+                    return formatted_template
+
+                optuna_executor_instance = TemplatedLocalCommandLineCodeExecutor(
+                    template_script_func=run_automl_template,
+                    placeholder=_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER,
+                    work_dir=work_dir,
+                    timeout=300 * 2.5 * args.n_hyper_optimize * args.n_hyper_optimize_trials
+                )
+
+                # Set up AutoML agents
+                automl_agent, optuna_executor_agent, automl_state_transition = set_up_automl_agents(
+                    optuna_executor_instance, llm_model, args.n_hyper_optimize
+                )
+
+                # Create AutoML group chat
+                automl_group_chat = GroupChat(
+                    agents=[automl_agent, optuna_executor_agent],
+                    messages=[],
+                    max_round=max_round,
+                    send_introductions=True,
+                    speaker_selection_method=automl_state_transition,
+                )
+
+                # Initialize AutoML group chat manager
+                automl_group_chat_manager = GroupChatManager(
+                    groupchat=automl_group_chat,
+                    llm_config={
+                        "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
+                    },
+                    is_termination_msg=lambda msg: (
+                        "TERMINATE" in msg["content"] if msg["content"] else False
+                    ),
+                )
+
+                # Prepare AutoML prompt
+                automl_prompt = prepare_automl_prompt(output_function_bank, n_functions=args.n_hyper_optimize, sorting_function=sampling_function)
+
+                # Run AutoML optimization
+                automl_chat_result = automl_agent.initiate_chat(
+                    automl_group_chat_manager,
+                    message=automl_prompt,
+                    summary_method=None,
+                    cache=cache
+                )
+
+                # Save AutoML chat history
+                automl_output_file = os.path.join(run_output_dir, f"automl_chat_history_iter_{iteration_num}.txt")
+                with open(automl_output_file, "w") as automl_file:
+                    for message in automl_chat_result.chat_history:
+                        automl_file.write(f"{message['name']}: {message['content']}\n\n")
+
+            except Exception as e:
+                print(f"ERROR: AutoML optimization failed at iteration {iteration_num}: {e}")
+                import traceback
+                traceback.print_exc()
+
         for i in range(num_optim_iter):
 
             kwargs_for_prompt_class["seed"] = seed_list[i]
@@ -575,104 +669,15 @@ def main(args: argparse.Namespace):
 
 
             prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)}"
-            
+
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, run_output_dir)
 
-        # Run AutoML optimization study on the best functions in the function bank
-        if args.hyper_optimize:
-            print("Starting AutoML hyperparameter optimization")
+            # Run AutoML optimization at specified intervals
+            if args.hyper_optimize and (i + 1) % args.hyper_optimize_interval == 0:
+                run_automl_optimization(i)
 
-            try:
-                # Check if function bank has any functions
-                with open(output_function_bank, 'r') as f:
-                    function_bank = json.load(f)
-
-                if len(function_bank) == 0:
-                    print("WARNING: Function bank is empty, cannot run AutoML optimization")
-                else:
-                    # Create Optuna executor with the AutoML execution template
-                    # Create a string representation of the sampling function
-                    import inspect
-                    sampling_func_str = inspect.getsource(sampling_function).strip()
-
-                    def run_automl_template():
-                        with open("prompts/automl_execution_template.py.txt", "r") as f:
-                            template = f.read()
-
-                        # Fill in the template placeholders
-                        formatted_template = template.format(
-                            function_bank_path=output_function_bank,
-                            n_trials=args.n_hyper_optimize_trials,
-                            n_fns=args.n_hyper_optimize,
-                            experiment_name=args.experiment_name,
-                            dataset_path=args.dataset,
-                            gpu_id=args.gpu_id,
-                            checkpoint_path=args.checkpoint_path or "",
-                            dataset_size=args.dataset_size,
-                            batch_size=args.batch_size,
-                            seed=args.random_seed,
-                            sampling_function_code=sampling_func_str,
-                            _AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER=_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER
-                        )
-                        return formatted_template
-
-                    optuna_executor_instance = TemplatedLocalCommandLineCodeExecutor(
-                        template_script_func=run_automl_template,
-                        placeholder=_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER,
-                        work_dir=work_dir,
-                        timeout=300 * 2.5 * args.n_hyper_optimize * args.n_hyper_optimize_trials
-                    )
-
-                    # Set up AutoML agents
-                    automl_agent, optuna_executor_agent, automl_state_transition = set_up_automl_agents(
-                        optuna_executor_instance, llm_model, args.n_hyper_optimize
-                    )
-
-                    # Create AutoML group chat
-                    automl_group_chat = GroupChat(
-                        agents=[automl_agent, optuna_executor_agent],
-                        messages=[],
-                        max_round=max_round,
-                        send_introductions=True,
-                        speaker_selection_method=automl_state_transition,
-                    )
-
-                    # Initialize AutoML group chat manager
-                    automl_group_chat_manager = GroupChatManager(
-                        groupchat=automl_group_chat,
-                        llm_config={
-                            "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
-                        },
-                        is_termination_msg=lambda msg: (
-                            "TERMINATE" in msg["content"] if msg["content"] else False
-                        ),
-                    )
-
-                    # Prepare AutoML prompt
-                    automl_prompt = prepare_automl_prompt(output_function_bank, n_functions=args.n_hyper_optimize, sorting_function=sampling_function)
-
-                    # Run AutoML optimization
-                    automl_chat_result = automl_agent.initiate_chat(
-                        automl_group_chat_manager,
-                        message=automl_prompt,
-                        summary_method=None,
-                        cache=cache
-                    )
-
-                    # Save AutoML chat history
-                    automl_output_file = os.path.join(run_output_dir, "automl_chat_history.txt")
-                    with open(automl_output_file, "w") as automl_file:
-                        for message in automl_chat_result.chat_history:
-                            automl_file.write(f"{message['name']}: {message['content']}\n\n")
-
-            except Exception as e:
-                print(f"ERROR: AutoML optimization failed: {e}")
-                import traceback
-                traceback.print_exc()
-
-        
     update_run_info_with_end_timestamp(run_output_dir)
 
 
@@ -788,7 +793,14 @@ if __name__ == "__main__":
         default=15,
         help="Number of trials for each function to optimize."
     )
-        
+
+    parser.add_argument(
+        '--hyper_optimize_interval',
+        type=int,
+        default=5,
+        help="Run hyperparameter optimization every N iterations (default: 5)."
+    )
+
 
     parser.add_argument(
         "--k",

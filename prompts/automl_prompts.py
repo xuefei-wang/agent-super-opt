@@ -93,8 +93,8 @@ Your task is to create {n_functions} Optuna-optimized function pairs from the be
    - Entry {n_functions} → create `preprocess_images_{n_functions}` and `postprocess_preds_{n_functions}`
 5. For each function, identify numeric parameters that can be optimized (constants, thresholds, kernel sizes, etc.)
 6. Replace hardcoded numeric values with Optuna trial.suggest_* calls
-7. Ensure each parameter has a unique name with function index prefix (e.g., `f1_kernel_size`, `f2_threshold`)
-8. Use appropriate parameter ranges and distributions
+7. Ensure each parameter has a unique name with function index prefix (e.g., `f1_preprocess_kernel_size`, `f2_postprocess_threshold`)
+8. Use appropriate parameter ranges and distributions which are reasonable for the specific parameter being optimized
 9. Maintain the exact same function signatures and algorithmic behavior
 
 ## CRITICAL: Output Format Requirements:
@@ -104,11 +104,12 @@ Your task is to create {n_functions} Optuna-optimized function pairs from the be
 - After all function definitions, in the SAME markdown block include a `default_params` dictionary with the original parameter values:
   ```python
   default_params = {{
-      "1": {{"f1_param1": value1, "f1_param2": value2}},
-      "2": {{"f2_param1": value1, "f2_param2": value2}},
+      "1": {{"f1_preprocess_param1": value1, "f1_preprocess_param2": value2, "f1_postprocess_param1": value3}},
+      "2": {{"f2_preprocess_param1": value1, "f2_postprocess_param1": value2}},
       ...
   }}
   ```
+  Note: Each index's dictionary should contain parameters from BOTH the preprocessing and postprocessing functions for that pair
 - Do NOT output tuples, pairs, or any other data structures besides function definitions and the default_params dictionary
 
 ## Parameter Guidelines:
@@ -117,7 +118,7 @@ Your task is to create {n_functions} Optuna-optimized function pairs from the be
 - **Iterations**: Integer values, typically 1-10
 - **Scaling factors**: Float values, typically 0.5-2.0
 - **Blur parameters**: Float values for sigma, int values for kernel size
-- **Parameter names must include function index**: e.g., `f1_kernel_size`, `f2_threshold`, etc.
+- **Parameter names must include function index**: e.g., `f1_preprocess_kernel_size`, `f2_postprocess_threshold`, etc.
 
 ## Expected Output:
 Generate exactly {n_functions} complete function pairs (preprocessing + postprocessing) that:
