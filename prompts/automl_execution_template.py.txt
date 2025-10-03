@@ -15,6 +15,7 @@ from src.data_io import ImageData
 function_bank_path = r"{function_bank_path}"
 N_TRIALS = {n_trials}
 N_FNS = {n_fns}
+SOURCE_INDICES = {source_indices}
 STUDY_NAME = "automl_optimization"
 EXPERIMENT_NAME = "{experiment_name}"
 DATASET_PATH = r"{dataset_path}"
@@ -389,6 +390,7 @@ try:
             'optimization_time': optimized_optimization_times,
             'best_parameters': optimized_best_parameters,
             'automl_optimized': [True] * N_FNS,
+            'automl_source_index': SOURCE_INDICES,
             'n_trials': [N_TRIALS] * N_FNS,
             'error': [None] * N_FNS,
             'traceback': [None] * N_FNS

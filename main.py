@@ -585,6 +585,7 @@ def main(args: argparse.Namespace):
                         function_bank_path=output_function_bank,
                         n_trials=args.n_hyper_optimize_trials,
                         n_fns=len(top_function_entries),
+                        source_indices=source_function_indices,
                         experiment_name=args.experiment_name,
                         dataset_path=args.dataset,
                         gpu_id=args.gpu_id,
@@ -652,11 +653,9 @@ def main(args: argparse.Namespace):
                     current_function_bank = json.load(f)
 
                 # Mark source functions as superseded using their indices
-                superseded_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
                 for idx in source_function_indices:
                     if idx < len(current_function_bank):
                         current_function_bank[idx]['automl_superseded'] = True
-                        current_function_bank[idx]['automl_superseded_timestamp'] = superseded_timestamp
 
                 # Write updated function bank back
                 with open(output_function_bank, 'w') as f:
@@ -830,7 +829,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--n_hyper_optimize_trials',
         type=int,
-        default=15,
+        default=25,
         help="Number of trials for each function to optimize."
     )
 
