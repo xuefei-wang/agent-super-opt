@@ -536,7 +536,7 @@ def main(args: argparse.Namespace):
                 json.dump([], file)
 
         # Define AutoML optimization function
-        def run_automl_optimization(iteration_num):
+        def run_automl_optimization(iteration_num, seed):
             """Run AutoML hyperparameter optimization"""
             print(f"Starting AutoML hyperparameter optimization at iteration {iteration_num}")
 
@@ -569,7 +569,7 @@ def main(args: argparse.Namespace):
                         checkpoint_path=args.checkpoint_path or "",
                         dataset_size=args.dataset_size,
                         batch_size=args.batch_size,
-                        seed=args.random_seed,
+                        seed=seed,
                         sampling_function_code=sampling_func_str,
                         _AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER=_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER
                     )
@@ -676,7 +676,7 @@ def main(args: argparse.Namespace):
 
             # Run AutoML optimization at specified intervals
             if args.hyper_optimize and (i + 1) % args.hyper_optimize_interval == 0:
-                run_automl_optimization(i)
+                run_automl_optimization(i, seed_list[i])
 
     update_run_info_with_end_timestamp(run_output_dir)
 

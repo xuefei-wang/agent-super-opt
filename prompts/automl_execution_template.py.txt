@@ -246,7 +246,7 @@ try:
             metrics = evaluate_pipeline(preprocess_func, postprocess_func, EXPERIMENT_NAME, DATASET_PATH, **kwargs)
 
             # Store full metrics for this trial
-            trial_metrics_storage[trial_obj.number] = metrics
+            trial_metrics_storage[trial_obj.number] = metrics['overall_metrics']
 
             # Use sampling function to extract the optimization metric
             optimization_score = sampling_function(metrics)
