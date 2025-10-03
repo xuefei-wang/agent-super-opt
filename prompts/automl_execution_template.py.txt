@@ -372,6 +372,9 @@ try:
         best_metrics = trial_metrics_storage.get(best_trial.number, {{}})
         optimized_metrics.append(best_metrics)
 
+    # --- Log Metrics ---
+    logger.info("All optimized metrics: %s", json.dumps(optimized_metrics if optimized_metrics else 'N/A', indent=2))
+
     # --- Save Results ---
     if optimized_metrics:
         logger.info("Saving optimized results to function bank...")
