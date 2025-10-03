@@ -30,6 +30,7 @@ script_start_time = time.time()
 
 # --- Parameterized AutoML Preprocessing & Postprocessing Function Definition ---
 # This placeholder will be replaced by the executor
+# The agent will also define default_params dictionary here
 {_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER}
 # --- End of Generated Code ---
 
@@ -125,6 +126,19 @@ try:
         else:
             postprocess_preds_fns.append(globals().get(f'postprocess_preds_{{i + 1}}', None))
             logger.info(f"postprocess_preds_{{i + 1}} function appears to be defined.")
+
+    # Check if default_params dictionary exists
+    if 'default_params' not in globals():
+        err_msg = "FATAL: default_params dictionary not found in generated code. Please define default_params with original parameter values."
+        logger.error(err_msg)
+        raise NameError(err_msg)
+    else:
+        default_params = globals().get('default_params')
+        if not isinstance(default_params, dict):
+            err_msg = f"FATAL: default_params must be a dictionary, got {{type(default_params).__name__}}"
+            logger.error(err_msg)
+            raise TypeError(err_msg)
+        logger.info(f"default_params dictionary found with {{len(default_params)}} function pair(s)")
 
 
     # --- Evaluation Pipeline ---
@@ -314,6 +328,11 @@ try:
             study_name=f"{{STUDY_NAME}}_{{fn_idx + 1}}",
             sampler=optuna.samplers.TPESampler(seed=SEED + fn_idx)
         )
+
+        # Enqueue first trial with default parameters from original functions
+        if default_params and str(fn_idx + 1) in default_params:
+            logger.info(f"Enqueuing first trial with default parameters: {{default_params[str(fn_idx + 1)]}}")
+            study.enqueue_trial(default_params[str(fn_idx + 1)])
 
         # Run optimization
         study.optimize(objective, n_trials=N_TRIALS)

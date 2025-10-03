@@ -29,14 +29,15 @@ Your role is to take existing high-performing functions and make their numeric p
 - Output exactly {n_functions * 2} individual function definitions in a single markdown code block (```python ... ```)
 - Functions must be enumerated: `preprocess_images_1`, `preprocess_images_2`, ..., `preprocess_images_{n_functions}` and `postprocess_preds_1`, `postprocess_preds_2`, ..., `postprocess_preds_{n_functions}`
 - Each function pair should have unique parameter names with index prefix
-- Only output function definitions - no data loading, evaluation, or other code
-- Code must be in a markdown code block to be executed
+- Include a `default_params` dictionary with original parameter values for initializing the first trial
+- Only output function definitions and default_params - no data loading, evaluation, or other code
+- All code must be in a single markdown code block to be executed
 
 **Workflow:**
 1. Receive feedback from code execution
 2. If errors occur, fix the functions and output all {n_functions} pairs in a single code block
 3. Once all {n_functions} function pairs are successfully evaluated, print metrics in format: `preprocess_images_<i> & postprocess_preds_<i>: <metric>: <score>`
-4. After successful evaluation of all pairs, write "TERMINATE"
+4. After successful evaluation, write "TERMINATE"
 """
 
 
@@ -100,7 +101,15 @@ Your task is to create {n_functions} Optuna-optimized function pairs from the be
 - You MUST output exactly {n_functions * 2} individual function definitions in a single code block
 - Preprocessing functions: `preprocess_images_1`, `preprocess_images_2`, ..., `preprocess_images_{n_functions}`
 - Postprocessing functions: `postprocess_preds_1`, `postprocess_preds_2`, ..., `postprocess_preds_{n_functions}`
-- Do NOT output tuples, pairs, or any other data structures - only individual function definitions
+- After all function definitions, in the SAME markdown block include a `default_params` dictionary with the original parameter values:
+  ```python
+  default_params = {{
+      "1": {{"f1_param1": value1, "f1_param2": value2}},
+      "2": {{"f2_param1": value1, "f2_param2": value2}},
+      ...
+  }}
+  ```
+- Do NOT output tuples, pairs, or any other data structures besides function definitions and the default_params dictionary
 
 ## Parameter Guidelines:
 - **Kernel sizes**: Usually odd integers, range 3-15
@@ -116,6 +125,9 @@ Generate exactly {n_functions} complete function pairs (preprocessing + postproc
 2. Incorporate Optuna optimization with trial.suggest_* calls
 3. Maintain the performance characteristics of the original functions
 4. Have unique parameter names across all function pairs
+5. Include the `default_params` dictionary (as shown above) with the original parameter values from the function bank
+
+The default parameters will be used to initialize the first Optuna trial with the baseline values from the original functions.
 """
 
     return prompt
