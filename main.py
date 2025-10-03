@@ -369,6 +369,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "hyperparameter_optimization": args.hyper_optimize,
          "n_hyper_optimize": args.n_hyper_optimize,
          "n_hyper_optimize_trials": args.n_hyper_optimize_trials,
+         "hyper_optimize_interval": args.hyper_optimize_interval,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
@@ -377,6 +378,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
              },
              "agent_system_prompts": {
                  "code_writer": sys_prompt_code_writer(args.k, args.k_word),
+                 "automl": sys_prompt_automl_agent(args.n_hyper_optimize)
              },
              "executable_pipeline_script_template": prompts_instance.run_pipeline_prompt(), # Call the method to get the script string
          }
@@ -549,6 +551,26 @@ def main(args: argparse.Namespace):
                     print("WARNING: Function bank is empty, cannot run AutoML optimization")
                     return
 
+                # Get indices of the top N functions that will be optimized (before AutoML runs)
+                # Create list of (index, entry) tuples for eligible functions
+                eligible_functions = [
+                    (idx, entry) for idx, entry in enumerate(function_bank)
+                    if not entry.get('automl_optimized', False) and not entry.get('automl_superseded', False)
+                ]
+
+                # Filter out None values and sort by performance
+                eligible_functions = [(idx, entry) for idx, entry in eligible_functions if sampling_function(entry) is not None]
+                eligible_functions = sorted(eligible_functions, key=lambda x: sampling_function(x[1]), reverse=True)
+
+                # Get the top N and extract both indices and entries
+                top_functions_with_indices = eligible_functions[:args.n_hyper_optimize]
+                source_function_indices = [idx for idx, entry in top_functions_with_indices]
+                top_function_entries = [entry for idx, entry in top_functions_with_indices]
+
+                if len(source_function_indices) == 0:
+                    print("WARNING: No eligible functions for AutoML optimization (all are already optimized or superseded)")
+                    return
+
                 # Create Optuna executor with the AutoML execution template
                 # Create a string representation of the sampling function
                 import inspect
@@ -558,11 +580,11 @@ def main(args: argparse.Namespace):
                     with open("prompts/automl_execution_template.py.txt", "r") as f:
                         template = f.read()
 
-                    # Fill in the template placeholders
+                    # Fill in the template placeholders with actual number of functions
                     formatted_template = template.format(
                         function_bank_path=output_function_bank,
                         n_trials=args.n_hyper_optimize_trials,
-                        n_fns=args.n_hyper_optimize,
+                        n_fns=len(top_function_entries),
                         experiment_name=args.experiment_name,
                         dataset_path=args.dataset,
                         gpu_id=args.gpu_id,
@@ -579,12 +601,12 @@ def main(args: argparse.Namespace):
                     template_script_func=run_automl_template,
                     placeholder=_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER,
                     work_dir=work_dir,
-                    timeout=300 * 2.5 * args.n_hyper_optimize * args.n_hyper_optimize_trials
+                    timeout=300 * 2.5 * len(top_function_entries) * args.n_hyper_optimize_trials
                 )
 
-                # Set up AutoML agents
+                # Set up AutoML agents with actual number of functions
                 automl_agent, optuna_executor_agent, automl_state_transition = set_up_automl_agents(
-                    optuna_executor_instance, llm_model, args.n_hyper_optimize
+                    optuna_executor_instance, llm_model, len(top_function_entries)
                 )
 
                 # Create AutoML group chat
@@ -607,8 +629,8 @@ def main(args: argparse.Namespace):
                     ),
                 )
 
-                # Prepare AutoML prompt
-                automl_prompt = prepare_automl_prompt(output_function_bank, n_functions=args.n_hyper_optimize, sorting_function=sampling_function)
+                # Prepare AutoML prompt with the pre-filtered top functions
+                automl_prompt = prepare_automl_prompt(top_function_entries)
 
                 # Run AutoML optimization
                 automl_chat_result = automl_agent.initiate_chat(
@@ -623,6 +645,24 @@ def main(args: argparse.Namespace):
                 with open(automl_output_file, "w") as automl_file:
                     for message in automl_chat_result.chat_history:
                         automl_file.write(f"{message['name']}: {message['content']}\n\n")
+
+                # After successful AutoML completion, mark source functions as superseded
+                # Reload function bank to get the latest state
+                with open(output_function_bank, 'r') as f:
+                    current_function_bank = json.load(f)
+
+                # Mark source functions as superseded using their indices
+                superseded_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                for idx in source_function_indices:
+                    if idx < len(current_function_bank):
+                        current_function_bank[idx]['automl_superseded'] = True
+                        current_function_bank[idx]['automl_superseded_timestamp'] = superseded_timestamp
+
+                # Write updated function bank back
+                with open(output_function_bank, 'w') as f:
+                    json.dump(current_function_bank, f, indent=2)
+
+                print(f"Marked {len(source_function_indices)} source functions as superseded")
 
             except Exception as e:
                 print(f"ERROR: AutoML optimization failed at iteration {iteration_num}: {e}")

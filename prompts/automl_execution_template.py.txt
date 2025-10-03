@@ -388,7 +388,7 @@ try:
             'timestamp_finish': [time.time()] * N_FNS,
             'optimization_time': optimized_optimization_times,
             'best_parameters': optimized_best_parameters,
-            'optuna_optimized': [True] * N_FNS,
+            'automl_optimized': [True] * N_FNS,
             'n_trials': [N_TRIALS] * N_FNS,
             'error': [None] * N_FNS,
             'traceback': [None] * N_FNS

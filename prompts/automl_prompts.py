@@ -16,7 +16,7 @@ Your role is to take existing high-performing functions and make their numeric p
 1. Analyze function code to identify optimizable numeric parameters (thresholds, kernel sizes, iterations, etc.)
 2. Replace hardcoded values with appropriate Optuna trial.suggest_* calls
 3. Choose reasonable parameter ranges based on the operation type
-4. Ensure all parameter names are unique across all functions using function index prefixes (e.g., `f1_kernel_size`, `f2_threshold`)
+4. Ensure all parameter names are unique across all functions using function index prefixes (e.g., `f1_pre_kernel_size`, `f2_post_threshold`)
 5. Preserve the original algorithmic structure and function signatures
 
 **Optuna API Reference:**
@@ -41,42 +41,28 @@ Your role is to take existing high-performing functions and make their numeric p
 """
 
 
-def prepare_automl_prompt(function_bank_path: str, n_functions: int = 3, sorting_function = None):
+def prepare_automl_prompt(top_functions: list):
     """
     Prepare the prompt for the AutoML agent with function bank context.
 
     Args:
-        function_bank_path (str): Path to the function bank JSON file
-        n_functions (int): Number of top functions to include for optimization
-        sorting_function (callable): Function to sort the function bank entries
+        top_functions (list): List of top function entries to optimize (already filtered)
 
     Returns:
         str: Complete prompt for the AutoML agent
     """
-    from utils.function_bank_utils import top_n, pretty_print_list
-    import os
+    from utils.function_bank_utils import pretty_print_list
 
-    # Get top performing functions from function bank
-    function_bank_sample = ""
-    if os.path.exists(function_bank_path):
-        try:
-            if sorting_function is None:
-                raise ValueError("sorting_function must be provided")
+    n_functions = len(top_functions)
 
-            top_functions = top_n(function_bank_path, n=n_functions,
-                                sorting_function=sorting_function)
-
-            if top_functions:
-                function_bank_sample = f"""
+    # Format the provided top functions
+    if top_functions:
+        function_bank_sample = f"""
 ## Top {n_functions} performing functions from function bank:
 {pretty_print_list(top_functions)}
 """
-            else:
-                function_bank_sample = "Function bank is empty or no functions available for optimization."
-        except Exception as e:
-            function_bank_sample = f"Error reading function bank: {e}"
     else:
-        function_bank_sample = "Function bank file not found."
+        function_bank_sample = "No functions available for optimization."
 
     prompt = f"""
 Your task is to create {n_functions} Optuna-optimized function pairs from the best-performing preprocessing and postprocessing functions in the function bank.
@@ -93,7 +79,7 @@ Your task is to create {n_functions} Optuna-optimized function pairs from the be
    - Entry {n_functions} → create `preprocess_images_{n_functions}` and `postprocess_preds_{n_functions}`
 5. For each function, identify numeric parameters that can be optimized (constants, thresholds, kernel sizes, etc.)
 6. Replace hardcoded numeric values with Optuna trial.suggest_* calls
-7. Ensure each parameter has a unique name with function index prefix (e.g., `f1_preprocess_kernel_size`, `f2_postprocess_threshold`)
+7. Ensure each parameter has a unique name with function index prefix (e.g., `f1_pre_kernel_size`, `f2_post_threshold`)
 8. Use appropriate parameter ranges and distributions which are reasonable for the specific parameter being optimized
 9. Maintain the exact same function signatures and algorithmic behavior
 
@@ -104,8 +90,8 @@ Your task is to create {n_functions} Optuna-optimized function pairs from the be
 - After all function definitions, in the SAME markdown block include a `default_params` dictionary with the original parameter values:
   ```python
   default_params = {{
-      "1": {{"f1_preprocess_param1": value1, "f1_preprocess_param2": value2, "f1_postprocess_param1": value3}},
-      "2": {{"f2_preprocess_param1": value1, "f2_postprocess_param1": value2}},
+      "1": {{"f1_pre_param1": value1, "f1_pre_param2": value2, "f1_post_param1": value3}},
+      "2": {{"f2_pre_param1": value1, "f2_post_param1": value2}},
       ...
   }}
   ```
@@ -118,7 +104,7 @@ Your task is to create {n_functions} Optuna-optimized function pairs from the be
 - **Iterations**: Integer values, typically 1-10
 - **Scaling factors**: Float values, typically 0.5-2.0
 - **Blur parameters**: Float values for sigma, int values for kernel size
-- **Parameter names must include function index**: e.g., `f1_preprocess_kernel_size`, `f2_postprocess_threshold`, etc.
+- **Parameter names must include function index**: e.g., `f1_pre_kernel_size`, `f2_post_threshold`, etc.
 
 ## Expected Output:
 Generate exactly {n_functions} complete function pairs (preprocessing + postprocessing) that:
