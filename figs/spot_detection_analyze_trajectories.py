@@ -259,10 +259,17 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     top_k_functions_results_val = []
     top_k_functions_results_test = []
     top_k_functions_str = []
+    top_k_functions_automl_status = []
 
     for function_item in top_k_functions:
         current_function_str = (function_item['preprocessing_function'], function_item['postprocessing_function'])
         current_metrics_val_float = function_item['f1_score']
+        if function_item.get('automl_optimized', False):
+            current_automl_status = "optimized"
+        elif function_item.get('automl_superseded', False):
+            current_automl_status = "superseded"
+        else:
+            current_automl_status = "unoptimized"
 
         if current_function_str == (best_preprocessing_function_str, best_postprocessing_function_str): # Compare strings to avoid issues with function object comparison
             current_metrics_test_dict = metrics_test_our_function # Use already computed result for the best function
@@ -285,6 +292,7 @@ def main(json_path: str, data_path: str, output_dir: str, k):
         top_k_functions_results_test.append(current_metrics_test_dict)
         top_k_functions_results_val.append(current_metrics_val_float)
         top_k_functions_str.append(function_str_to_save)
+        top_k_functions_automl_status.append(current_automl_status)
 
     print(f"Evaluated top {k} functions on test set.")
 
@@ -302,7 +310,8 @@ def main(json_path: str, data_path: str, output_dir: str, k):
             "preprocessing_function": preprocessing_function_string,
             "postprocessing_function": postprocessing_function_string,
             "average_f1_test": test_metrics_dict['f1_score'],
-            "average_f1_val": val_metric_float
+            "average_f1_val": val_metric_float,
+            "automl_status": top_k_functions_automl_status[i],
         })
     
     with open(os.path.join(output_dir, 'top_k_functions_results.json'), 'w') as file:
