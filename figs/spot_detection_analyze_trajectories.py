@@ -139,8 +139,15 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     # handle json ambiguities
     new_json = []
     for i in range(len(json_array)):
+        if json_array[i].get('automl_optimized', False):
+            automl_status = "optimized"
+        elif json_array[i].get('automl_superseded', False):
+            automl_status = "superseded"
+        else:
+            automl_status = "unoptimized"
         data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function'], 
-                         'postprocessing_function' : json_array[i]['postprocessing_function']}
+                         'postprocessing_function' : json_array[i]['postprocessing_function'],
+                         'automl_status': automl_status,}
         try:
             avg_prec = json_array[i]['f1_score']['f1_score']
         except:
@@ -264,12 +271,7 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     for function_item in top_k_functions:
         current_function_str = (function_item['preprocessing_function'], function_item['postprocessing_function'])
         current_metrics_val_float = function_item['f1_score']
-        if function_item.get('automl_optimized', False):
-            current_automl_status = "optimized"
-        elif function_item.get('automl_superseded', False):
-            current_automl_status = "superseded"
-        else:
-            current_automl_status = "unoptimized"
+        current_automl_status = function_item['automl_status']
 
         if current_function_str == (best_preprocessing_function_str, best_postprocessing_function_str): # Compare strings to avoid issues with function object comparison
             current_metrics_test_dict = metrics_test_our_function # Use already computed result for the best function
