@@ -14,7 +14,7 @@ BASE_CMD="python main.py \
   --dataset \"/data/xwang3/sci-agent-data/medsam_data/data/resized_dermoscopy_val_filenames_25.pkl\" \
   --checkpoint_path \"/data/xwang3/sci-agent-data/medsam_data/data/medsam_vit_b.pth\" \
   --experiment_name \"medSAM_segmentation\" \
-  --history_threshold 5 \
+  --history_threshold 999 \
   --k 3 \
   --k_word \"three\" "
 

@@ -13,7 +13,7 @@ NUM_GPUS=${#GPUS[@]}
 BASE_CMD="python main.py \
   --dataset \"/data/xwang3/sci-agent-data/cellpose_data/updated_cellpose_combined_data/val_set/\" \
   --experiment_name \"cellpose_segmentation\" \
-  --history_threshold 5 \
+  --history_threshold 999 \
   --k 3 \
   --k_word \"three\" "
 
