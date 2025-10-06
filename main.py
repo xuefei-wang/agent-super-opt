@@ -647,21 +647,7 @@ def main(args: argparse.Namespace):
                     for message in automl_chat_result.chat_history:
                         automl_file.write(f"{message['name']}: {message['content']}\n\n")
 
-                # After successful AutoML completion, mark source functions as superseded
-                # Reload function bank to get the latest state
-                with open(output_function_bank, 'r') as f:
-                    current_function_bank = json.load(f)
-
-                # Mark source functions as superseded using their indices
-                for idx in source_function_indices:
-                    if idx < len(current_function_bank):
-                        current_function_bank[idx]['automl_superseded'] = True
-
-                # Write updated function bank back
-                with open(output_function_bank, 'w') as f:
-                    json.dump(current_function_bank, f, indent=2)
-
-                print(f"Marked {len(source_function_indices)} source functions as superseded")
+                # Note: automl_superseded flags are now set by the template based on metric improvement
 
             except Exception as e:
                 print(f"ERROR: AutoML optimization failed at iteration {iteration_num}: {e}")

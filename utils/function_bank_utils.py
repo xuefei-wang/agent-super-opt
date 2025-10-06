@@ -29,8 +29,8 @@ def top_n(function_bank_path: str, sorting_function: Callable[[dict], float], n:
     '''Return top N functions from function bank as a list'''
     with open(function_bank_path, 'r') as file:
         json_array = json.load(file)
-        # Filter out None values
-        sorted_bank = list(filter(lambda x:sorting_function(x) is not None, json_array))
+        # Filter out None values and superseded functions
+        sorted_bank = list(filter(lambda x:sorting_function(x) is not None and not x.get('automl_superseded', False), json_array))
         sorted_bank = sorted(sorted_bank, key=lambda x: sorting_function(x), reverse=maximize)
         return sorted_bank[:n]
     
@@ -47,4 +47,6 @@ def last_n(function_bank_path: str, n: int = 5) -> list:
     '''Return last N functions from function bank as a list'''
     with open(function_bank_path, 'r') as file:
         json_array = json.load(file)
-        return json_array[-n:]
+        # Filter out superseded functions
+        filtered_array = list(filter(lambda x: not x.get('automl_superseded', False), json_array))
+        return filtered_array[-n:]

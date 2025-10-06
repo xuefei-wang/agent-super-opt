@@ -379,6 +379,30 @@ try:
     # --- Save Results ---
     if optimized_metrics:
         logger.info("Saving optimized results to function bank...")
+
+        # Load function bank to get source metrics for comparison
+        with open(function_bank_path, 'r') as f:
+            function_bank = json.load(f)
+
+        # Compare optimized metrics with source metrics
+        automl_optimized_flags = []
+        for i, optimized_metrics_dict in enumerate(optimized_metrics):
+            source_idx = SOURCE_INDICES[i]
+            source_metric = sampling_function(function_bank[source_idx])
+            optimized_metric = sampling_function({{'overall_metrics': optimized_metrics_dict}})
+
+            # Check if optimized metric is better (maximization)
+            improved = optimized_metric > source_metric
+            automl_optimized_flags.append(improved)
+
+            # Mark source function as superseded based on improvement
+            function_bank[source_idx]['automl_superseded'] = improved
+
+            if improved:
+                logger.info(f"Function {{i}}: Improved from {{source_metric:.4f}} to {{optimized_metric:.4f}}")
+            else:
+                logger.warning(f"Function {{i}}: No improvement ({{source_metric:.4f}} -> {{optimized_metric:.4f}})")
+
         results_to_save = {{
             'preprocessing_function': optimized_preprocessing_functions,
             'postprocessing_function': optimized_postprocessing_functions,
@@ -389,14 +413,18 @@ try:
             'timestamp_finish': [time.time()] * N_FNS,
             'optimization_time': optimized_optimization_times,
             'best_parameters': optimized_best_parameters,
-            'automl_optimized': [True] * N_FNS,
+            'automl_optimized': automl_optimized_flags,
             'automl_source_index': SOURCE_INDICES,
             'n_trials': [N_TRIALS] * N_FNS,
             'error': [None] * N_FNS,
             'traceback': [None] * N_FNS
         }}
         save_results_to_json(function_bank_path, results_to_save)
-        logger.info(f"Successfully saved {{N_FNS}} optimized function pairs to function bank")
+
+        # Save updated function bank with superseded flags
+        with open(function_bank_path, 'w') as f:
+            json.dump(function_bank, f, indent=4)
+        logger.info(f"Successfully saved {{N_FNS}} optimized function pairs and updated superseded flags")
     else:
         logger.warning("No metrics were generated. Not saving to bank.")
 
