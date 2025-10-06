@@ -534,17 +534,19 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
+    parser.add_argument('--json_path', type=str, required=True, help='Path to the data directory.')
     parser.add_argument('--data_path', type=str, required=True, help='Path to the data directory.')
     parser.add_argument('--gpu_id', type=int, default=0, help='GPU ID to use. Use -1 for CPU.')
     args = parser.parse_args()
 
     data_path = args.data_path
     gpu_id = args.gpu_id
+    json_path = args.json_path
 
-    meta_dir = 'cellpose_segmentation'
-    for path in os.listdir(meta_dir):
-        if path.startswith('2025'):
-            json_path = os.path.join(meta_dir, path, 'preprocessing_func_bank.json')
-            print(json_path)
-            output_dir = os.path.dirname(json_path)
-            main(json_path, data_path, output_dir, precision_index=0, device=gpu_id, dataset_size=100, batch_size=16, k=10)
+    # meta_dir = 'cellpose_segmentation'
+    # for path in os.listdir(meta_dir):
+    #     if path.startswith('2025'):
+    # json_path = os.path.join(meta_dir, path, 'preprocessing_func_bank.json')
+    print(json_path)
+    output_dir = os.path.dirname(json_path)
+    main(json_path, data_path, output_dir, precision_index=0, device=gpu_id, dataset_size=100, batch_size=16, k=10)
