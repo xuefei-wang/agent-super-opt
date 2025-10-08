@@ -139,9 +139,9 @@ class MedSAMTool():
             total_dsc += immediate_dsc_metric
             total_nsd += immediate_nsd_metric
 
-        # print("\n=======================")
-        # print(f"Average DSC metric: {round(total_dsc.item() / len(pred_masks), 6)}")
-        # print(f"Average NSD metric: {round(total_nsd.item() / len(pred_masks), 6)}")
+        print("\n=======================")
+        print(f"Average DSC metric: {round(total_dsc.item() / len(pred_masks), 6)}")
+        print(f"Average NSD metric: {round(total_nsd.item() / len(pred_masks), 6)}")
         return {"dsc_metric": total_dsc.item() / len(pred_masks),
                 "nsd_metric": total_nsd.item() / len(pred_masks)}
     

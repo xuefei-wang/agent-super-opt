@@ -322,7 +322,7 @@ def main(json_path, k, modality, gpu_id, val_baseline, test_baseline, test_data_
         json.dump(results_1, f, indent=4)
 
     plot_line_graph(line_graph_output_path, get_new_json(json_path), val_baseline)
-    plot_scatterplot(top_k_json_output_path, val_baseline, test_baseline, scatter_output_path)
+    # plot_scatterplot(top_k_json_output_path, val_baseline, test_baseline, scatter_output_path)
     plot_bar_graph(top_1_json_output_path, val_baseline, test_baseline, bar_output_path)
 
 if __name__ == "__main__":
