@@ -9,6 +9,7 @@ import random
 from datetime import datetime
 import os
 import re
+import textwrap
 
 from autogen import OpenAIWrapper, Cache, ConversableAgent, GroupChat, GroupChatManager
 from autogen.coding import CodeBlock, CodeExecutor, LocalCommandLineCodeExecutor
@@ -211,87 +212,87 @@ def prepare_prompt_pipeline_optimization(
         n_last: int=5,
         baseline_metric: str = ""):
 
-    prompt_pipeline_optimization = f"""
-    Your task is to implement {prompts.k_word} pairs of preprocessing and postprocessing functions to optimize the performance of a machine learning pipeline on a specific dataset.
-    We provided the APIs for both preprocessing and postprocessing functions. You should use functions from useful libraries including but not limited to OpenCV, NumPy, Skimage, Scipy, to implement novel and effective functions.
+    prompt_pipeline_optimization = textwrap.dedent(f"""\
+Your task is to implement {prompts.k_word} pairs of preprocessing and postprocessing functions to optimize the performance of a machine learning pipeline on a specific dataset.
+We provided the APIs for both preprocessing and postprocessing functions. You should use functions from useful libraries including but not limited to OpenCV, NumPy, Skimage, Scipy, to implement novel and effective functions.
 
-    ## Preprocessing Functions API:
-    ```python
-    # All preprocessing function names should be of the form preprocess_images_i where i enumerates the preprocessing function, beginning at 1
-    # Import all necessary libraries inside the function, except for ImageData, which has already been imported.
-    def preprocess_images_i(images: ImageData) -> ImageData:
-        import cv2 as cv
-        processed_images_list = []
-        for img_array in images.raw:
-            img_array = np.copy(img_array) # Make a copy of the image array to avoid modifying the original
-            processed_img = img_array # Replace with actual processing
-            processed_images_list.append(processed_img)
-        output_data = ImageData(raw=processed_images_list, batch_size=images.batch_size)
-        return output_data
-    ```
+## Preprocessing Functions API:
+```python
+# All preprocessing function names should be of the form preprocess_images_i where i enumerates the preprocessing function, beginning at 1
+# Import all necessary libraries inside the function, except for ImageData, which has already been imported.
+def preprocess_images_i(images: ImageData) -> ImageData:
+    import cv2 as cv
+    processed_images_list = []
+    for img_array in images.raw:
+        img_array = np.copy(img_array) # Make a copy of the image array to avoid modifying the original
+        processed_img = img_array # Replace with actual processing
+        processed_images_list.append(processed_img)
+    output_data = ImageData(raw=processed_images_list, batch_size=images.batch_size)
+    return output_data
+```
 
-    ## Postprocessing Functions API:
-    ```python
-    # All postprocessing function names should be of the form postprocess_preds_i where i enumerates the postprocessing function, beginning at 1
-    # Preprocessing and postprocessing functions should be paired, i.e. preprocess_images_1 with postprocess_preds_1
-    # Import all necessary libraries inside the function.
-    {prompts.get_postprocessing_function_api()}
-    ```
+## Postprocessing Functions API:
+```python
+# All postprocessing function names should be of the form postprocess_preds_i where i enumerates the postprocessing function, beginning at 1
+# Preprocessing and postprocessing functions should be paired, i.e. preprocess_images_1 with postprocess_preds_1
+# Import all necessary libraries inside the function.
+{textwrap.dedent(prompts.get_postprocessing_function_api())}
+```
+
+## About the dataset: 
+{textwrap.dedent(prompts.dataset_info)}
+{textwrap.dedent(baseline_metric)}
+
+## Task Details:
+{textwrap.dedent(prompts.get_task_details())}
+
+## Task Metrics Details:
+{textwrap.dedent(prompts.get_pipeline_metrics_info())}
+
+## Function bank sample:
+{textwrap.dedent(function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations))}
+
+## Useful primitive functions API that can be used in the preprocessing and postprocessing functions:
+{textwrap.dedent(opencv_APIs)}
+
+## Additional Notes:
+{textwrap.dedent(notes_shared)}
+{textwrap.dedent(notes_pipeline_optimization)}
+
+
+## Documentation on the `ImageData` class:
+```markdown
+Framework-agnostic container for batched image data. Handles variable
+image resolutions
+
+This class provides a standardized structure for storing and managing batched 
+image data along with related annotations and predictions.
+Data is internally converted to lists of arrays for flexibility with varying image sizes.
+
+The class accepts both lists of arrays and numpy arrays as input, but will convert them
+internally to lists to support variable-sized images across different frameworks.
+
+Attributes:
+    raw (Union[List[np.ndarray], np.ndarray]): Raw image data, can be provided as either 
+        a list of arrays or a numpy array. Each image should have shape (H, W, C).
     
-    ## About the dataset: 
-    {prompts.dataset_info}
-    {baseline_metric}
-
-    ## Task Details:
-    {prompts.get_task_details()}
-
-    ## Task Metrics Details:
-    {prompts.get_pipeline_metrics_info()}
+    batch_size (Optional[int]): Number of images to include in the batch. Can be smaller 
+        than the total dataset size. If None, will use the full dataset size.
     
-    ## Function bank sample:
-    {function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations)}
-
-    ## Useful primitive functions API that can be used in the preprocessing and postprocessing functions:
-    {opencv_APIs}
-
-    ## Additional Notes:
-    {notes_shared}
-    {notes_pipeline_optimization}
-
-
-    ## Documentation on the `ImageData` class:
-    ```markdown
-    Framework-agnostic container for batched image data. Handles variable
-    image resolutions
+    image_ids (Union[List[int], List[str], None]): Unique identifier(s) for images
+        in the batch as a list. If None, auto-generated integer IDs [0,1,2,...] will be created.
     
-    This class provides a standardized structure for storing and managing batched 
-    image data along with related annotations and predictions.
-    Data is internally converted to lists of arrays for flexibility with varying image sizes.
-
-    The class accepts both lists of arrays and numpy arrays as input, but will convert them
-    internally to lists to support variable-sized images across different frameworks.
-
-    Attributes:
-        raw (Union[List[np.ndarray], np.ndarray]): Raw image data, can be provided as either 
-            a list of arrays or a numpy array. Each image should have shape (H, W, C).
-        
-        batch_size (Optional[int]): Number of images to include in the batch. Can be smaller 
-            than the total dataset size. If None, will use the full dataset size.
-        
-        image_ids (Union[List[int], List[str], None]): Unique identifier(s) for images
-            in the batch as a list. If None, auto-generated integer IDs [0,1,2,...] will be created.
-        
-        masks (Optional[Union[List[np.ndarray], np.ndarray]]): Ground truth segmentation masks.
-            Integer-valued arrays where 0 is background and positive integers are unique 
-            object identifiers. Each mask should have shape (H, W, 1) or (H, W).
-        
-        predicted_masks (Optional[Union[List[np.ndarray], np.ndarray]]): Model-predicted 
-            segmentation masks. Each mask should have shape (H, W, 1) or (H, W).
-        
-        predicted_classes (Optional[List[Dict[int, str]]]): List of mappings from
-            object identifiers to predicted classes for each image.
-    ```
-    """
+    masks (Optional[Union[List[np.ndarray], np.ndarray]]): Ground truth segmentation masks.
+        Integer-valued arrays where 0 is background and positive integers are unique 
+        object identifiers. Each mask should have shape (H, W, 1) or (H, W).
+    
+    predicted_masks (Optional[Union[List[np.ndarray], np.ndarray]]): Model-predicted 
+        segmentation masks. Each mask should have shape (H, W, 1) or (H, W).
+    
+    predicted_classes (Optional[List[Dict[int, str]]]): List of mappings from
+        object identifiers to predicted classes for each image.
+```
+""")
 
     return prompt_pipeline_optimization
 
@@ -693,8 +694,8 @@ def main(args: argparse.Namespace):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n {prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)}"
-
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)
+            
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, run_output_dir)
@@ -825,7 +826,6 @@ if __name__ == "__main__":
         default=5,
         help="Run hyperparameter optimization every N iterations (default: 5)."
     )
-
 
     parser.add_argument(
         "--k",

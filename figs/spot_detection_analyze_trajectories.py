@@ -145,7 +145,7 @@ def main(json_path: str, data_path: str, output_dir: str, k):
             automl_status = "superseded"
         else:
             automl_status = "unoptimized"
-        data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function'], 
+        data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function'],
                          'postprocessing_function' : json_array[i]['postprocessing_function'],
                          'automl_status': automl_status,}
         try:
@@ -329,15 +329,29 @@ if __name__ == "__main__":
         required=True,
         help="Path to directory that contains the val and test npz files."
     )
+    parser.add_argument(
+        "--json_path",
+        type=str,
+        required=False,
+        default=None,
+        help="Path to the JSON file of preprocessing function bank."
+    )
     args = parser.parse_args()
     
     data_path = args.data_path
-    
+    json_path = args.json_path
 
-    meta_dir = 'spot_detection'
-    for path in os.listdir(meta_dir):
-        if path.startswith('2025'):
-            json_path = os.path.join(meta_dir, path, 'preprocessing_func_bank.json')
-            print(json_path)
-            output_dir = os.path.dirname(json_path)
-            main(json_path, data_path, output_dir, 10)
+
+    # meta_dir = 'spot_detection'
+    # for path in os.listdir(meta_dir):
+    #     if path.startswith('2025'):
+    #         json_path = os.path.join(meta_dir, path, 'preprocessing_func_bank.json')
+    #         print(json_path)
+    #         output_dir = os.path.dirname(json_path)
+    #         main(json_path, data_path, output_dir, 10)
+
+    main(json_path, data_path, os.path.dirname(json_path), 10)
+
+
+
+
