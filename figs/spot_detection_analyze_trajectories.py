@@ -25,6 +25,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from src.spot_detection import DeepcellSpotsDetector
 from src.data_io import ImageData
+from utils.function_bank_utils import should_include_function
 
 from skimage.feature import peak_local_max
 
@@ -139,15 +140,26 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     # handle json ambiguities
     new_json = []
     for i in range(len(json_array)):
-        if json_array[i].get('automl_optimized', False):
-            automl_status = "optimized"
-        elif json_array[i].get('automl_superseded', False):
-            automl_status = "superseded"
+        if json_array[i].get('automl_superseded', False):
+            automl_status = "superseded"  # EXCLUDE - old replaced version
+        elif json_array[i].get('automl_optimized', False):
+            automl_status = "optimized"  # KEEP - new improved version
+        elif 'automl_optimized' in json_array[i]:  # Key exists but is False
+            automl_status = "failed_optimization"  # EXCLUDE - new but worse
+        elif 'automl_superseded' in json_array[i]:  # Key exists but is False
+            automl_status = "not_improved"  # KEEP - original kept because optimization didn't help
         else:
-            automl_status = "unoptimized"
-        data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function'],
-                         'postprocessing_function' : json_array[i]['postprocessing_function'],
-                         'automl_status': automl_status,}
+            automl_status = "never_optimized"  # KEEP - no optimization attempted
+        data_for_json = {
+            'preprocessing_function': json_array[i]['preprocessing_function'],
+            'postprocessing_function': json_array[i]['postprocessing_function'],
+            'automl_status': automl_status,
+        }
+        # Preserve original automl flags for should_include_function()
+        if 'automl_optimized' in json_array[i]:
+            data_for_json['automl_optimized'] = json_array[i]['automl_optimized']
+        if 'automl_superseded' in json_array[i]:
+            data_for_json['automl_superseded'] = json_array[i]['automl_superseded']
         try:
             avg_prec = json_array[i]['f1_score']['f1_score']
         except:
@@ -257,8 +269,10 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     ## Evaluate TOP K
 
     def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k: int) -> List[Dict]:
-        '''Returns object containing the top k highest metric values from a list of JSON objects.'''
-        return sorted(json_array, key=metric_lambda, reverse=True)[:k]
+        '''Returns object containing the top k highest metric values from a list of JSON objects, excluding superseded and failed_optimization.'''
+        # Use centralized filtering logic
+        filtered_array = [obj for obj in json_array if should_include_function(obj)]
+        return sorted(filtered_array, key=metric_lambda, reverse=True)[:k]
     
     top_k_functions = find_top_k(json_array, metric_lambda, k)
 

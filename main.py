@@ -554,9 +554,10 @@ def main(args: argparse.Namespace):
 
                 # Get indices of the top N functions that will be optimized (before AutoML runs)
                 # Create list of (index, entry) tuples for eligible functions
+                # Only include functions that have never been attempted for optimization
                 eligible_functions = [
                     (idx, entry) for idx, entry in enumerate(function_bank)
-                    if not entry.get('automl_optimized', False) and not entry.get('automl_superseded', False)
+                    if 'automl_optimized' not in entry and 'automl_superseded' not in entry
                 ]
 
                 # Filter out None values and sort by performance

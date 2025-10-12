@@ -15,6 +15,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from src.medsam_segmentation import MedSAMTool
 from src.data_io import ImageData
+from utils.function_bank_utils import should_include_function
 import io
 import contextlib
 import csv
@@ -28,8 +29,10 @@ def get_baseline(data_path):
     return baseline_dsc, baseline_nsd, baseline_dsc + baseline_nsd
 
 def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k=5) -> Dict:
-    '''Returns object containing the top k highest metric values from a list of JSON objects.'''
-    return sorted(json_array, key=metric_lambda, reverse=True)[:k]
+    '''Returns object containing the top k highest metric values from a list of JSON objects, excluding superseded and failed_optimization.'''
+    # Use centralized filtering logic
+    filtered_array = [obj for obj in json_array if should_include_function(obj)]
+    return sorted(filtered_array, key=metric_lambda, reverse=True)[:k]
 
 def convert_string_to_function(func_str, func_name):
     # Create a namespace dictionary to store the function
@@ -68,8 +71,26 @@ def get_new_json(json_path):
     # Handle json ambiguities
     new_json = []
     for i in range(len(json_array)):
-        data_for_json = {'preprocessing_function': json_array[i]['preprocessing_function'],
-                         'postprocessing_function': json_array[i]['postprocessing_function']}
+        if json_array[i].get('automl_superseded', False):
+            automl_status = "superseded"  # EXCLUDE - old replaced version
+        elif json_array[i].get('automl_optimized', False):
+            automl_status = "optimized"  # KEEP - new improved version
+        elif 'automl_optimized' in json_array[i]:  # Key exists but is False
+            automl_status = "failed_optimization"  # EXCLUDE - new but worse
+        elif 'automl_superseded' in json_array[i]:  # Key exists but is False
+            automl_status = "not_improved"  # KEEP - original kept because optimization didn't help
+        else:
+            automl_status = "never_optimized"  # KEEP - no optimization attempted
+        data_for_json = {
+            'preprocessing_function': json_array[i]['preprocessing_function'],
+            'postprocessing_function': json_array[i]['postprocessing_function'],
+            'automl_status': automl_status,
+        }
+        # Preserve original automl flags for should_include_function()
+        if 'automl_optimized' in json_array[i]:
+            data_for_json['automl_optimized'] = json_array[i]['automl_optimized']
+        if 'automl_superseded' in json_array[i]:
+            data_for_json['automl_superseded'] = json_array[i]['automl_superseded']
         try:
             dsc_metric = json_array[i]['dsc_metric']['dsc_metric']
         except:
@@ -152,7 +173,8 @@ def extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_
             "preprocessing_function": fn_str_preprocess,
             "postprocessing_function": fn_str_postprocess,
             "combined_test": combined_test,
-            "combined_val": combined_val
+            "combined_val": combined_val,
+            "automl_status": json_dict['automl_status']
         }
         result_entries.append(entry)
 
