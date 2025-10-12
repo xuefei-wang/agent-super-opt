@@ -37,8 +37,14 @@ script_start_time = time.time()
 
 
 # --- Saving Function Definition ---
-def save_results_to_json(file_path, results_dict):
-    '''Appends results dictionary to the JSON file specified.'''
+def save_results_to_json(file_path, results_dict, existing_updates=None):
+    '''Appends results dictionary to the JSON file specified.
+
+    Args:
+        file_path: Path to the JSON file
+        results_dict: Dictionary of results to append
+        existing_updates: Optional dict mapping indices to field updates, e.g. {{0: {{'automl_superseded': True}}}}
+    '''
     print(f"(Saver) Attempting to save results to: {{file_path}}")
     results_dict['timestamp'] = results_dict.get('timestamp', time.time())
     try:
@@ -62,11 +68,23 @@ def save_results_to_json(file_path, results_dict):
         except Exception as read_err:
              print(f"(Saver) Error reading existing file {{file_path}}: {{read_err}}. Starting new list.")
              existing_data = []
+
+        # Apply updates to existing entries if provided
+        if existing_updates:
+            for idx, updates in existing_updates.items():
+                if 0 <= idx < len(existing_data):
+                    existing_data[idx].update(updates)
+                    print(f"(Saver) Updated existing entry {{idx}} with {{updates}}")
+
+        # Append new results
         results_list = [dict(zip(results_dict.keys(), values)) for values in zip(*results_dict.values())]
         existing_data.extend(results_list)
+
+        # Write everything back in one operation
         with open(file_path, 'w') as f:
             json.dump(existing_data, f, indent=4)
-        print(f"(Saver) Successfully appended results to {{file_path}}")
+        num_updates = len(existing_updates) if existing_updates else 0
+        print(f"(Saver) Successfully saved {{len(results_list)}} new results and {{num_updates}} updates to {{file_path}}")
     except Exception as e:
         print(f"(Saver) !!! ERROR saving results to {{file_path}}: {{e}}\\n{{traceback.format_exc()}}")
 
@@ -384,19 +402,20 @@ try:
         with open(function_bank_path, 'r') as f:
             function_bank = json.load(f)
 
-        # Compare optimized metrics with source metrics
+        # Compare optimized metrics with source metrics and build updates dict
         automl_optimized_flags = []
+        superseded_updates = {{}}
         for i, optimized_metrics_dict in enumerate(optimized_metrics):
             source_idx = SOURCE_INDICES[i]
             source_metric = sampling_function(function_bank[source_idx])
             optimized_metric = sampling_function({{'overall_metrics': optimized_metrics_dict}})
 
             # Check if optimized metric is better (maximization)
-            improved = optimized_metric > source_metric
+            improved = bool(optimized_metric > source_metric)
             automl_optimized_flags.append(improved)
 
-            # Mark source function as superseded based on improvement
-            function_bank[source_idx]['automl_superseded'] = improved
+            # Prepare update for source function superseded flag
+            superseded_updates[source_idx] = {{'automl_superseded': improved}}
 
             if improved:
                 logger.info(f"Function {{i}}: Improved from {{source_metric:.4f}} to {{optimized_metric:.4f}}")
@@ -419,11 +438,9 @@ try:
             'error': [None] * N_FNS,
             'traceback': [None] * N_FNS
         }}
-        save_results_to_json(function_bank_path, results_to_save)
 
-        # Save updated function bank with superseded flags
-        with open(function_bank_path, 'w') as f:
-            json.dump(function_bank, f, indent=4)
+        # Save new results and update superseded flags in one atomic operation
+        save_results_to_json(function_bank_path, results_to_save, existing_updates=superseded_updates)
         logger.info(f"Successfully saved {{N_FNS}} optimized function pairs and updated superseded flags")
     else:
         logger.warning("No metrics were generated. Not saving to bank.")
