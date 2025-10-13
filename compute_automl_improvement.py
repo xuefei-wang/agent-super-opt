@@ -104,17 +104,32 @@ def print_statistics(total_entries: int, optimized_count: int,
     pct_improvements = [(imp / orig * 100) if orig != 0 else 0
                        for imp, orig, _, _ in improvements]
 
+    # Calculate effective improvements (only count positive improvements)
+    effective_improvements = [max(0, imp) for imp in improvement_values]
+    effective_pct_improvements = [(max(0, imp) / orig * 100) if orig != 0 else 0
+                                  for imp, orig, _, _ in improvements]
+
     avg_improvement = sum(improvement_values) / len(improvement_values)
     avg_pct_improvement = sum(pct_improvements) / len(pct_improvements)
+    avg_effective_improvement = sum(effective_improvements) / len(effective_improvements)
+    avg_effective_pct = sum(effective_pct_improvements) / len(effective_pct_improvements)
+
     min_improvement = min(improvement_values)
     max_improvement = max(improvement_values)
     min_pct_improvement = min(pct_improvements)
     max_pct_improvement = max(pct_improvements)
 
-    print(f"\n  Average improvement: {avg_improvement:.6f} ({avg_pct_improvement:+.2f}%)")
-    print(f"  Min improvement:     {min_improvement:.6f} ({min_pct_improvement:+.2f}%)")
-    print(f"  Max improvement:     {max_improvement:.6f} ({max_pct_improvement:+.2f}%)")
-    print(f"  Total improvements:  {len(improvements)} entries")
+    # Count positive vs negative improvements
+    positive_count = sum(1 for imp in improvement_values if imp > 0)
+    negative_count = sum(1 for imp in improvement_values if imp < 0)
+    zero_count = sum(1 for imp in improvement_values if imp == 0)
+
+    print(f"\n  Average improvement:           {avg_improvement:.6f} ({avg_pct_improvement:+.2f}%)")
+    print(f"  Average effective improvement: {avg_effective_improvement:.6f} ({avg_effective_pct:+.2f}%)")
+    print(f"  Min improvement:               {min_improvement:.6f} ({min_pct_improvement:+.2f}%)")
+    print(f"  Max improvement:               {max_improvement:.6f} ({max_pct_improvement:+.2f}%)")
+    print(f"  Total improvements:            {len(improvements)} entries")
+    print(f"    Positive: {positive_count}, Negative: {negative_count}, Zero: {zero_count}")
 
     # Show individual improvements
     print(f"\n  Individual improvements:")
