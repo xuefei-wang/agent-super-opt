@@ -74,7 +74,7 @@ def compute_improvements(func_bank: List[Dict]) -> Tuple[int, Dict[str, List[Tup
             if metric_name not in improvements_by_metric:
                 improvements_by_metric[metric_name] = []
 
-            improvements_by_metric[metric_name].append((improvement, original_value, idx))
+            improvements_by_metric[metric_name].append((improvement, original_value, source_idx, idx))
 
     return optimized_count, improvements_by_metric
 
@@ -98,9 +98,9 @@ def print_statistics(total_entries: int, optimized_count: int,
             continue
 
         # Extract improvements and calculate percentages
-        improvements = [imp for imp, _ in improvement_tuples]
+        improvements = [imp for imp, _, _, _ in improvement_tuples]
         pct_improvements = [(imp / orig * 100) if orig != 0 else 0
-                           for imp, orig in improvement_tuples]
+                           for imp, orig, _, _ in improvement_tuples]
 
         avg_improvement = sum(improvements) / len(improvements)
         avg_pct_improvement = sum(pct_improvements) / len(pct_improvements)
@@ -117,8 +117,9 @@ def print_statistics(total_entries: int, optimized_count: int,
 
         # Show individual improvements
         print(f"\n  Individual improvements:")
-        for i, (imp, pct) in enumerate(zip(improvements, pct_improvements), 1):
-            print(f"    {i:2d}. {imp:+.6f} ({pct:+.2f}%)")
+        for i, (imp, orig, source_idx, new_idx) in enumerate(improvement_tuples, 1):
+            pct = (imp / orig * 100) if orig != 0 else 0
+            print(f"    {i:2d}. [idx: {source_idx}->{new_idx}]: {imp:+.6f} ({pct:+.2f}%)")
 
 
 def main():
