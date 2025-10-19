@@ -10,6 +10,7 @@ import types
 import re
 import traceback
 from src.data_io import ImageData
+from filelock import FileLock
 
 # --- Configuration ---
 function_bank_path = r"{function_bank_path}"
@@ -215,7 +216,11 @@ try:
                         predicted_masks=masks)
 
             processed_img = preprocess_func(images)
-            pred_masks = segmenter.predict(processed_img, boxes, used_for_baseline=False)
+            lock_path = os.path.join(os.path.dirname(function_bank_path), f"automl_gpu_{{GPU_ID}}.lock")
+            with FileLock(lock_path):
+                time.sleep(0.5)
+                torch.cuda.empty_cache()
+                pred_masks = segmenter.predict(processed_img, boxes, used_for_baseline=False)
             final_pred = postprocess_func(pred_masks)
 
             overall_metrics = segmenter.evaluate(final_pred, images.masks)
@@ -354,7 +359,7 @@ try:
             study.enqueue_trial(default_params[str(fn_idx + 1)])
 
         # Run optimization
-        study.optimize(objective, n_trials=N_TRIALS)
+        study.optimize(objective, n_trials=N_TRIALS, n_jobs=(-1 if EXPERIMENT_NAME == "medSAM_segmentation" else 1))
 
         # Get best trial results
         best_trial = study.best_trial
