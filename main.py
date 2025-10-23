@@ -198,6 +198,12 @@ def preprocess_images_i(images: ImageData) -> ImageData:
 {textwrap.dedent(prompts.get_postprocessing_function_api())}
 ```
 
+For reference, this is an example of how this postprocessing function is implemented by some domain experts:
+```
+{textwrap.dedent(prompts.get_postprocessing_function_api_expert())}
+```
+
+
 ## About the dataset: 
 {textwrap.dedent(prompts.dataset_info)}
 {textwrap.dedent(baseline_metric)}
@@ -211,8 +217,6 @@ def preprocess_images_i(images: ImageData) -> ImageData:
 ## Function bank sample:
 {textwrap.dedent(function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations))}
 
-## Useful primitive functions API that can be used in the preprocessing and postprocessing functions:
-{textwrap.dedent(opencv_APIs)}
 
 ## Additional Notes:
 {textwrap.dedent(notes_shared)}

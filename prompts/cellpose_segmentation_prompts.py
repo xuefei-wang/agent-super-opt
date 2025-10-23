@@ -114,3 +114,10 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             template_content = f.read()
 
         return textwrap.dedent(template_content)
+    
+    def get_postprocessing_function_api_expert(self):
+        api_file_path = os.path.join(os.path.dirname(__file__), "cellpose_segmentation_expert_postprocessing.py.txt")
+        with open(api_file_path, 'r') as f:
+            template_content = f.read()
+
+        return textwrap.dedent(template_content)
