@@ -243,13 +243,24 @@ try:
     # --- Optuna Objective Function ---
     def objective(trial_obj):
         """Optimize both preprocessing and postprocessing functions"""
+        # Set trial as a thread-local variable for parallel execution
         global trial
         trial = trial_obj
 
         try:
-            # Use the function references directly - they can access the global 'trial'
-            preprocess_func = current_preprocess_func
-            postprocess_func = current_postprocess_func
+            # Create wrapper functions that ensure trial is set correctly in this thread
+            def safe_preprocess(images):
+                global trial
+                trial = trial_obj
+                return current_preprocess_func(images)
+
+            def safe_postprocess(preds):
+                global trial
+                trial = trial_obj
+                return current_postprocess_func(preds)
+
+            preprocess_func = safe_preprocess
+            postprocess_func = safe_postprocess
 
             # Run evaluation pipeline
             kwargs = {{

@@ -7,6 +7,7 @@ import os
 import time
 import traceback
 import re
+import inspect
 import cv2 as cv
 
 # --- Dependency Imports ---
@@ -290,37 +291,24 @@ try:
     # Check if metrics were actually calculated (not empty)
     if k_overall_metrics:
         logger.info("Saving successful results to function bank...")
-        # Access the code string variable injected by the executor
-        generated_code_str = globals().get("_GENERATED_CODE_STRING", None)
-        pattern = r'(^(?P<indent>\s*)def\s+preprocess_images_\d+.*?)(?=\n(?P=indent)def\s|\Z)'
-        all_function_chunks = re.findall(
-            pattern,
-            generated_code_str,
-            flags=re.MULTILINE | re.DOTALL
-        )
+        # Use inspect.getsource to get function source code and rename functions
         k_preprocessing_functions = [
             re.sub(
                 r'^(\s*def\s+)preprocess_images_\d+(\s*\()',
                 r'\1preprocess_images\2',
-                chunk[0].strip(),
+                inspect.getsource(func),
                 flags=re.MULTILINE
             )
-            for chunk in all_function_chunks
+            for func in k_preprocess_images_fns
         ]
-        pattern = r'(^(?P<indent>\s*)def\s+postprocess_preds_\d+.*?)(?=\n(?P=indent)def\s|\Z)'
-        all_function_chunks = re.findall(
-            pattern,
-            generated_code_str,
-            flags=re.MULTILINE | re.DOTALL
-        )
         k_postprocessing_functions = [
             re.sub(
                 r'^(\s*def\s+)postprocess_preds_\d+(\s*\()',
                 r'\1postprocess_preds\2',
-                chunk[0].strip(),
+                inspect.getsource(func),
                 flags=re.MULTILINE
             )
-            for chunk in all_function_chunks
+            for func in k_postprocess_preds_fns
         ]
         results_to_save = {
             'preprocessing_function': k_preprocessing_functions,
