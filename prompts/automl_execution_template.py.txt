@@ -9,6 +9,7 @@ import os
 import types
 import re
 import traceback
+import inspect
 from src.data_io import ImageData
 from filelock import FileLock
 
@@ -165,6 +166,9 @@ try:
     def evaluate_pipeline(preprocess_func: callable, postprocess_func: callable, task: str, data_path: str, **kwargs):
         """Evaluate a preprocessing and postprocessing function pair"""
 
+        # GPU lock path for parallel trial execution
+        lock_path = os.path.join(os.path.dirname(function_bank_path), f"automl_gpu_{{GPU_ID}}.lock")
+
         if task == "spot_detection":
             from src.spot_detection import DeepcellSpotsDetector
             from src.utils import set_gpu_device
@@ -178,7 +182,10 @@ try:
             images = ImageData(raw=spots_data['X'], batch_size=batch_size, image_ids=[i for i in range(batch_size)])
 
             processed_img = preprocess_func(images)
-            pred = detector.predict(processed_img)
+            with FileLock(lock_path):
+                time.sleep(0.5)
+                torch.cuda.empty_cache()
+                pred = detector.predict(processed_img)
             final_pred = postprocess_func(pred)
             metrics = detector.evaluate(final_pred, spots_data['y'])
 
@@ -193,7 +200,10 @@ try:
             images = ImageData(raw=raw_images, batch_size=kwargs.get('batch_size'), image_ids=image_sources)
 
             processed_img = preprocess_func(images)
-            pred_masks = segmenter.predict(processed_img, batch_size=images.batch_size)
+            with FileLock(lock_path):
+                time.sleep(0.5)
+                torch.cuda.empty_cache()
+                pred_masks = segmenter.predict(processed_img, batch_size=images.batch_size)
             final_pred = postprocess_func(pred_masks)
 
             new_images = ImageData(raw=raw_images, batch_size=kwargs.get('batch_size'),
@@ -216,7 +226,6 @@ try:
                         predicted_masks=masks)
 
             processed_img = preprocess_func(images)
-            lock_path = os.path.join(os.path.dirname(function_bank_path), f"automl_gpu_{{GPU_ID}}.lock")
             with FileLock(lock_path):
                 time.sleep(0.5)
                 torch.cuda.empty_cache()
@@ -226,23 +235,6 @@ try:
             overall_metrics = segmenter.evaluate(final_pred, images.masks)
 
             return {{'overall_metrics': overall_metrics}}
-
-
-    def create_function_from_string(func_str: str, fn_name: str, module_name: str = "dynamic_module"):
-        """Create a callable function from string with trial object access"""
-        module = types.ModuleType(module_name)
-
-        # Add necessary imports to the module
-        module.trial = trial  # Make trial accessible
-        module.cv = cv
-        module.np = np
-        module.ImageData = ImageData
-
-        # Execute the function definition in the module
-        exec(func_str, module.__dict__)
-
-        # Get the function
-        return getattr(module, fn_name)
 
 
     # Store full metrics for each trial
@@ -255,9 +247,9 @@ try:
         trial = trial_obj
 
         try:
-            # Create the functions with trial access
-            preprocess_func = create_function_from_string(current_preprocess_str, f'preprocess_images_{{current_fn_idx + 1}}', f'dynamic_preprocess_{{current_fn_idx}}')
-            postprocess_func = create_function_from_string(current_postprocess_str, f'postprocess_preds_{{current_fn_idx + 1}}', f'dynamic_postprocess_{{current_fn_idx}}')
+            # Use the function references directly - they can access the global 'trial'
+            preprocess_func = current_preprocess_func
+            postprocess_func = current_postprocess_func
 
             # Run evaluation pipeline
             kwargs = {{
@@ -278,25 +270,60 @@ try:
             return optimization_score
 
         except Exception as e:
-            logger.error(f"Error in objective: {{e}}")
+            error_msg = str(e)
+            error_traceback = traceback.format_exc()
+            logger.error(f"Error in objective: {{error_msg}}")
             logger.exception(e)
+
+            # Store error information in trial for callback to access
+            trial_obj.set_user_attr('error', error_msg)
+            trial_obj.set_user_attr('traceback', error_traceback)
+
             return 0.0
 
 
-    def inject_best_parameters(function_code, best_params):
-        """Replace trial.suggest_* calls with optimal parameter values"""
-        optimized_code = function_code
+    def check_first_trial_callback(study, trial):
+        """Callback to stop optimization if the first enqueued trial fails"""
+        # Only check the first trial (trial number 0)
+        if trial.number == 0:
+            if trial.value == 0.0:
+                # Check if an error was stored in trial user attributes
+                if 'error' in trial.user_attrs:
+                    error_msg = trial.user_attrs['error']
+                    error_traceback = trial.user_attrs.get('traceback', 'No traceback available')
+                    err_msg = f"FATAL: First trial with default parameters failed with error: {{error_msg}}"
+                    logger.error(err_msg)
+                    logger.error(f"Traceback:\n{{error_traceback}}")
+                    raise RuntimeError(err_msg)
+                else:
+                    logger.warning(f"First trial returned 0.0. This may indicate an error was caught.")
+            else:
+                logger.info(f"First trial with default parameters passed validation (score: {{trial.value:.4f}})")
 
+
+    def inject_best_parameters_and_rename(func, best_params, new_func_name):
+        """Get function source, inject best parameters, and rename function"""
+        # Get source code of the function
+        func_source = inspect.getsource(func)
+
+        # Replace trial.suggest_* calls with actual values
         for param_name, param_value in best_params.items():
-            # Replace trial.suggest_* calls with actual values
             pattern = rf"trial\.suggest_\w+\(['\"]?{{param_name}}['\"]?[^)]*\)"
             if isinstance(param_value, str):
                 replacement = f"'{{param_value}}'"
             else:
                 replacement = str(param_value)
-            optimized_code = re.sub(pattern, replacement, optimized_code)
+            func_source = re.sub(pattern, replacement, func_source)
 
-        return optimized_code
+        # Rename function to standard name (remove _1, _2, etc.)
+        func_source = re.sub(
+            r'^(\s*def\s+)\w+(\s*\()',
+            rf'\1{{new_func_name}}\2',
+            func_source,
+            flags=re.MULTILINE
+        )
+
+        return func_source
 
 
     # --- Main Optimization ---
@@ -316,9 +343,6 @@ try:
     optimized_best_parameters = []
     optimized_optimization_times = []
 
-    # Access the code string variable injected by the executor
-    generated_code_str = globals().get("_GENERATED_CODE_STRING", "")
-
     for fn_idx in range(N_FNS):
         logger.info(f"\n{{'='*60}}")
         logger.info(f"Optimizing function pair {{fn_idx + 1}}/{{N_FNS}}")
@@ -326,25 +350,10 @@ try:
 
         optimization_start = time.time()
 
-        # Extract the specific preprocessing and postprocessing functions for this index
-        preprocess_pattern = rf'(^(?P<indent>\s*)def\s+preprocess_images_{{fn_idx + 1}}.*?)(?=\n(?P=indent)def\s|\Z)'
-        preprocess_match = re.findall(preprocess_pattern, generated_code_str, flags=re.MULTILINE | re.DOTALL)
-
-        postprocess_pattern = rf'(^(?P<indent>\s*)def\s+postprocess_preds_{{fn_idx + 1}}.*?)(?=\n(?P=indent)def\s|\Z)'
-        postprocess_match = re.findall(postprocess_pattern, generated_code_str, flags=re.MULTILINE | re.DOTALL)
-
-        if not preprocess_match:
-            logger.error(f"Could not find preprocess_images_{{fn_idx + 1}} in generated code")
-            continue
-
-        if not postprocess_match:
-            logger.error(f"Could not find postprocess_preds_{{fn_idx + 1}} in generated code")
-            continue
-
-        # Store the parameterized functions for this iteration (as global so objective can access them)
+        # Get function references directly from the validated lists
         current_fn_idx = fn_idx
-        current_preprocess_str = preprocess_match[0][0].strip()
-        current_postprocess_str = postprocess_match[0][0].strip()
+        current_preprocess_func = preprocess_images_fns[fn_idx]
+        current_postprocess_func = postprocess_preds_fns[fn_idx]
 
         # Create Optuna study
         study = optuna.create_study(
@@ -354,12 +363,18 @@ try:
         )
 
         # Enqueue first trial with default parameters from original functions
-        if default_params and str(fn_idx + 1) in default_params:
+        has_default_params = default_params and str(fn_idx + 1) in default_params
+        if has_default_params:
             logger.info(f"Enqueuing first trial with default parameters: {{default_params[str(fn_idx + 1)]}}")
             study.enqueue_trial(default_params[str(fn_idx + 1)])
 
-        # Run optimization
-        study.optimize(objective, n_trials=N_TRIALS, n_jobs=(-1 if EXPERIMENT_NAME == "medSAM_segmentation" else 1))
+        # Run optimization with callback to check first trial if default params were enqueued
+        study.optimize(
+            objective,
+            n_trials=N_TRIALS,
+            n_jobs=-1,
+            callbacks=[check_first_trial_callback] if has_default_params else None
+        )
 
         # Get best trial results
         best_trial = study.best_trial
@@ -370,22 +385,12 @@ try:
         optimization_time = time.time() - optimization_start
         optimized_optimization_times.append(optimization_time)
 
-        # Inject best parameters into functions
-        optimized_preprocess = inject_best_parameters(current_preprocess_str, best_trial.params)
-        optimized_postprocess = inject_best_parameters(current_postprocess_str, best_trial.params)
-
-        # Rename functions to standard names (remove _1, _2, etc.)
-        optimized_preprocess = re.sub(
-            r'^(\s*def\s+)preprocess_images_\d+(\s*\()',
-            r'\1preprocess_images\2',
-            optimized_preprocess,
-            flags=re.MULTILINE
+        # Get optimized function source code with best parameters injected
+        optimized_preprocess = inject_best_parameters_and_rename(
+            current_preprocess_func, best_trial.params, 'preprocess_images'
         )
-        optimized_postprocess = re.sub(
-            r'^(\s*def\s+)postprocess_preds_\d+(\s*\()',
-            r'\1postprocess_preds\2',
-            optimized_postprocess,
-            flags=re.MULTILINE
+        optimized_postprocess = inject_best_parameters_and_rename(
+            current_postprocess_func, best_trial.params, 'postprocess_preds'
         )
 
         optimized_preprocessing_functions.append(optimized_preprocess)
