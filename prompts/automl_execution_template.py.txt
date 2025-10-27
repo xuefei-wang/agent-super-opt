@@ -237,26 +237,39 @@ try:
             return {{'overall_metrics': overall_metrics}}
 
 
-    def make_objective(preprocess_func, postprocess_func, trial_metrics_storage):
+    def make_objective(preprocess_func, postprocess_func):
         """Create an Optuna objective bound to a specific function pair."""
 
         def objective(trial_obj):
             """Optimize both preprocessing and postprocessing functions"""
-            # Set trial as a thread-local variable for parallel execution
-            global trial
-            trial = trial_obj
-
             try:
-                # Create wrapper functions that ensure trial is set correctly in this thread
-                def safe_preprocess(images):
-                    global trial
-                    trial = trial_obj
-                    return preprocess_func(images)
+                # Create wrapper functions with trial object captured in closure
+                # This prevents race conditions where parallel trials overwrite each other's trial objects
 
-                def safe_postprocess(preds):
-                    global trial
-                    trial = trial_obj
-                    return postprocess_func(preds)
+                # Create a new function with trial bound in its namespace
+                import types
+
+                # For preprocessing function
+                preprocess_globals = preprocess_func.__globals__.copy()
+                preprocess_globals['trial'] = trial_obj
+                safe_preprocess = types.FunctionType(
+                    preprocess_func.__code__,
+                    preprocess_globals,
+                    preprocess_func.__name__,
+                    preprocess_func.__defaults__,
+                    preprocess_func.__closure__
+                )
+
+                # For postprocessing function
+                postprocess_globals = postprocess_func.__globals__.copy()
+                postprocess_globals['trial'] = trial_obj
+                safe_postprocess = types.FunctionType(
+                    postprocess_func.__code__,
+                    postprocess_globals,
+                    postprocess_func.__name__,
+                    postprocess_func.__defaults__,
+                    postprocess_func.__closure__
+                )
 
                 # Run evaluation pipeline
                 kwargs = {{
@@ -268,8 +281,8 @@ try:
 
                 metrics = evaluate_pipeline(safe_preprocess, safe_postprocess, EXPERIMENT_NAME, DATASET_PATH, **kwargs)
 
-                # Store full metrics for this trial
-                trial_metrics_storage[trial_obj.number] = metrics['overall_metrics']
+                # Store full metrics in trial user attributes (works across processes)
+                trial_obj.set_user_attr('full_metrics', metrics['overall_metrics'])
 
                 # Use sampling function to extract the optimization metric
                 optimization_score = sampling_function(metrics)
@@ -343,14 +356,11 @@ try:
         current_preprocess_func = preprocess_images_fns[fn_idx]
         current_postprocess_func = postprocess_preds_fns[fn_idx]
 
-        # Create storage for metrics specific to this function pair
-        trial_metrics_storage = {{}}
-
         # Create Optuna study
         study = optuna.create_study(
             direction="maximize",
             study_name=f"{{STUDY_NAME}}_{{fn_idx + 1}}",
-            sampler=optuna.samplers.TPESampler(seed=SEED + fn_idx)
+            sampler=optuna.samplers.RandomSampler(seed=SEED + fn_idx)
         )
 
         # Enqueue first trial with default parameters from original functions
@@ -359,13 +369,12 @@ try:
             logger.info(f"Function pair {{fn_idx + 1}}: Enqueuing first trial with default parameters: {{default_params[str(fn_idx + 1)]}}")
             study.enqueue_trial(default_params[str(fn_idx + 1)])
 
-        objective = make_objective(current_preprocess_func, current_postprocess_func, trial_metrics_storage)
+        objective = make_objective(current_preprocess_func, current_postprocess_func)
 
         studies_info.append({{
             'fn_idx': fn_idx,
             'study': study,
             'objective': objective,
-            'trial_metrics_storage': trial_metrics_storage,
             'preprocess_func': current_preprocess_func,
             'postprocess_func': current_postprocess_func,
             'has_default_params': has_default_params,
@@ -426,7 +435,6 @@ try:
         fn_idx = info['fn_idx']
         study = info['study']
         objective = info['objective']
-        trial_metrics_storage = info['trial_metrics_storage']
         current_preprocess_func = info['preprocess_func']
         current_postprocess_func = info['postprocess_func']
         optimization_start = info['optimization_start']
@@ -468,8 +476,8 @@ try:
         optimized_postprocessing_functions.append(optimized_postprocess)
         optimized_best_parameters.append(best_trial.params)
 
-        # Retrieve full metrics for the best trial
-        best_metrics = trial_metrics_storage.get(best_trial.number, {{}})
+        # Retrieve full metrics from the best trial's user attributes
+        best_metrics = best_trial.user_attrs.get('full_metrics', {{}})
         optimized_metrics.append(best_metrics)
 
     # --- Log Metrics ---
