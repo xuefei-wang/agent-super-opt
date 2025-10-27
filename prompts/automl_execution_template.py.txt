@@ -237,79 +237,58 @@ try:
             return {{'overall_metrics': overall_metrics}}
 
 
-    # Store full metrics for each trial
-    trial_metrics_storage = {{}}
+    def make_objective(preprocess_func, postprocess_func, trial_metrics_storage):
+        """Create an Optuna objective bound to a specific function pair."""
 
-    # --- Optuna Objective Function ---
-    def objective(trial_obj):
-        """Optimize both preprocessing and postprocessing functions"""
-        # Set trial as a thread-local variable for parallel execution
-        global trial
-        trial = trial_obj
+        def objective(trial_obj):
+            """Optimize both preprocessing and postprocessing functions"""
+            # Set trial as a thread-local variable for parallel execution
+            global trial
+            trial = trial_obj
 
-        try:
-            # Create wrapper functions that ensure trial is set correctly in this thread
-            def safe_preprocess(images):
-                global trial
-                trial = trial_obj
-                return current_preprocess_func(images)
+            try:
+                # Create wrapper functions that ensure trial is set correctly in this thread
+                def safe_preprocess(images):
+                    global trial
+                    trial = trial_obj
+                    return preprocess_func(images)
 
-            def safe_postprocess(preds):
-                global trial
-                trial = trial_obj
-                return current_postprocess_func(preds)
+                def safe_postprocess(preds):
+                    global trial
+                    trial = trial_obj
+                    return postprocess_func(preds)
 
-            preprocess_func = safe_preprocess
-            postprocess_func = safe_postprocess
+                # Run evaluation pipeline
+                kwargs = {{
+                    'gpu_id': GPU_ID,
+                    'checkpoint_path': CHECKPOINT_PATH,
+                    'dataset_size': DATASET_SIZE,
+                    'batch_size': BATCH_SIZE
+                }}
 
-            # Run evaluation pipeline
-            kwargs = {{
-                'gpu_id': GPU_ID,
-                'checkpoint_path': CHECKPOINT_PATH,
-                'dataset_size': DATASET_SIZE,
-                'batch_size': BATCH_SIZE
-            }}
+                metrics = evaluate_pipeline(safe_preprocess, safe_postprocess, EXPERIMENT_NAME, DATASET_PATH, **kwargs)
 
-            metrics = evaluate_pipeline(preprocess_func, postprocess_func, EXPERIMENT_NAME, DATASET_PATH, **kwargs)
+                # Store full metrics for this trial
+                trial_metrics_storage[trial_obj.number] = metrics['overall_metrics']
 
-            # Store full metrics for this trial
-            trial_metrics_storage[trial_obj.number] = metrics['overall_metrics']
+                # Use sampling function to extract the optimization metric
+                optimization_score = sampling_function(metrics)
 
-            # Use sampling function to extract the optimization metric
-            optimization_score = sampling_function(metrics)
+                return optimization_score
 
-            return optimization_score
+            except Exception as e:
+                error_msg = str(e)
+                error_traceback = traceback.format_exc()
+                logger.error(f"Error in objective: {{error_msg}}")
+                logger.exception(e)
 
-        except Exception as e:
-            error_msg = str(e)
-            error_traceback = traceback.format_exc()
-            logger.error(f"Error in objective: {{error_msg}}")
-            logger.exception(e)
+                # Store error information in trial for later inspection
+                trial_obj.set_user_attr('error', error_msg)
+                trial_obj.set_user_attr('traceback', error_traceback)
 
-            # Store error information in trial for callback to access
-            trial_obj.set_user_attr('error', error_msg)
-            trial_obj.set_user_attr('traceback', error_traceback)
+                return 0.0
 
-            return 0.0
-
-
-    def check_first_trial_callback(study, trial):
-        """Callback to stop optimization if the first enqueued trial fails"""
-        # Only check the first trial (trial number 0)
-        if trial.number == 0:
-            if trial.value == 0.0:
-                # Check if an error was stored in trial user attributes
-                if 'error' in trial.user_attrs:
-                    error_msg = trial.user_attrs['error']
-                    error_traceback = trial.user_attrs.get('traceback', 'No traceback available')
-                    err_msg = f"FATAL: First trial with default parameters failed with error: {{error_msg}}"
-                    logger.error(err_msg)
-                    logger.error(f"Traceback:\n{{error_traceback}}")
-                    raise RuntimeError(err_msg)
-                else:
-                    logger.warning(f"First trial returned 0.0. This may indicate an error was caught.")
-            else:
-                logger.info(f"First trial with default parameters passed validation (score: {{trial.value:.4f}})")
+        return objective
 
 
     def inject_best_parameters_and_rename(func, best_params, new_func_name):
@@ -354,17 +333,18 @@ try:
     optimized_best_parameters = []
     optimized_optimization_times = []
 
-    for fn_idx in range(N_FNS):
-        logger.info(f"\n{{'='*60}}")
-        logger.info(f"Optimizing function pair {{fn_idx + 1}}/{{N_FNS}}")
-        logger.info(f"{{'='*60}}")
+    studies_info = []
 
+    # First, prepare all studies
+    for fn_idx in range(N_FNS):
         optimization_start = time.time()
 
         # Get function references directly from the validated lists
-        current_fn_idx = fn_idx
         current_preprocess_func = preprocess_images_fns[fn_idx]
         current_postprocess_func = postprocess_preds_fns[fn_idx]
+
+        # Create storage for metrics specific to this function pair
+        trial_metrics_storage = {{}}
 
         # Create Optuna study
         study = optuna.create_study(
@@ -376,16 +356,96 @@ try:
         # Enqueue first trial with default parameters from original functions
         has_default_params = default_params and str(fn_idx + 1) in default_params
         if has_default_params:
-            logger.info(f"Enqueuing first trial with default parameters: {{default_params[str(fn_idx + 1)]}}")
+            logger.info(f"Function pair {{fn_idx + 1}}: Enqueuing first trial with default parameters: {{default_params[str(fn_idx + 1)]}}")
             study.enqueue_trial(default_params[str(fn_idx + 1)])
 
-        # Run optimization with callback to check first trial if default params were enqueued
+        objective = make_objective(current_preprocess_func, current_postprocess_func, trial_metrics_storage)
+
+        studies_info.append({{
+            'fn_idx': fn_idx,
+            'study': study,
+            'objective': objective,
+            'trial_metrics_storage': trial_metrics_storage,
+            'preprocess_func': current_preprocess_func,
+            'postprocess_func': current_postprocess_func,
+            'has_default_params': has_default_params,
+            'optimization_start': optimization_start
+        }})
+
+    # Run initial validation trials for all function pairs first
+    logger.info(f"\n{{'='*60}}")
+    logger.info(f"VALIDATION PHASE: Testing all {{N_FNS}} function pairs")
+    logger.info(f"{{'='*60}}\n")
+
+    for info in studies_info:
+        study = info['study']
+        objective = info['objective']
+
+        if info['has_default_params']:
+            logger.info(
+                f"[Validation {{info['fn_idx'] + 1}}/{{N_FNS}}] Running validation trial with default parameters..."
+            )
+        else:
+            logger.info(
+                f"[Validation {{info['fn_idx'] + 1}}/{{N_FNS}}] Running validation trial (no default parameters provided)..."
+            )
+
         study.optimize(
             objective,
-            n_trials=N_TRIALS,
-            n_jobs=-1,
-            callbacks=[check_first_trial_callback] if has_default_params else None
+            n_trials=1,
+            n_jobs=1
         )
+
+        if not study.trials:
+            err_msg = "FATAL: Initial validation trial did not complete."
+            logger.error(err_msg)
+            raise RuntimeError(err_msg)
+
+        first_trial = study.trials[0]
+        if first_trial.value == 0.0:
+            if 'error' in first_trial.user_attrs:
+                error_msg = first_trial.user_attrs['error']
+                error_traceback = first_trial.user_attrs.get('traceback', 'No traceback available')
+                err_msg = f"FATAL: First trial failed with error: {{error_msg}}"
+                logger.error(err_msg)
+                logger.error(f"Traceback:\n{{error_traceback}}")
+                raise RuntimeError(err_msg)
+            else:
+                logger.warning("First trial returned 0.0. This may indicate an error was caught.")
+        else:
+            logger.info(
+                f"Function pair {{info['fn_idx'] + 1}} first trial passed validation (score: {{first_trial.value:.4f}})"
+            )
+
+    # Run optimization for each validated function pair
+    logger.info(f"\n{{'='*60}}")
+    logger.info(f"OPTIMIZATION PHASE: Running parallel trials")
+    logger.info(f"{{'='*60}}\n")
+
+    for info in studies_info:
+        fn_idx = info['fn_idx']
+        study = info['study']
+        objective = info['objective']
+        trial_metrics_storage = info['trial_metrics_storage']
+        current_preprocess_func = info['preprocess_func']
+        current_postprocess_func = info['postprocess_func']
+        optimization_start = info['optimization_start']
+
+        logger.info(f"\n{{'='*60}}")
+        logger.info(f"Optimizing function pair {{fn_idx + 1}}/{{N_FNS}}")
+        logger.info(f"{{'='*60}}")
+
+        # Continue optimization for the remaining trials with parallel execution enabled
+        remaining_trials = N_TRIALS - len(study.trials)
+        if remaining_trials > 0:
+            logger.info(f"Running {{remaining_trials}} additional trials in parallel...")
+            study.optimize(
+                objective,
+                n_trials=remaining_trials,
+                n_jobs=-1
+            )
+        else:
+            logger.info(f"No additional trials needed (N_TRIALS={{N_TRIALS}}, already completed {{len(study.trials)}}).")
 
         # Get best trial results
         best_trial = study.best_trial
