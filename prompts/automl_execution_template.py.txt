@@ -305,28 +305,50 @@ try:
 
 
     def inject_best_parameters_and_rename(func, best_params, new_func_name):
-        """Get function source, inject best parameters, and rename function"""
-        # Get source code of the function
+        """Use AST to inject best parameters and rename function - more robust than regex"""
+        import ast
+
+        # Get source code and parse into AST
         func_source = inspect.getsource(func)
+        tree = ast.parse(func_source)
 
-        # Replace trial.suggest_* calls with actual values
-        for param_name, param_value in best_params.items():
-            pattern = rf"trial\.suggest_\w+\(['\"]?{{param_name}}['\"]?[^)]*\)"
-            if isinstance(param_value, str):
-                replacement = f"'{{param_value}}'"
-            else:
-                replacement = str(param_value)
-            func_source = re.sub(pattern, replacement, func_source)
+        # Transform AST: replace trial.suggest_* calls with constant values
+        class ParameterInjector(ast.NodeTransformer):
+            def visit_Call(self, node):
+                # Check if this is a trial.suggest_* call
+                if (isinstance(node.func, ast.Attribute) and
+                    isinstance(node.func.value, ast.Name) and
+                    node.func.value.id == 'trial' and
+                    node.func.attr.startswith('suggest_')):
 
-        # Rename function to standard name (remove _1, _2, etc.)
-        func_source = re.sub(
-            r'^(\s*def\s+)\w+(\s*\()',
-            rf'\1{{new_func_name}}\2',
-            func_source,
-            flags=re.MULTILINE
-        )
+                    # Extract parameter name from first argument
+                    if node.args and isinstance(node.args[0], ast.Constant):
+                        param_name = node.args[0].value
 
-        return func_source
+                        # Replace with best parameter value if available
+                        if param_name in best_params:
+                            param_value = best_params[param_name]
+                            return ast.Constant(value=param_value)
+
+                # Continue traversing
+                return self.generic_visit(node)
+
+        # Apply parameter injection
+        injector = ParameterInjector()
+        tree = injector.visit(tree)
+
+        # Rename the function
+        class FunctionRenamer(ast.NodeTransformer):
+            def visit_FunctionDef(self, node):
+                node.name = new_func_name
+                return node
+
+        renamer = FunctionRenamer()
+        tree = renamer.visit(tree)
+
+        # Fix missing locations and unparse back to source
+        ast.fix_missing_locations(tree)
+        return ast.unparse(tree)
 
 
     # --- Main Optimization ---
