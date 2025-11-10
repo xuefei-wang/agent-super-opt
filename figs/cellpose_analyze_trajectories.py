@@ -54,8 +54,6 @@ from cellpose.io import imread
 from cellpose.metrics import average_precision, mask_ious, boundary_scores, aggregated_jaccard_index, flow_error
 
 import os
-# Analyze a agent search trajectory
-# Usage: python figs/fb_analysis.py --json_path <path_to_json> --output_file <output_file>
 
 def find_lowest(json_array: List[Dict], metric_lambda: Callable[[Dict], float]) -> Dict:
     '''Returns object with the lowest metric value from a list of JSON objects.'''
@@ -530,8 +528,6 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     print(f"Saved top-k function results to {os.path.join(output_dir, 'top_k_functions_results.json')}")
 
 
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
     parser.add_argument('--json_path', type=str, required=True, help='Path to the data directory.')
@@ -543,10 +539,6 @@ if __name__ == "__main__":
     gpu_id = args.gpu_id
     json_path = args.json_path
 
-    # meta_dir = 'cellpose_segmentation'
-    # for path in os.listdir(meta_dir):
-    #     if path.startswith('2025'):
-    # json_path = os.path.join(meta_dir, path, 'preprocessing_func_bank.json')
     print(json_path)
     output_dir = os.path.dirname(json_path)
     main(json_path, data_path, output_dir, precision_index=0, device=gpu_id, dataset_size=100, batch_size=16, k=10)

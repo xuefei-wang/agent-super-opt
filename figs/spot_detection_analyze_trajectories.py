@@ -29,17 +29,7 @@ from src.data_io import ImageData
 from skimage.feature import peak_local_max
 
 
-def ensure_3d_image(img):
-    # img can be (H,W) or (H,W,1) or already (H,W,C)
-    if img.ndim == 2:
-        img = np.expand_dims(img, axis=-1)
-    if img.shape[-1] != 1:
-        img = img[..., :1]
-    return img
-
 import os
-# Analyze a agent search trajectory
-# Usage: python figs/fb_analysis.py --json_path <path_to_json> --output_file <output_file>
 
 def find_lowest(json_array: List[Dict], metric_lambda: Callable[[Dict], float]) -> Dict:
     '''Returns object with the lowest metric value from a list of JSON objects.'''
@@ -330,15 +320,6 @@ if __name__ == "__main__":
     data_path = args.data_path
     json_path = args.json_path
     
-
-    # meta_dir = 'spot_detection'
-    # for path in os.listdir(meta_dir):
-    #     if path.startswith('2025'):
-    #         json_path = os.path.join(meta_dir, path, 'preprocessing_func_bank.json')
-    #         print(json_path)
-    #         output_dir = os.path.dirname(json_path)
-    #         main(json_path, data_path, output_dir, 10)
-
     main(json_path, data_path, os.path.dirname(json_path), 10)
 
     

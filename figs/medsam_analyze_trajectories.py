@@ -393,13 +393,5 @@ if __name__ == "__main__":
         }
         json.dump(json_output, f)
 
-    # outer_folder_path = "medSAM_segmentation"
-    # all_expr_folders = os.listdir(outer_folder_path)
-    # for i, rollout_timestamp in enumerate(all_expr_folders):
-    #     if rollout_timestamp.startswith('2025'):
-    #         print(f"\nProcessing rollout timestamp: {i + 1}/20, {rollout_timestamp}")
-    #         json_bank_path = os.path.join(outer_folder_path, rollout_timestamp, "preprocessing_func_bank.json")
-    #         main(json_bank_path, k=10, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)
-
 
     main(json_path, k=10, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)
