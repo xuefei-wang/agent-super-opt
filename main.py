@@ -148,7 +148,7 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     return sample
 
-def prepare_prompt_pipeline_optimization(
+def prepare_prompt(
         notes_shared: str, 
         function_bank_path: str, 
         prompts : TaskPrompts, 
@@ -262,7 +262,6 @@ def save_seed_list(n, file_path, initial_seed):
     with open(file_path, "w") as file:
         for seed_val in int_seeds:
             file.write(f"{seed_val}\n") # Save integer seeds
-
     print(f"Saved {n} integer seeds based on initial seed {initial_seed} to {file_path}")
 
     return int_seeds
@@ -339,26 +338,7 @@ def create_latest_symlink(experiment_output_dir, run_output_dir):
      except Exception as e:
          print(f"Failed to create symlink: {e}")
 
-def clear_gpu_memory():
-    """Completely clear GPU memory before running subprocess"""
-    import gc
 
-    # Force garbage collection first
-    gc.collect()
-
-    # PyTorch-specific GPU cleanup
-    if torch.cuda.is_available():
-        # Empty the cache
-        torch.cuda.empty_cache()
-
-        # Synchronize all CUDA streams
-        torch.cuda.synchronize()
-
-        # Reset peak memory stats (optional, but good for monitoring)
-        torch.cuda.reset_peak_memory_stats()
-
-    # Force garbage collection again after GPU cleanup
-    gc.collect()
 
 def main(args: argparse.Namespace):
     # Get current datetime once at the beginning
@@ -455,7 +435,7 @@ def main(args: argparse.Namespace):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             cache=cache)
