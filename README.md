@@ -157,21 +157,12 @@ The `main.py` script is the entry point for running the framework and offers a v
   * `--checkpoint_path`: Path to a model checkpoint file. Currently used only for MedSAM segmentation.
   * `--gpu_id`: The ID of the GPU to use (default: `0`).
   * `--random_seed`: The random seed for reproducibility (default: `42`).
-  * `--warm_start`: A boolean flag. If set, the expert baseline function will be included in the function bank as a warm start for the agent.
-  * `--metric_only`: A boolean flag. If set, only the baseline metric will be added to the prompt (requires `--warm_start` to be `True`).
-  * `--enable_advantage`: A boolean flag. If set, the relative score will be stored for each of the `k` samples generated within an iteration.
   * `--n_top`: The number of top-performing functions to display in the function bank (default: `3`).
   * `--n_worst`: The number of worst-performing functions to display in the function bank (default: `3`).
   * `--n_last`: The number of last functions to show in the function bank (default: `0`).
   * `--history_threshold`: The number of iterations to wait before incorporating the accumulated function bank history into the agent's prompt (default: `5`).
-  * `--hyper_optimize`: A boolean flag. If set, a hyperparameter search will be initiated after the main optimization trial concludes.
-  * `--n_hyper_optimize`: The number of functions to optimize during the post-trial hyperparameter search (default: `3`).
-  * `--n_hyper_optimize_trials`: The number of trials to run for each function during hyperparameter optimization (default: `15`).
   * `--k`: The preprocessing function group size, representing the number of new functions to generate per iteration (default: `3`).
   * `--k_word`: The English word representation of `k` (e.g., `"three"`) (default: `"three"`). This is used for prompt phrasing.
-  * `--dataset_size`: A Cellpose-specific argument to determine the size of the validation/test set (default: `100`).
-  * `--batch_size`: A Cellpose-specific argument to determine the batch size (default: `16`).
-
 
 ## 📦 Output Structure
 

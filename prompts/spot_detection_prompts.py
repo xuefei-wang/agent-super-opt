@@ -9,7 +9,7 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     # --- Define these as CLASS attributes ---
     dataset_info = """
     ```markdown
-    This is a single-channel cell spot detection dataset. IMPORTANT: The cell images have dimensions (B, L, W, C) = (batch, length, width, channel).
+    This is a single-channel cell spot detection dataset. IMPORTANT: The images have dimensions (B, L, W, C) = (batch, length, width, channel).
     The images have pixel values between 0 and 1 and are in float32 format.
     ```
     """
