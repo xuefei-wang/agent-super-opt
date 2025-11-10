@@ -32,11 +32,8 @@ We strongly recommend using a virtual environment to manage dependencies for thi
     pip install -r requirements.txt
     ```
 
-4.  **Set Up LLM API Key**: This framework uses OpenAI models by default, so you'll need to set your `OPENAI_API_KEY` as an environment variable. If you prefer other LLMs, you can update the `llm_config` for agents in `main.py`.
+4.  **Set Up LLM API Key**: This framework uses OpenAI models by default, so you'll need to set your `OPENAI_API_KEY` as an environment variable. You can do so by creating a `.env` file. If you prefer other LLMs, you can update the `llm_config` for agents in `main.py`.
 
-    ```bash
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
 
 ## 📖 Usage Guides
 
@@ -58,7 +55,7 @@ This guide provides instructions for replicating the experimental results presen
 
 2.  **Additional Setup (Task-Specific)**
 
-      * **MedSAM**: Download the model checkpoint [medsam\_vit\_b.pth](https://drive.google.com/file/d/1UAmWL88roYR7wKlnApw5Bcuzf2iQgk6_/view?usp=drive_link) and specify its path using `--checkpoint_path`. Follow the [instructions](https://github.com/bowang-lab/MedSAM?tab=readme-ov-file#installation) and install the MedSAM package.
+      * **MedSAM**: Download the model checkpoint medsam\_vit\_b.pth and specify its path using `--checkpoint_path`. Follow the [instructions](https://github.com/bowang-lab/MedSAM?tab=readme-ov-file#installation) and install the MedSAM package.
       * **Polaris**: Set your `DEEPCELL_ACCESS_TOKEN` environment variable. Instructions are available [here](https://deepcell.readthedocs.io/en/master/API-key.html).
       * **Cellpose**: Need to comment out `fill_holes_and_remove_small_masks` step in the `dynamics.resize_and_compute_masks`
 
@@ -87,29 +84,29 @@ This guide provides instructions for replicating the experimental results presen
 
       
       - For Cellpose: 
-            ```
-            python figs/cellpose_analyze_trajectories.py \
-                  --data_path=$DATA_FOLDER
-            python aggregate_results_across_reps.py --task_name cellpose_segmentation
-            ```
+            
+      ```python
+      python figs/cellpose_analyze_trajectories.py \
+            --data_path=$DATA_FOLDER
+      ```
 
       - For Polaris:
-            ```
-            python figs/spot_detection_analyze_trajectories.py \
-                  --checkpoint_path=$CHECKPOINT_FILE \
-                  --val_data_path=$VAL_DATA_FILE \
-                  --test_data_path=$TEST_DATA_FILE \
-                  --gpu_id=$GPU_ID
-            python aggregate_results_across_reps.py --task_name spot_detection
-            ```
+
+      ```python
+      python figs/spot_detection_analyze_trajectories.py \
+            --checkpoint_path=$CHECKPOINT_FILE \
+            --val_data_path=$VAL_DATA_FILE \
+            --test_data_path=$TEST_DATA_FILE \
+            --gpu_id=$GPU_ID
+      ```
 
       - For MedSAM:
-            ```
-            python figs/spot_detection_analyze_trajectories.py \
-                  --data_path=$DATA_FOLDER \ # this should be the folder where val/ and test/ are stored
-                  --gpu_id $GPU_ID
-            python aggregate_results_across_reps.py --task_name medSAM_segmentation
-            ```
+            
+      ```python
+      python figs/spot_detection_analyze_trajectories.py \
+            --data_path=$DATA_FOLDER \ # this should be the folder where val/ and test/ are stored
+            --gpu_id $GPU_ID
+      ```
 
 
 ### For Scientists: Applying to Your Own Data 🧪
@@ -130,9 +127,9 @@ To integrate your custom workflow, you'll need to implement the following compon
 
       * **Example**: Check `prompts/cellpose_segmentation_execution-template.py.txt`.
 
-4.  **Expert Baseline**: Provide an expert-written baseline implementation in `prompts/{task_name}_expert.py.txt`.
+4.  **Expert Baseline**: Provide an expert-written baseline implementation in `prompts/{task_name}_expert_postprocessing.py.txt`. For highly specific postprocessing steps, provide a skeleton in `prompts/{task_name}_expert_postprocessing_skeleton.py.txt` to provide minimal guidance for LLM agents.
 
-      * **Example**: See `prompts/cellpose_segmentation_expert.py.txt`.
+      * **Example**: See `prompts/medsam_segmentation_expert_postprocessing_skeleton.py.txt`.
 
 Once you've implemented these components, you can run the optimization:
 
@@ -140,9 +137,9 @@ Once you've implemented these components, you can run the optimization:
 python main.py \
       --dataset $DATASET_PATH \
       --gpu_id $GPU_ID \
-      --experiment_name $YOUR_CUSTOM_TASK_NAME \ # E.g., "my_new_experiment"
+      --experiment_name $YOUR_CUSTOM_TASK_NAME \
       --random_seed $SEED \
-      --history_threshold $HISTORY_THRESHOLD \ # When to start incorporating function bank history into the prompt (default: 5).
+      --history_threshold $HISTORY_THRESHOLD \ # When to start incorporating function bank history into the prompt.
       --k $K \ # Number of samples (functions) to generate per iteration (default: 3).
       --k_word $K_WORD # The word representation of 'k' (default: "three").
 ```
