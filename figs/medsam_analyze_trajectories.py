@@ -319,7 +319,6 @@ def main(json_path, k, modality, gpu_id, val_baseline, test_baseline, test_data_
 
     segmenter = MedSAMTool(gpu_id=gpu_id, checkpoint_path=checkpoint_path)
 
-    print("\n\nExtracting top k=10 functions from the 20 chat histories in a timestamp rollout")
     results_k = extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_data_path)
     # if file doesn't exist, create  that file
     with open(top_k_json_output_path, 'w') as f:
