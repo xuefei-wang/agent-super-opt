@@ -1,7 +1,11 @@
 """
-python figs/spot_detection_analyze_trajectories.py \
-    --data_path=$DATA_FOLDER \ # this should be the folder where val/ and test/ are stored
-    --gpu_id $GPU_ID
+python figs/medsam_analyze_trajectories.py \
+    --k=$K \
+    --checkpoint_path=$CHECKPOINT_FILE \
+    --val_data_path=$VAL_DATA_FILE \
+    --test_data_path=$TEST_DATA_FILE \
+    --gpu_id=$GPU_ID \
+    --json_path=$JSON_PATH # path to preprocessing_func_bank.json
 """
 import json
 import os
@@ -332,6 +336,7 @@ def main(json_path, k, modality, gpu_id, val_baseline, test_baseline, test_data_
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
+    parser.add_argument('--k', type=int, required=True, default=10, help='Number of top functions to run analysis on.')
     parser.add_argument('--checkpoint_path', type=str, required=True, default="", help='Path to the MedSAM checkpoint.')
     parser.add_argument('--val_data_path', type=str, required=True, default="", help='Path to validation dataset.')
     parser.add_argument('--test_data_path', type=str, required=True, default="", help='Path to test dataset.')
@@ -399,4 +404,4 @@ if __name__ == "__main__":
         json.dump(json_output, f)
 
 
-    main(json_path, k=10, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)
+    main(json_path, k=args.k, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)

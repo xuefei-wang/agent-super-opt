@@ -1,6 +1,9 @@
 """
 python figs/cellpose_analyze_trajectories.py \
-    --data_path=$DATA_FOLDER
+    --k=$K \
+    --data_path=$DATA_FOLDER \
+    --gpu_id=$GPU_ID \
+    --json_path=$JSON_PATH # path to preprocessing_func_bank.json
 """
 import os 
 import sys
@@ -25,23 +28,6 @@ import glob
 import numpy as np
 import cv2 as cv
 
-# try:
-#     from data_io import ImageData
-# except ImportError:
-#     from src.data_io import ImageData
-
-# try:
-#     from tools import BaseSegmenter
-# except ImportError:
-#     from src.tools import BaseSegmenter
-
-# try:
-#     from utils import set_gpu_device
-# except ImportError:
-#     from src.utils import set_gpu_device
-
-# Dynamically add the project root to sys.path
-# This allows Python to find the 'src' module correctly
 _CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_CURRENT_SCRIPT_DIR)
 if _PROJECT_ROOT not in sys.path:
@@ -159,12 +145,8 @@ class PriviligedCellposeTool():
         metrics = {}
         losses = {}
         ap, tp, fp, fn  = average_precision(pred_masks, gt_masks)
-        # metrics["average_precision"] = ap.mean(axis=0) # Average over all images
         metrics["average_precision"] = np.nanmean(ap, axis=0) # Average over all images
-        # metrics["aggregated_jaccard_index"] = aggregated_jaccard_index(pred_masks, gt_masks)
-        # metrics["flow_error"] = flow_error(pred_masks, gt_masks)
-        # classification loss
-
+        
         spatial_shape = pred_masks[0].shape[0:2]
         for x in pred_masks:
             if x.shape[0:2] != spatial_shape:
@@ -534,6 +516,7 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
+    parser.add_argument('--k', type=int, required=True, default=10, help='Number of top functions to run analysis on.')
     parser.add_argument('--json_path', type=str, required=True, help='Path to the data directory.')
     parser.add_argument('--data_path', type=str, required=True, help='Path to the data directory.')
     parser.add_argument('--gpu_id', type=int, default=0, help='GPU ID to use. Use -1 for CPU.')
@@ -545,4 +528,4 @@ if __name__ == "__main__":
 
     print(json_path)
     output_dir = os.path.dirname(json_path)
-    main(json_path, data_path, output_dir, precision_index=0, device=gpu_id, dataset_size=100, batch_size=16, k=10)
+    main(json_path, data_path, output_dir, precision_index=0, device=gpu_id, dataset_size=100, batch_size=16, k=args.k)
