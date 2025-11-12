@@ -80,7 +80,7 @@ with open("assets/opencv_APIs.txt", "r") as file:
 
 
 
-def prepare_notes_shared(my_gpu_id, max_rounds):
+def prepare_notes_shared(max_rounds):
     notes_shared = f"""
     - Always check the documentation for the available APIs before reinventing the wheel
     - You only have {max_rounds} rounds of each conversation to optimize the preprocessing function.
@@ -284,7 +284,6 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "sample_k": k,
          "sample_k_word": k_word,
          "llm_model": llm_model,
-         "metric_only": args.metric_only,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
@@ -430,15 +429,13 @@ def main(args: argparse.Namespace):
             # Initialize group chat manager
             group_chat_manager = GroupChatManager(
                 groupchat=group_chat,
-                llm_config={
-                },
                 is_termination_msg=lambda msg: (
                     "TERMINATE" in msg["content"] if msg["content"] else False
                 ),
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=args.num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             cache=cache)

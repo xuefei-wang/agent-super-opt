@@ -100,6 +100,7 @@ python main.py \
       --gpu_id $GPU_ID \
       --experiment_name $YOUR_CUSTOM_TASK_NAME \
       --random_seed $SEED \
+      --num_optim_iter $NUM_OPTIM_ITER \ # How many iterations to run.
       --history_threshold $HISTORY_THRESHOLD \ # When to start incorporating function bank history into the prompt.
 ```
 
