@@ -266,7 +266,7 @@ def save_seed_list(n, file_path, initial_seed):
 
     return int_seeds
 
-def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round, llm_model, n_top, n_worst, n_last):
+def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round, llm_model, n_top, n_worst, n_last, k, k_word):
      """Save comprehensive information about the run configuration."""
      # Create a dictionary with all the run information
      run_info = {
@@ -281,8 +281,8 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "n_top": n_top,
          "n_worst": n_worst,
          "n_last": n_last,
-         "sample_k": args.k,
-         "sample_k_word": args.k_word,
+         "sample_k": k,
+         "sample_k_word": k_word,
          "llm_model": llm_model,
          "metric_only": args.metric_only,
          "prompts_data": {
@@ -292,7 +292,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
                  "pipeline_metrics_info": prompts_instance.get_pipeline_metrics_info(),
              },
              "agent_system_prompts": {
-                 "code_writer": sys_prompt_code_writer(args.k, args.k_word),
+                 "code_writer": sys_prompt_code_writer(k, k_word),
              },
              "executable_pipeline_script_template": prompts_instance.run_pipeline_prompt(), # Call the method to get the script string
          }
@@ -341,10 +341,14 @@ def create_latest_symlink(experiment_output_dir, run_output_dir):
 
 
 def main(args: argparse.Namespace):
+    # Generate 3 pairs of functions each iteration
+    k = 3
+    k_word = "three"
+    work_dir = os.getcwd()
     # Get current datetime once at the beginning
     cur_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     # Create experiment-specific output directory
-    experiment_output_dir = os.path.join(args.output, args.experiment_name)
+    experiment_output_dir = os.path.join(work_dir, args.experiment_name)
     run_output_dir = os.path.join(experiment_output_dir, cur_time)
     # Create directories if they don't exist
     os.makedirs(run_output_dir, exist_ok=True)
@@ -358,7 +362,6 @@ def main(args: argparse.Namespace):
 
     # Configuration
     cache_seed = 4 # Cache seed for caching the results
-    num_optim_iter = 20 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation
     checkpoint_path = args.checkpoint_path
     llm_model = "gpt-4.1" # Do not modify this string
@@ -368,37 +371,37 @@ def main(args: argparse.Namespace):
         from prompts.spot_detection_prompts import SpotDetectionPromptsWithSkeleton
         prompt_class = SpotDetectionPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['f1_score']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": k, "k_word": k_word}
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPromptsWithSkeleton
         prompt_class = CellposeSegmentationPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['average_precision']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "dataset_size": 100, "batch_size": 16, "k": args.k, "k_word": args.k_word}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "dataset_size": 100, "batch_size": 16, "k": k, "k_word": k_word}
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPromptsWithSkeleton
         prompt_class = MedSAMSegmentationPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['dsc_metric'] + x['overall_metrics']['nsd_metric']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": args.k, "k_word": args.k_word}
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": k, "k_word": k_word}
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
     
     initial_prompts = prompt_class(**kwargs_for_prompt_class)
-    save_run_info(args, run_output_dir, num_optim_iter, initial_prompts, cur_time, history_threshold=args.history_threshold, max_round=max_round, llm_model=llm_model, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last)
+    save_run_info(args, run_output_dir, args.num_optim_iter, initial_prompts, cur_time, history_threshold=args.history_threshold, max_round=max_round, llm_model=llm_model, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, k=k, k_word=k)
     create_latest_symlink(experiment_output_dir, run_output_dir)
     
-    seed_list_file = os.path.join(args.output,"seed_list.txt")
+    seed_list_file = os.path.join(work_dir,"seed_list.txt")
     # Generate seed list
-    seed_list = save_seed_list(num_optim_iter, seed_list_file, args.random_seed)
+    seed_list = save_seed_list(args.num_optim_iter, seed_list_file, args.random_seed)
 
     # Run pipeline development and optimization
-    with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{args.output}/cache") as cache:
+    with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{work_dir}/cache") as cache:
         
         notes_shared = prepare_notes_shared(max_rounds=max_round)
 
         # Run baseline and insert to function bank first
         baseline_metric = ""
 
-        for i in range(num_optim_iter):
+        for i in range(args.num_optim_iter):
 
             kwargs_for_prompt_class["seed"] = seed_list[i]
             prompts = prompt_class(**kwargs_for_prompt_class)
@@ -407,11 +410,11 @@ def main(args: argparse.Namespace):
                 template_script_func=prompts.run_pipeline_prompt,
                 placeholder=_PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
                 work_dir=work_dir,
-                timeout=300 * 2.5 * args.k
+                timeout=300 * 2.5 * k
             )
 
             # Set up agents
-            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model, args.k, args.k_word)
+            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model, k, k_word)
 
             group_chat = GroupChat(
                 agents=[
@@ -455,12 +458,6 @@ if __name__ == "__main__":
         help="Path to the dataset."
     )
     
-    parser.add_argument(
-        "-o", "--output",
-        type=str,
-        required=False,
-        help="Path to the output folder."
-    )
     parser.add_argument(
         "--experiment_name",
         type=str,
@@ -513,37 +510,20 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--num_optim_iter",
+        type=int,
+        default=20,
+        help="Number of optimization iterations."
+    )
+
+    parser.add_argument(
         "--history_threshold",
         type=int,
-        default=5,
+        default=0,
         help="The number of iterations to wait before showing the function bank history."
     )
 
 
-    parser.add_argument(
-        "--k",
-        type=int,
-        default=3,
-        required=False,
-        help="Preprocessing function group size value."
-    )
-
-    parser.add_argument(
-        "--k_word",
-        type=str,
-        default="three",
-        required=False,
-        help="Preprocessing function group size in English."
-    )
-
     args = parser.parse_args()
-
-    # Check that k word and int were both set
-    if args.k == 3 and args.k_word != "three" or args.k != 3 and args.k_word == "three":
-        raise ValueError("k and k_word must be set to be equivalent.")
-
-    work_dir = os.getcwd()
-    if args.output is None:
-        args.output = work_dir
 
     main(args)

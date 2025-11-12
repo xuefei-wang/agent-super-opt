@@ -69,9 +69,8 @@ This guide provides instructions for replicating the experimental results presen
           --gpu_id $GPU_ID \
           --experiment_name $EXPERIMENT_NAME \ # E.g., "cellpose_segmentation", "spot_detection", "medSAM_segmentation"
           --random_seed $SEED \
-          --history_threshold $HISTORY_THRESHOLD \ # E.g., 5. When to start incorporating function bank history into the prompt.
-          --k $K \ # E.g., 3. Number of samples (functions) to generate per iteration.
-          --k_word $K_WORD # E.g., "three". The word representation of 'k'.
+          --num_optim_iter $NUM_OPTIM_ITER \ # E.g., 20. How many iterations to run.
+          --history_threshold $HISTORY_THRESHOLD  # E.g., 5. When to start incorporating function bank history into the prompt.
     ```
 
 4. **Analyze the trajectories**
@@ -111,25 +110,17 @@ This guide provides instructions for replicating the experimental results presen
 
 ### For Scientists: Applying to Your Own Data 🧪
 
-This guide explains how to adapt this agentic framework to optimize a data preprocessing workflow for your specific scientific tool and dataset.
+This guide explains how to adapt this agentic framework to optimize a workflow for your specific scientific tool and dataset.
 
 To integrate your custom workflow, you'll need to implement the following components:
 
-1.  **Tool Wrapper**: Create `src/{task_name}.py`. This file acts as a Python wrapper for your scientific tool, exposing `__init__`, `evaluate()`, and `predict()` methods.
-
-      * **Example**: See `src/cellpose_segmentation.py` for a reference implementation.
+1.  **Tool Wrapper**: Create `src/{task_name}.py`. This file acts as a Python wrapper for your scientific tool, exposing `__init__`, `evaluate()`, and `predict()` methods. This needs to be a bare backbone of tool calling without expert preprocessing and postprocessing steps.
 
 2.  **Prompts**: Define your task-specific prompts in `prompts/{task_name}_prompts.py`. This file should inherit from `TaskPrompts` and provide detailed instructions about your data, task objectives, and evaluation metrics to the AI agent.
 
-      * **Example**: Refer to `prompts/cellpose_segmentation_prompts.py`.
+3.  **Execution Template**: Set up an execution template in `prompts/{task_name}_execution-template.py.txt`. This template outlines the overall workflow where your tool will be used, and the agent-generated preprocessing and postprocessing functions will be "plugged in."
 
-3.  **Execution Template**: Set up an execution template in `prompts/{task_name}_execution-template.py.txt`. This template outlines the overall workflow where your tool will be used, and the agent-generated preprocessing functions will be "plugged in."
-
-      * **Example**: Check `prompts/cellpose_segmentation_execution-template.py.txt`.
-
-4.  **Expert Baseline**: Provide an expert-written baseline implementation in `prompts/{task_name}_expert_postprocessing.py.txt`. For highly specific postprocessing steps, provide a skeleton in `prompts/{task_name}_expert_postprocessing_skeleton.py.txt` to provide minimal guidance for LLM agents.
-
-      * **Example**: See `prompts/medsam_segmentation_expert_postprocessing_skeleton.py.txt`.
+4.  **Expert Baseline** (Postprocessing step only): Provide an expert-written baseline implementation in `prompts/{task_name}_expert_postprocessing.py.txt`. For highly specific postprocessing steps, provide a skeleton in `prompts/{task_name}_expert_postprocessing_skeleton.py.txt` to provide minimal guidance for LLM agents.
 
 Once you've implemented these components, you can run the optimization:
 
@@ -140,8 +131,6 @@ python main.py \
       --experiment_name $YOUR_CUSTOM_TASK_NAME \
       --random_seed $SEED \
       --history_threshold $HISTORY_THRESHOLD \ # When to start incorporating function bank history into the prompt.
-      --k $K \ # Number of samples (functions) to generate per iteration (default: 3).
-      --k_word $K_WORD # The word representation of 'k' (default: "three").
 ```
 
 ## ⚙️ Understanding `main.py` Arguments
@@ -149,7 +138,6 @@ python main.py \
 The `main.py` script is the entry point for running the framework and offers a variety of command-line arguments to customize the optimization process.
 
   * `--dataset (-d)`: Path to your dataset.
-  * `--output (-o)`: Path to the output folder where all results will be saved.
   * `--experiment_name`: Name of the experiment. For reproducibility, choose from `"spot_detection"`, `"cellpose_segmentation"`, or `"medSAM_segmentation"`. For custom workflows, use the name you defined for your task.
   * `--checkpoint_path`: Path to a model checkpoint file. Currently used only for MedSAM segmentation.
   * `--gpu_id`: The ID of the GPU to use (default: `0`).
@@ -157,9 +145,8 @@ The `main.py` script is the entry point for running the framework and offers a v
   * `--n_top`: The number of top-performing functions to display in the function bank (default: `3`).
   * `--n_worst`: The number of worst-performing functions to display in the function bank (default: `3`).
   * `--n_last`: The number of last functions to show in the function bank (default: `0`).
-  * `--history_threshold`: The number of iterations to wait before incorporating the accumulated function bank history into the agent's prompt (default: `5`).
-  * `--k`: The preprocessing function group size, representing the number of new functions to generate per iteration (default: `3`).
-  * `--k_word`: The English word representation of `k` (e.g., `"three"`) (default: `"three"`). This is used for prompt phrasing.
+  * `--num_optim_iter`: The number of iterations to run in total (default: `20`).
+  * `--history_threshold`: The number of iterations to wait before incorporating the accumulated function bank history into the agent's prompt (default: `0`).
 
 ## 📦 Output Structure
 
