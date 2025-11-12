@@ -322,7 +322,7 @@ def main(json_path, k, modality, gpu_id, val_baseline, test_baseline, test_data_
         json.dump(results_1, f, indent=4)
 
     plot_line_graph(line_graph_output_path, get_new_json(json_path), val_baseline)
-    plot_scatterplot(top_k_json_output_path, val_baseline, test_baseline, scatter_output_path)
+    # plot_scatterplot(top_k_json_output_path, val_baseline, test_baseline, scatter_output_path)
     plot_bar_graph(top_1_json_output_path, val_baseline, test_baseline, bar_output_path)
 
 if __name__ == "__main__":
@@ -331,6 +331,7 @@ if __name__ == "__main__":
     parser.add_argument('--val_data_path', type=str, required=True, default="", help='Path to validation dataset.')
     parser.add_argument('--test_data_path', type=str, required=True, default="", help='Path to test dataset.')
     parser.add_argument('--gpu_id', type=int, required=True, default=0, help='GPU ID to use.')
+    parser.add_argument('--json_path', type=str, required=False, default="", help='Path to the preprocessing_func_bank.json file.')
 
     args = parser.parse_args()
 
@@ -339,6 +340,7 @@ if __name__ == "__main__":
     val_data_path = args.val_data_path
     test_data_path = args.test_data_path
     gpu_id = args.gpu_id
+    json_path = args.json_path
                         
 
     segmenter = MedSAMTool(gpu_id=gpu_id, checkpoint_path=checkpoint_path)
@@ -391,54 +393,13 @@ if __name__ == "__main__":
         }
         json.dump(json_output, f)
 
-    outer_folder_path = "medSAM_segmentation"
-    all_expr_folders = os.listdir(outer_folder_path)
-    for i, rollout_timestamp in enumerate(all_expr_folders):
-        if rollout_timestamp.startswith('2025'):
-            print(f"\nProcessing rollout timestamp: {i + 1}/20, {rollout_timestamp}")
-            json_bank_path = os.path.join(outer_folder_path, rollout_timestamp, "preprocessing_func_bank.json")
-            main(json_bank_path, k=10, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)
+    # outer_folder_path = "medSAM_segmentation"
+    # all_expr_folders = os.listdir(outer_folder_path)
+    # for i, rollout_timestamp in enumerate(all_expr_folders):
+    #     if rollout_timestamp.startswith('2025'):
+    #         print(f"\nProcessing rollout timestamp: {i + 1}/20, {rollout_timestamp}")
+    #         json_bank_path = os.path.join(outer_folder_path, rollout_timestamp, "preprocessing_func_bank.json")
+    #         main(json_bank_path, k=10, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)
 
-    # # ======= get aggregate k functions JSON ======
-    # base_dir = "medSAM_segmentation"
-    # timestamps = sorted(os.listdir(base_dir))[:-1]  # exclude the last item which is the `latest` symlink
-    # list_of_directories = [os.path.join(base_dir, ts) for ts in timestamps]
 
-    # # per task metric lambda
-    # metric_lambda = lambda obj: obj['combined_val']
-
-    # # Read all json files in the directories
-    # # Let's store them flat, so we have a list of dicts instead of a list of lists
-    # def aggregate_top_k_functions(list_of_directories: List[str], metric_lambda: Callable[[Dict], float], k: int = 10) -> List[Dict]:
-    #     all_results = []
-    #     for directory in list_of_directories:
-    #         if not os.path.exists(os.path.join(directory, 'analysis_results', 'top_k_functions_results.json')):
-    #             os.makedirs(os.path.dirname(os.path.join(directory, 'analysis_results')), exist_ok=True)
-            
-    #         if not os.path.exists(os.path.join(directory, 'analysis_results')):
-    #             os.makedirs(os.path.join(directory, 'analysis_results'), exist_ok=True)
-
-    #         with open(os.path.join(directory, 'analysis_results', 'top_k_functions_results.json'), 'r') as f:
-    #             obj = json.load(f)
-    #             for function in obj:
-    #                 function['source_directory'] = directory.split('/')[-1]
-    #                 all_results.append(function)
-
-    #     # Sort the results by the sorting function
-    #     def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k: int) -> List[Dict]:
-    #         '''Returns object containing the top k highest metric values from a list of JSON objects.'''
-    #         sorted_results = sorted(json_array, key=metric_lambda, reverse=True)[:k]
-    #         # add key "aggregate_rank" to each object
-    #         for i, result in enumerate(sorted_results):
-    #             result['aggregate_rank'] = i
-    #         return sorted_results
-
-    #     top_k_functions = find_top_k(all_results, metric_lambda, k=10)
-    #     return top_k_functions
-
-    # top_k_functions = aggregate_top_k_functions(list_of_directories, metric_lambda, k=10)
-    # output_file_path = 'medSAM_segmentation/top_k_agg_functions.json'
-    # if not os.path.exists(os.path.dirname(output_file_path)):
-    #     os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-    # with open(output_file_path, 'w') as output_file:
-    #     json.dump(top_k_functions, output_file, indent=4)
+    main(json_path, k=10, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)

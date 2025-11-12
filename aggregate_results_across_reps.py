@@ -23,8 +23,15 @@ def combine_top_k_results(task_name):
 
             all_functions += json_array_new
 
+    if task_name == "spot_detection":
+        sort_key = "average_f1_val"
+    elif task_name == "medSAM_segmentation":
+        sort_key = "combined_val"
+    elif task_name == "cellpose_segmentation":
+        sort_key = "average_precision_val"
 
-    all_functions.sort(key=lambda x: x.get('average_f1_val', 0), reverse=True)
+
+    all_functions.sort(key=lambda x: x.get(sort_key, 0), reverse=True)
 
     for idx, entry in enumerate(all_functions):
         entry['rank'] = idx+1
