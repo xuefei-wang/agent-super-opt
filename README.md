@@ -32,11 +32,8 @@ We strongly recommend using a virtual environment to manage dependencies for thi
     pip install -r requirements.txt
     ```
 
-4.  **Set Up LLM API Key**: This framework uses OpenAI models by default, so you'll need to set your `OPENAI_API_KEY` as an environment variable. If you prefer other LLMs, you can update the `llm_config` for agents in `main.py`.
+4.  **Set Up LLM API Key**: This framework uses OpenAI models by default, so you'll need to set your `OPENAI_API_KEY` as an environment variable. You can do so by creating a `.env` file. If you prefer other LLMs, you can update the `llm_config` for agents in `main.py`.
 
-    ```bash
-    export OPENAI_API_KEY="your_openai_api_key_here"
-    ```
 
 ## 📖 Usage Guides
 
@@ -58,8 +55,8 @@ This guide provides instructions for replicating the experimental results presen
 
 2.  **Additional Setup (Task-Specific)**
 
-      * **MedSAM**: Download the model checkpoint [medsam\_vit\_b.pth](https://drive.google.com/file/d/1UAmWL88roYR7wKlnApw5Bcuzf2iQgk6_/view?usp=drive_link) and specify its path using `--checkpoint_path`. Follow the [instructions](https://github.com/bowang-lab/MedSAM?tab=readme-ov-file#installation) and install the MedSAM package.
-      * **Polaris**: Set your `DEEPCELL_ACCESS_TOKEN` environment variable. Instructions are available [here](https://deepcell.readthedocs.io/en/master/API-key.html).
+      * **MedSAM**: Download the model checkpoint medsam\_vit\_b.pth and specify its path using `--checkpoint_path`. Follow the [instructions](https://github.com/bowang-lab/MedSAM?tab=readme-ov-file#installation) and install the MedSAM package.
+      * **Polaris (Spot Detection)**: Set your `DEEPCELL_ACCESS_TOKEN` environment variable. Instructions are available [here](https://deepcell.readthedocs.io/en/master/API-key.html).
       * **Cellpose**: Need to comment out `fill_holes_and_remove_small_masks` step in the `dynamics.resize_and_compute_masks`
 
 3.  **Run the Experiments**
@@ -72,67 +69,28 @@ This guide provides instructions for replicating the experimental results presen
           --gpu_id $GPU_ID \
           --experiment_name $EXPERIMENT_NAME \ # E.g., "cellpose_segmentation", "spot_detection", "medSAM_segmentation"
           --random_seed $SEED \
-          --history_threshold $HISTORY_THRESHOLD \ # E.g., 5. When to start incorporating function bank history into the prompt.
-          --k $K \ # E.g., 3. Number of samples (functions) to generate per iteration.
-          --k_word $K_WORD # E.g., "three". The word representation of 'k'.
+          --num_optim_iter $NUM_OPTIM_ITER \ # E.g., 20. How many iterations to run.
+          --history_threshold $HISTORY_THRESHOLD  # E.g., 5. When to start incorporating function bank history into the prompt.
     ```
 
 4. **Analyze the trajectories**
-
-      Run the following two commands to: 
       
-      First, analyze trajectories - It will create a `analysis_results` folder under each timestamped result folder, evaluate the functions on test sets and generate plots. This might a while, feel free to parallize the runs if needed.
-
-      Second, aggregates all results into the global function json file and generate a learning curve plot.
-
-      
-      - For Cellpose: 
-            ```
-            python figs/cellpose_analyze_trajectories.py \
-                  --data_path=$DATA_FOLDER
-            python aggregate_results_across_reps.py --task_name cellpose_segmentation
-            ```
-
-      - For Polaris:
-            ```
-            python figs/spot_detection_analyze_trajectories.py \
-                  --checkpoint_path=$CHECKPOINT_FILE \
-                  --val_data_path=$VAL_DATA_FILE \
-                  --test_data_path=$TEST_DATA_FILE \
-                  --gpu_id=$GPU_ID
-            python aggregate_results_across_reps.py --task_name spot_detection
-            ```
-
-      - For MedSAM:
-            ```
-            python figs/spot_detection_analyze_trajectories.py \
-                  --data_path=$DATA_FOLDER \ # this should be the folder where val/ and test/ are stored
-                  --gpu_id $GPU_ID
-            python aggregate_results_across_reps.py --task_name medSAM_segmentation
-            ```
+      Analyze trajectories using `figs/{task_name}_analyze_trajectories.py`. It will create a `analysis_results` folder under each timestamped result folder, evaluate the functions on test sets and generate plots. This might a while, feel free to parallize the runs if needed.
 
 
 ### For Scientists: Applying to Your Own Data 🧪
 
-This guide explains how to adapt this agentic framework to optimize a data preprocessing workflow for your specific scientific tool and dataset.
+This guide explains how to adapt this agentic framework to optimize a workflow for your specific scientific tool and dataset.
 
 To integrate your custom workflow, you'll need to implement the following components:
 
-1.  **Tool Wrapper**: Create `src/{task_name}.py`. This file acts as a Python wrapper for your scientific tool, exposing `__init__`, `evaluate()`, and `predict()` methods.
-
-      * **Example**: See `src/cellpose_segmentation.py` for a reference implementation.
+1.  **Tool Wrapper**: Create `src/{task_name}.py`. This file acts as a Python wrapper for your scientific tool, exposing `__init__`, `evaluate()`, and `predict()` methods. This needs to be a bare backbone of tool calling without expert preprocessing and postprocessing steps.
 
 2.  **Prompts**: Define your task-specific prompts in `prompts/{task_name}_prompts.py`. This file should inherit from `TaskPrompts` and provide detailed instructions about your data, task objectives, and evaluation metrics to the AI agent.
 
-      * **Example**: Refer to `prompts/cellpose_segmentation_prompts.py`.
+3.  **Execution Template**: Set up an execution template in `prompts/{task_name}_execution-template.py.txt`. This template outlines the overall workflow where your tool will be used, and the agent-generated preprocessing and postprocessing functions will be "plugged in."
 
-3.  **Execution Template**: Set up an execution template in `prompts/{task_name}_execution-template.py.txt`. This template outlines the overall workflow where your tool will be used, and the agent-generated preprocessing functions will be "plugged in."
-
-      * **Example**: Check `prompts/cellpose_segmentation_execution-template.py.txt`.
-
-4.  **Expert Baseline**: Provide an expert-written baseline implementation in `prompts/{task_name}_expert.py.txt`.
-
-      * **Example**: See `prompts/cellpose_segmentation_expert.py.txt`.
+4.  **Expert Baseline** (Postprocessing step only): Provide an expert-written baseline implementation in `prompts/{task_name}_expert_postprocessing.py.txt`. For highly specific postprocessing steps, provide a skeleton in `prompts/{task_name}_expert_postprocessing_skeleton.py.txt` to provide minimal guidance for LLM agents.
 
 Once you've implemented these components, you can run the optimization:
 
@@ -140,11 +98,10 @@ Once you've implemented these components, you can run the optimization:
 python main.py \
       --dataset $DATASET_PATH \
       --gpu_id $GPU_ID \
-      --experiment_name $YOUR_CUSTOM_TASK_NAME \ # E.g., "my_new_experiment"
+      --experiment_name $YOUR_CUSTOM_TASK_NAME \
       --random_seed $SEED \
-      --history_threshold $HISTORY_THRESHOLD \ # When to start incorporating function bank history into the prompt (default: 5).
-      --k $K \ # Number of samples (functions) to generate per iteration (default: 3).
-      --k_word $K_WORD # The word representation of 'k' (default: "three").
+      --num_optim_iter $NUM_OPTIM_ITER \ # How many iterations to run.
+      --history_threshold $HISTORY_THRESHOLD \ # When to start incorporating function bank history into the prompt.
 ```
 
 ## ⚙️ Understanding `main.py` Arguments
@@ -152,26 +109,15 @@ python main.py \
 The `main.py` script is the entry point for running the framework and offers a variety of command-line arguments to customize the optimization process.
 
   * `--dataset (-d)`: Path to your dataset.
-  * `--output (-o)`: Path to the output folder where all results will be saved.
   * `--experiment_name`: Name of the experiment. For reproducibility, choose from `"spot_detection"`, `"cellpose_segmentation"`, or `"medSAM_segmentation"`. For custom workflows, use the name you defined for your task.
   * `--checkpoint_path`: Path to a model checkpoint file. Currently used only for MedSAM segmentation.
   * `--gpu_id`: The ID of the GPU to use (default: `0`).
   * `--random_seed`: The random seed for reproducibility (default: `42`).
-  * `--warm_start`: A boolean flag. If set, the expert baseline function will be included in the function bank as a warm start for the agent.
-  * `--metric_only`: A boolean flag. If set, only the baseline metric will be added to the prompt (requires `--warm_start` to be `True`).
-  * `--enable_advantage`: A boolean flag. If set, the relative score will be stored for each of the `k` samples generated within an iteration.
   * `--n_top`: The number of top-performing functions to display in the function bank (default: `3`).
   * `--n_worst`: The number of worst-performing functions to display in the function bank (default: `3`).
   * `--n_last`: The number of last functions to show in the function bank (default: `0`).
-  * `--history_threshold`: The number of iterations to wait before incorporating the accumulated function bank history into the agent's prompt (default: `5`).
-  * `--hyper_optimize`: A boolean flag. If set, a hyperparameter search will be initiated after the main optimization trial concludes.
-  * `--n_hyper_optimize`: The number of functions to optimize during the post-trial hyperparameter search (default: `3`).
-  * `--n_hyper_optimize_trials`: The number of trials to run for each function during hyperparameter optimization (default: `15`).
-  * `--k`: The preprocessing function group size, representing the number of new functions to generate per iteration (default: `3`).
-  * `--k_word`: The English word representation of `k` (e.g., `"three"`) (default: `"three"`). This is used for prompt phrasing.
-  * `--dataset_size`: A Cellpose-specific argument to determine the size of the validation/test set (default: `100`).
-  * `--batch_size`: A Cellpose-specific argument to determine the batch size (default: `16`).
-
+  * `--num_optim_iter`: The number of iterations to run in total (default: `20`).
+  * `--history_threshold`: The number of iterations to wait before incorporating the accumulated function bank history into the agent's prompt (default: `0`).
 
 ## 📦 Output Structure
 
