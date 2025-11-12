@@ -16,9 +16,9 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
 
     def get_task_details(self):
         return  f"""
-        All of you should work together to write {self.k_word} preprocessing and postprocessing function pairs to {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance.
+        All of you should work together to write {self.k_word} preprocessing and postprocessing function pairs to improve segmentation performance.
         We provided APIs for both preprocessing and postprocessing functions. You should use functions from useful libraries including but not limited to OpenCV, NumPy, Skimage, Scipy, to implement novel and effective functions.
-        1. Based on previous preprocessing and postprocessing functions and their performance (provided below), suggest {self.k_word} new unique function pairs using{self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average")}.
+        1. Based on previous preprocessing and postprocessing functions and their performance (provided below), suggest {self.k_word} new unique function pairs using.
         2. The environment will handle all data loading, evaluation, and logging of the results. Your only job is to write the preprocessing and postprocessing functions.
         3. Do not terminate the conversation until the new functions are evaluated and the numerical performance metrics are logged.
         4. For this task, if all {self.k_word} functions are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
@@ -31,13 +31,12 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
 
     def get_pipeline_metrics_info(self):
         return f"""
-    {self.if_advantage("The advantage quantifies how much better this function performs than the expert baseline (if positive) or how much worse than the expert baseline (if negative).")}
     The following metrics are used to evaluate the performance of the pipeline: dsc_metric, nsd_metric.
     - The `dsc_metric` is the dice similarity coefficient (DSC) score of the pipeline and is similar to IoU, measuring the overlap between predicted and ground truth masks.
     - The `nsd_metric` is the normalized surface distance (NSD) score and is more sensitive to distance and boundary calculations.
     """
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path, k, k_word, advantage_enabled=False, baseline_metric_value=-100):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path, k, k_word, baseline_metric_value=-100):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -48,7 +47,6 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             checkpoint_path=checkpoint_path,
             k=k,
             k_word=k_word,
-            advantage_enabled=advantage_enabled
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
@@ -59,7 +57,6 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         self.k = k
         self.k_word = k_word
         self.baseline_metric_value = baseline_metric_value
-        self.advantage_enabled = advantage_enabled
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -86,7 +83,6 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
             "sample_k": str(self.k),
             "baseline_metric_value": str(self.baseline_metric_value),
-            "advantage_enabled": str(self.advantage_enabled),
         }
 
         script_with_config = template_content

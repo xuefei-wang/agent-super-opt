@@ -9,16 +9,16 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     # --- Define these as CLASS attributes ---
     dataset_info = """
     ```markdown
-    This is a single-channel cell spot detection dataset. IMPORTANT: The cell images have dimensions (B, L, W, C) = (batch, length, width, channel).
+    This is a single-channel cell spot detection dataset. IMPORTANT: The images have dimensions (B, L, W, C) = (batch, length, width, channel).
     The images have pixel values between 0 and 1 and are in float32 format.
     ```
     """
 
     def get_task_details(self):
         return f"""
-    All of you should work together to write {self.k_word} preprocessing and postprocessing function pairs to {self.if_advantage("maximize the reported advantages and ")}improve spot detection performance.
+    All of you should work together to write {self.k_word} preprocessing and postprocessing function pairs to improve spot detection performance.
     We provided APIs for both preprocessing and postprocessing functions. You should use functions from useful libraries including but not limited to OpenCV, NumPy, Skimage, Scipy, to implement novel and effective functions.
-    1. Based on previous preprocessing and postprocessing functions and their performance (provided below), suggest {self.k_word} new unique function pairs using{self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average")}.
+    1. Based on previous preprocessing and postprocessing functions and their performance (provided below), suggest {self.k_word} new unique function pairs using.
     2. The environment will handle all data loading, evaluation, and logging of the results. Your only job is to write the preprocessing and postprocessing functions.
     3. Do not terminate the conversation until the new functions are evaluated and the numerical performance metrics are logged.
     4. For this task, if all {self.k_word} functions are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
@@ -31,14 +31,12 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
 
     def get_pipeline_metrics_info(self):
         return f"""
-    {{
-    {self.if_advantage("advantage: score which quantifies how much better this function performs than the expert baseline (if positive) or how much worse than the expert baseline (if negative)")}
+    The following metrics are used to evaluate the performance of the pipeline: f1_score.
     f1_score: Mean F1 score of predicted spots
-    }}
     """
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, advantage_enabled=False, baseline_metric_value=-100):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, baseline_metric_value=-100):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -49,7 +47,6 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
             function_bank_path=function_bank_path,
             k=k,
             k_word=k_word,
-            advantage_enabled=advantage_enabled
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
@@ -59,7 +56,6 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
         self.k = k
         self.k_word = k_word
         self.baseline_metric_value = baseline_metric_value
-        self.advantage_enabled = advantage_enabled
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -85,7 +81,6 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
             "_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
             "sample_k": str(self.k),
             "baseline_metric_value": str(self.baseline_metric_value),
-            "advantage_enabled": str(self.advantage_enabled),
         }
 
         script_with_config = template_content

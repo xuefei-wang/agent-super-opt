@@ -23,14 +23,13 @@ from prompts.agent_prompts import sys_prompt_code_writer
 
 from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 
-from hyper_optimize import hyperparameter_search, transform_opencv_constants, save_to_function_bank
 
 # Load environment variables
 load_dotenv()
 
 
 def set_up_agents(executor: CodeExecutor, llm_model: str, k, k_word):
-    ''' Prepare 3 agents and state transition'''
+    ''' Prepare agents and state transition'''
     if isinstance(executor, JupyterCodeExecutor) or isinstance(executor, LocalCommandLineCodeExecutor) or isinstance(executor, TemplatedLocalCommandLineCodeExecutor):
         code_writer_prompt = sys_prompt_code_writer(k, k_word)
     else:
@@ -64,9 +63,7 @@ def set_up_agents(executor: CodeExecutor, llm_model: str, k, k_word):
             return code_writer_agent
 
         if last_speaker is code_writer_agent:
-            return code_executor_agent #code_verifier_agent
-        # elif last_speaker is code_verifier_agent:
-        #     return code_executor_agent
+            return code_executor_agent
         elif last_speaker is code_executor_agent:
             if "exitcode: 1" in messages[-1]["content"]:
                 return code_writer_agent
@@ -78,28 +75,22 @@ def set_up_agents(executor: CodeExecutor, llm_model: str, k, k_word):
 
 
 # Load openCV function APIs
-with open("assets/opencv_APIs.txt", "r") as file:
-    opencv_APIs = file.read()
+with open("assets/APIs.txt", "r") as file:
+    APIs = file.read()
 
 
 
-def prepare_notes_shared(my_gpu_id, max_rounds):
+def prepare_notes_shared(max_rounds):
     notes_shared = f"""
     - Always check the documentation for the available APIs before reinventing the wheel
-    - Use GPU {my_gpu_id} for running the pipeline, set `cuda: {my_gpu_id}` in the code snippet!
     - You only have {max_rounds} rounds of each conversation to optimize the preprocessing function.
-    - Don't suggest trying larger models as the model size is fixed.
     - Import all necessary libraries inside the function. If you need to write a helper function, write it inside the main preprocessing or postprocessing function as well.
     - No need to import ImageData, it has already been imported.
+    - THE PROVIDED EVALUATION PIPELINE WORKS OUT OF THE BOX, IF THERE IS AN ERROR IT IS WITH THE PREPROCESSING OR POSTPROCESSING FUNCTION.
     """
     return notes_shared
 
 
-
-notes_pipeline_optimization = f"""
-    - THE PROVIDED EVALUATION PIPELINE WORKS OUT OF THE BOX, IF THERE IS AN ERROR IT IS WITH THE PREPROCESSING OR POSTPROCESSING FUNCTION
-
-"""
 
 def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_last: int, sorting_function: callable, current_iteration: int, history_threshold: int=0, total_iterations: int=30, maximize = True):
     ''' Returns a sample of the function bank 
@@ -157,7 +148,7 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     return sample
 
-def prepare_prompt_pipeline_optimization(
+def prepare_prompt(
         notes_shared: str, 
         function_bank_path: str, 
         prompts : TaskPrompts, 
@@ -212,11 +203,10 @@ def preprocess_images_i(images: ImageData) -> ImageData:
 {textwrap.dedent(function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations))}
 
 ## Useful primitive functions API that can be used in the preprocessing and postprocessing functions:
-{textwrap.dedent(opencv_APIs)}
+{textwrap.dedent(APIs)}
 
 ## Additional Notes:
 {textwrap.dedent(notes_shared)}
-{textwrap.dedent(notes_pipeline_optimization)}
 
 
 ## Documentation on the `ImageData` class:
@@ -257,7 +247,6 @@ Attributes:
 
 
 def save_chat_history(chat_history, curr_iter, output_folder):
-    
     output_file = os.path.join(output_folder, f"chat_history_ver{curr_iter:03d}.txt")
     with open(output_file, "w") as file:
         for message in chat_history:
@@ -273,39 +262,11 @@ def save_seed_list(n, file_path, initial_seed):
     with open(file_path, "w") as file:
         for seed_val in int_seeds:
             file.write(f"{seed_val}\n") # Save integer seeds
-
     print(f"Saved {n} integer seeds based on initial seed {initial_seed} to {file_path}")
 
-    return int_seeds # Return the list of integers
-    
-def warm_start(function_definition_path: str, task_prompts: TaskPrompts, function_placeholder: str) -> str:
-    '''
-    Load the expert baseline function definition from a file and pass to the template executor.
-    '''
+    return int_seeds
 
-    print("Performing warm start with expert baseline function")
-
-    with open(function_definition_path, "r") as file:
-        function_definition = re.sub(
-            r'^(\s*def\s+)preprocess_images(\s*\()',
-            r'\1preprocess_images_1\2',
-            file.read(),
-            flags=re.MULTILINE,
-        )
-
-    executor = TemplatedLocalCommandLineCodeExecutor(
-        template_script_func=task_prompts.run_pipeline_prompt,
-        placeholder=function_placeholder,
-        work_dir=work_dir,
-        timeout=300
-    )
-
-    output = executor.execute_code_blocks([CodeBlock(code=function_definition, language="python")])
-
-    print(output)
-    
-
-def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round, llm_model, n_top, n_worst, n_last):
+def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_time, history_threshold, max_round, llm_model, n_top, n_worst, n_last, k, k_word):
      """Save comprehensive information about the run configuration."""
      # Create a dictionary with all the run information
      run_info = {
@@ -320,15 +281,9 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "n_top": n_top,
          "n_worst": n_worst,
          "n_last": n_last,
-         "sample_k": args.k,
-         "sample_k_word": args.k_word,
-         "advantage_enabled": args.enable_advantage,
+         "sample_k": k,
+         "sample_k_word": k_word,
          "llm_model": llm_model,
-         "warm_start": args.warm_start,
-         "metric_only": args.metric_only,
-         "hyperparameter_optimization": args.hyper_optimize,
-         "n_hyper_optimize": args.n_hyper_optimize,
-         "n_hyper_optimize_trials": args.n_hyper_optimize_trials,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
@@ -336,7 +291,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
                  "pipeline_metrics_info": prompts_instance.get_pipeline_metrics_info(),
              },
              "agent_system_prompts": {
-                 "code_writer": sys_prompt_code_writer(args.k, args.k_word),
+                 "code_writer": sys_prompt_code_writer(k, k_word),
              },
              "executable_pipeline_script_template": prompts_instance.run_pipeline_prompt(), # Call the method to get the script string
          }
@@ -382,32 +337,17 @@ def create_latest_symlink(experiment_output_dir, run_output_dir):
      except Exception as e:
          print(f"Failed to create symlink: {e}")
 
-def clear_gpu_memory():
-    """Completely clear GPU memory before running subprocess"""
-    import gc
 
-    # Force garbage collection first
-    gc.collect()
-
-    # PyTorch-specific GPU cleanup
-    if torch.cuda.is_available():
-        # Empty the cache
-        torch.cuda.empty_cache()
-
-        # Synchronize all CUDA streams
-        torch.cuda.synchronize()
-
-        # Reset peak memory stats (optional, but good for monitoring)
-        torch.cuda.reset_peak_memory_stats()
-
-    # Force garbage collection again after GPU cleanup
-    gc.collect()
 
 def main(args: argparse.Namespace):
+    # Generate 3 pairs of functions each iteration
+    k = 3
+    k_word = "three"
+    work_dir = os.getcwd()
     # Get current datetime once at the beginning
     cur_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     # Create experiment-specific output directory
-    experiment_output_dir = os.path.join(args.output, args.experiment_name)
+    experiment_output_dir = os.path.join(work_dir, args.experiment_name)
     run_output_dir = os.path.join(experiment_output_dir, cur_time)
     # Create directories if they don't exist
     os.makedirs(run_output_dir, exist_ok=True)
@@ -421,7 +361,6 @@ def main(args: argparse.Namespace):
 
     # Configuration
     cache_seed = 4 # Cache seed for caching the results
-    num_optim_iter = 20 # Number of optimization iterations
     max_round = 20  # Maximum number of rounds for the conversation
     checkpoint_path = args.checkpoint_path
     llm_model = "gpt-4.1" # Do not modify this string
@@ -431,71 +370,37 @@ def main(args: argparse.Namespace):
         from prompts.spot_detection_prompts import SpotDetectionPromptsWithSkeleton
         prompt_class = SpotDetectionPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['f1_score']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word, "advantage_enabled": args.enable_advantage}
-        baseline_function_path = "prompts/spot_detection_expert.py.txt"
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": k, "k_word": k_word}
     elif args.experiment_name == "cellpose_segmentation":
         from prompts.cellpose_segmentation_prompts import CellposeSegmentationPromptsWithSkeleton
         prompt_class = CellposeSegmentationPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['average_precision']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "k": args.k, "k_word": args.k_word, "dataset_size": args.dataset_size, "batch_size": args.batch_size, "advantage_enabled": args.enable_advantage}
-        baseline_function_path = "prompts/cellpose_segmentation_expert.py.txt"
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "dataset_size": 100, "batch_size": 16, "k": k, "k_word": k_word}
     elif args.experiment_name == "medSAM_segmentation":
         from prompts.medsam_segmentation_prompts import MedSAMSegmentationPromptsWithSkeleton
         prompt_class = MedSAMSegmentationPromptsWithSkeleton
         sampling_function = lambda x: x['overall_metrics']['dsc_metric'] + x['overall_metrics']['nsd_metric']
-        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": args.k, "k_word": args.k_word, "advantage_enabled": args.enable_advantage}
-        baseline_function_path = "prompts/medsam_segmentation_expert.py.txt"
+        kwargs_for_prompt_class = {"gpu_id": args.gpu_id, "seed": args.random_seed, "dataset_path": args.dataset, "function_bank_path": output_function_bank, "checkpoint_path": checkpoint_path, "k": k, "k_word": k_word}
     else:
         raise ValueError(f"Experiment name {args.experiment_name} not supported")
     
     initial_prompts = prompt_class(**kwargs_for_prompt_class)
-    save_run_info(args, run_output_dir, num_optim_iter, initial_prompts, cur_time, history_threshold=args.history_threshold, max_round=max_round, llm_model=llm_model, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last)
+    save_run_info(args, run_output_dir, args.num_optim_iter, initial_prompts, cur_time, history_threshold=args.history_threshold, max_round=max_round, llm_model=llm_model, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, k=k, k_word=k)
     create_latest_symlink(experiment_output_dir, run_output_dir)
     
-    seed_list_file = os.path.join(args.output,"seed_list.txt")
+    seed_list_file = os.path.join(work_dir,"seed_list.txt")
     # Generate seed list
-    seed_list = save_seed_list(num_optim_iter, seed_list_file, args.random_seed)
+    seed_list = save_seed_list(args.num_optim_iter, seed_list_file, args.random_seed)
 
     # Run pipeline development and optimization
-    with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{args.output}/cache") as cache:
+    with Cache.disk(cache_seed=cache_seed, cache_path_root=f"{work_dir}/cache") as cache:
         
-        notes_shared = prepare_notes_shared(args.gpu_id, max_rounds=max_round)
+        notes_shared = prepare_notes_shared(max_rounds=max_round)
 
         # Run baseline and insert to function bank first
         baseline_metric = ""
 
-        if args.warm_start:
-            raise NotImplementedError("Warm start is currently disabled.")
-        
-        # if args.warm_start or args.enable_advantage:
-        #     warm_start(
-        #         baseline_function_path,
-        #         prompt_class(
-        #             **{a: v for a, v in kwargs_for_prompt_class.items() if a not in {"k", "k_word"}},
-        #             k=1,
-        #             k_word=None,
-        #         ),
-        #         _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
-        #     )
-
-        #     baseline_metric_value = sampling_function(last_n(output_function_bank, n=1)[0])
-        #     kwargs_for_prompt_class["baseline_metric_value"] = baseline_metric_value
-
-        # if args.warm_start and args.metric_only:
-        #     # Get baseline metric and reset function bank
-        #     if args.experiment_name == "cellpose_segmentation":
-        #         baseline_metric = "Expert average precision score: "
-        #     elif args.experiment_name == "medSAM_segmentation":
-        #         baseline_metric = "Expert DSC + NSD score: "
-        #     elif args.experiment_name == "spot_detection":
-        #         baseline_metric = "Expert F1 score: "
-        #     baseline_metric += str(baseline_metric_value)
-
-        if (args.enable_advantage and not args.warm_start) or (args.warm_start and args.metrics_only):
-            with open(output_function_bank, "w") as file:
-                json.dump([], file)
-
-        for i in range(num_optim_iter):
+        for i in range(args.num_optim_iter):
 
             kwargs_for_prompt_class["seed"] = seed_list[i]
             prompts = prompt_class(**kwargs_for_prompt_class)
@@ -504,17 +409,16 @@ def main(args: argparse.Namespace):
                 template_script_func=prompts.run_pipeline_prompt,
                 placeholder=_PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
                 work_dir=work_dir,
-                timeout=300 * 2.5 * args.k
+                timeout=300 * 2.5 * k
             )
 
             # Set up agents
-            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model, args.k, args.k_word)
+            code_executor_agent, code_writer_agent, state_transition = set_up_agents(executor_instance, llm_model, k, k_word)
 
             group_chat = GroupChat(
                 agents=[
                     code_executor_agent,
                     code_writer_agent,
-                    # code_verifier_agent,
                 ],
                 messages=[],
                 max_round=max_round,
@@ -525,52 +429,18 @@ def main(args: argparse.Namespace):
             # Initialize group chat manager
             group_chat_manager = GroupChatManager(
                 groupchat=group_chat,
-                llm_config={
-                    "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
-                },
                 is_termination_msg=lambda msg: (
                     "TERMINATE" in msg["content"] if msg["content"] else False
                 ),
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt_pipeline_optimization(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=args.num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, run_output_dir)
 
-        # Run an optimization study on the best 3 function in the function bank
-        if args.hyper_optimize:
-            raise NotImplementedError("Hyperparameter optimization is currently disabled.")
-            # print("Starting hyperparameter search")
-            # for result in top_n(output_function_bank, sorting_function=sampling_function, n=args.n_hyper_optimize):
-            #     func_to_optimize = result['preprocessing_function']
-                
-            #     _, params, _ = transform_opencv_constants(func_to_optimize)
-                
-            #     if len(params) == 0:
-            #         # Skip if no parameters to optimize
-            #         print("No parameters to optimize, skipping hyperparameter search")
-            #     else:
-            #         optimize_time = time.time()
-            #         opt_code, opt_metrics = hyperparameter_search(
-            #             func_to_optimize,
-            #             args.experiment_name,
-            #             args.dataset,
-            #             os.path.join(os.path.dirname(output_function_bank), "pipeline_run.log"),
-            #             args.n_hyper_optimize_trials,
-            #             **kwargs_for_prompt_class
-            #         )
-            #         optimize_time = time.time() - optimize_time
-            #         save_to_function_bank(
-            #             opt_code,
-            #             opt_metrics,
-            #             output_function_bank,
-            #             optimize_time,
-            #         )
-                
-        
     update_run_info_with_end_timestamp(run_output_dir)
 
 
@@ -585,12 +455,6 @@ if __name__ == "__main__":
         help="Path to the dataset."
     )
     
-    parser.add_argument(
-        "-o", "--output",
-        type=str,
-        required=False,
-        help="Path to the output folder."
-    )
     parser.add_argument(
         "--experiment_name",
         type=str,
@@ -622,24 +486,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--warm_start",
-        action='store_true',
-        help="Whether to include the expert baseline function in the function bank as a warm start."
-    )
-
-    parser.add_argument(
-        "--metric_only",
-        action="store_true",
-        help="Add baseline metric in the prompt (only works when warm_start=True)."
-    )
-
-    parser.add_argument(
-        "--enable_advantage",
-        action="store_true",
-        help="Store the relative score within each iteration of `k` samples."
-    )
-
-    parser.add_argument(
         "--n_top",
         type=int,
         default=3,
@@ -661,73 +507,20 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--num_optim_iter",
+        type=int,
+        default=20,
+        help="Number of optimization iterations."
+    )
+
+    parser.add_argument(
         "--history_threshold",
         type=int,
-        default=5,
+        default=0,
         help="The number of iterations to wait before showing the function bank history."
     )
-    
-    parser.add_argument(
-        '--hyper_optimize',
-        action='store_true',
-        help="Whether to run a hyperparameter search after the trial is over."
-    )
-    
-    parser.add_argument(
-        '--n_hyper_optimize',
-        type=int,
-        default=3,
-        help="Number of functions to optimize."
-    )
-    
-    parser.add_argument(
-        '--n_hyper_optimize_trials',
-        type=int,
-        default=15,
-        help="Number of trials for each function to optimize."
-    )
-        
-
-    parser.add_argument(
-        "--k",
-        type=int,
-        default=3,
-        required=False,
-        help="Preprocessing function group size value."
-    )
-
-    parser.add_argument(
-        "--k_word",
-        type=str,
-        default="three",
-        required=False,
-        help="Preprocessing function group size in English."
-    )
-
-    parser.add_argument(
-        "--dataset_size",
-        type=int,
-        default=100,
-        help="Cellpose specific argument to determine size of val/test set."
-    )
-
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=16,
-        help="Batch size for Cellpose."
-    )
-
 
 
     args = parser.parse_args()
-
-    # Check that k word and int were both set
-    if args.k == 3 and args.k_word != "three" or args.k != 3 and args.k_word == "three":
-        raise ValueError("k and k_word must be set to be equivalent.")
-
-    work_dir = os.getcwd()
-    if args.output is None:
-        args.output = work_dir
 
     main(args)

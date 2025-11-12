@@ -17,11 +17,11 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
 
     def get_task_details(self):
         return f"""
-    All of you should work together to write {self.k_word} pairs of preprocessing postprocessing functions that {self.if_advantage("maximize the reported advantages and ")}improve segmentation performance. 
+    All of you should work together to write {self.k_word} pairs of preprocessing postprocessing functions that improve segmentation performance. 
     We provided APIs for both preprocessing and postprocessing functions. You should use functions from useful libraries including but not limited to OpenCV, NumPy, Skimage, Scipy, to implement novel and effective functions.
     It might make sense to start the process with small preprocessing functions, and then build up to more complex functions depending on the performance of the previous functions.
 
-    1. Based on previous preprocessing functions and their performance (provided below), suggest {self.k_word} new unique preprocessing & postprocessing function pairs {self.if_advantage(" that maximize the advantages. Remember, the bigger the advantage for a particular function, the better it performed than average.")}.
+    1. Based on previous preprocessing functions and their performance (provided below), suggest {self.k_word} new unique preprocessing & postprocessing function pairs.
     2. For preprocessing, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged. For postprocessing, it is also critical to maintain the output format as the sample function provided.
     3. The environment will handle all data loading, evaluation, and logging of the results.  Your only job is to write the preprocessing and postprocessing function pairs.
     4. For this task, if all {self.k_word} function pairs are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
@@ -34,15 +34,13 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
 
     def get_pipeline_metrics_info(self):
         return f"""
-    {self.if_advantage("The advantage quantifies how much better this function performs than the expert baseline (if positive) or how much worse than the expert baseline (if negative).")}
     The following metrics are used to evaluate the performance of the pipeline: average_precision.
     The average_precision is the average precision score of the pipeline at an Intersection over Union (IoU) threshold of 0.5.
-    Our ultimate goal is to {self.if_advantage("maximize the advantage and ")}increase the average_precision as much as possible (0.95 is the target).
     """
 
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, advantage_enabled=False, dataset_size=256, batch_size=16, baseline_metric_value=-100):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, dataset_size=256, batch_size=16, baseline_metric_value=-100):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -55,7 +53,6 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             batch_size=batch_size,
             k=k,
             k_word=k_word,
-            advantage_enabled=advantage_enabled
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
@@ -67,7 +64,6 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
         self.baseline_metric_value = baseline_metric_value
         self.dataset_size = dataset_size
         self.batch_size = batch_size
-        self.advantage_enabled = advantage_enabled
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -92,7 +88,6 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
             "_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
             "baseline_metric_value": str(self.baseline_metric_value),
-            "advantage_enabled": str(self.advantage_enabled),
             "sample_k": str(self.k),
             "dataset_size": str(self.dataset_size),
             "batch_size": str(self.batch_size)
