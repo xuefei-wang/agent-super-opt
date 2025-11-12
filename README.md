@@ -56,7 +56,7 @@ This guide provides instructions for replicating the experimental results presen
 2.  **Additional Setup (Task-Specific)**
 
       * **MedSAM**: Download the model checkpoint medsam\_vit\_b.pth and specify its path using `--checkpoint_path`. Follow the [instructions](https://github.com/bowang-lab/MedSAM?tab=readme-ov-file#installation) and install the MedSAM package.
-      * **Polaris**: Set your `DEEPCELL_ACCESS_TOKEN` environment variable. Instructions are available [here](https://deepcell.readthedocs.io/en/master/API-key.html).
+      * **Polaris (Spot Detection)**: Set your `DEEPCELL_ACCESS_TOKEN` environment variable. Instructions are available [here](https://deepcell.readthedocs.io/en/master/API-key.html).
       * **Cellpose**: Need to comment out `fill_holes_and_remove_small_masks` step in the `dynamics.resize_and_compute_masks`
 
 3.  **Run the Experiments**

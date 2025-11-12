@@ -176,4 +176,4 @@ requirements.txt
 
 .venv_medsam/
 .venv_cellpose/
-.venv_polaris/
+.venv_spot_detection/
