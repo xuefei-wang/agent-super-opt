@@ -173,3 +173,10 @@ cython_debug/
 
 # Generated requirements file
 requirements.txt
+
+.venv_medsam/
+.venv_cellpose/
+.venv_spot_detection/
+
+cache/
+seed_list.txt

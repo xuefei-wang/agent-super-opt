@@ -42,19 +42,11 @@ def medsam_inference(medsam_model, img_embed, box_torch, H, W, batch_size):
 
         low_res_pred = torch.sigmoid(low_res_logits)  # (B, 1, 256, 256)
 
-        low_res_pred = F.interpolate(
-            low_res_pred,
-            size=(H, W),
-            mode="bilinear",
-            align_corners=False,
-        )  # (B, 1, H, W)
-        
         for j in range(low_res_pred.shape[0]):
             pred = low_res_pred[j].squeeze().detach().cpu().numpy()  # (H, W)
-            medsam_seg = (pred > 0.5).astype(np.uint8)
-            all_predictions.append(torch.from_numpy(medsam_seg).unsqueeze(0))
+            all_predictions.append(torch.from_numpy(pred).unsqueeze(0)) # (1, H, W)
 
-    return torch.cat(all_predictions, dim=0)  # (N, H, W)
+    return torch.stack(all_predictions, dim=0) # (N, 1, H, W)
 
 class MedSAMTool():
     """
@@ -72,7 +64,7 @@ class MedSAMTool():
         self.kwargs = kwargs
     
     def predict(self, images: ImageData, scaled_boxes, used_for_baseline, is_rgb=True) -> np.ndarray:
-        medsam_model = build_sam_vit_b(device=self.device, checkpoint=self.checkpoint_path)
+        medsam_model = build_sam_vit_b(checkpoint=self.checkpoint_path)
         medsam_model.to(self.device)
         medsam_model.eval()
        

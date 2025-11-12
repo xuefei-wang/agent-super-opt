@@ -3,7 +3,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Optional
 
-_PREPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
+_PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER = "# --- CODEGEN_PREPROCESSING_FUNCTIONS_INSERT ---"
 
 @dataclass
 class TaskPrompts:
@@ -18,7 +18,6 @@ class TaskPrompts:
     # summary_prompt : str
     k : int
     k_word : str
-    advantage_enabled : bool = False
     checkpoint_path : Optional[str] = None
     dataset_size :Optional[int] = None
     batch_size : Optional[int] = None
@@ -39,5 +38,5 @@ class TaskPrompts:
     def get_pipeline_metrics_info(self):
         pass
 
-    def if_advantage(self, enabled_string, disabled_string=""):
-        return enabled_string if self.advantage_enabled else disabled_string
+    def get_postprocessing_function_api(self):
+        pass

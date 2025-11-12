@@ -1,4 +1,4 @@
-from prompts.task_prompts import TaskPrompts, _PREPROCESSING_FUNCTION_PLACEHOLDER
+from prompts.task_prompts import TaskPrompts, _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER
 import textwrap
 import os
 
@@ -7,33 +7,36 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
 
     # --- Define these as CLASS attributes ---
     dataset_info = """
-        ```markdown
+    ```markdown
 
-        This is large-scale medical image segmentation dataset covering the 
-        dermoscopy/xray modality. The images have dimensions (H, W, C) = (height, width, channel).
-        ```
+    This is large-scale medical image segmentation dataset covering the 
+    dermoscopy/xray modality. The images have dimensions (H, W, C) = (height, width, channel).
+    ```
     """
 
-    task_details = """
-    All of you should work together to write a preprocessing function to improve segmentation performance using OpenCV functions.
-    1. Based on previous preprocessing functions and their performance (provided below), suggest a new preprocessing function using OpenCV functions (APIs provided below).
-    2. Plug the preprocessing function into the pipeline and run the segmenter to calculate the performance metrics, using the provided code snippet.
-    3. Save the newly proposed preprocessing function and its performance metrics in the function bank, using the provided script.
-    4. Only one iteration is allowed for this task, even if the performance is not satisfactory.
-    6. Do not terminate the conversation until the new preprocessing function is evaluated.
-    7. Extremely important: Do not terminate the conversation until the new preprocessing function is evaluated AND it must be written to the function bank by calling the write_results function.
-    8. Recall, this is not a stateful kernel, so all functions, imports, etc. must be provided in the script to be executed.
-    """
+    def get_task_details(self):
+        return  f"""
+        All of you should work together to write {self.k_word} preprocessing and postprocessing function pairs to improve segmentation performance.
+        We provided APIs for both preprocessing and postprocessing functions. You should use functions from useful libraries including but not limited to OpenCV, NumPy, Skimage, Scipy, to implement novel and effective functions.
+        1. Based on previous preprocessing and postprocessing functions and their performance (provided below), suggest {self.k_word} new unique function pairs using.
+        2. The environment will handle all data loading, evaluation, and logging of the results. Your only job is to write the preprocessing and postprocessing functions.
+        3. Do not terminate the conversation until the new functions are evaluated and the numerical performance metrics are logged.
+        4. For this task, if all {self.k_word} functions are evaluated correctly, only one iteration is allowed, even if the performance is not satisfactory.
+        5. Do not terminate the conversation until the new functions are evaluated and the numerical performance metrics are logged.
+        6. Extremely important: Do not terminate the conversation until each of the {self.k_word} new function pairs are evaluated AND their results are written to the function bank.
+        7. Recall, this is a STATELESS kernel, so all functions, imports, etc. must be provided in the script to be executed. Any history between previous iterations exists solely as provided preprocessing functions and their performance metrics.
+        8. Do not write any code outside of the preprocessing and postprocessing functions.
+        9. For preprocessing, the images after preprocessing must still conform to the format specified in the ImageData API. Maintenance of channel identity is critical and channels should not be merged. For postprocessing, it is also critical to maintain the output format as the sample function provided.
+        """
 
     def get_pipeline_metrics_info(self):
         return f"""
-    {self.if_advantage("The advantage quantifies how much better this function performs than the expert baseline (if positive) or how much worse than the expert baseline (if negative).")}
     The following metrics are used to evaluate the performance of the pipeline: dsc_metric, nsd_metric.
     - The `dsc_metric` is the dice similarity coefficient (DSC) score of the pipeline and is similar to IoU, measuring the overlap between predicted and ground truth masks.
     - The `nsd_metric` is the normalized surface distance (NSD) score and is more sensitive to distance and boundary calculations.
     """
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path, k, k_word, advantage_enabled=False, baseline_metric_value=-100):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, checkpoint_path, k, k_word, baseline_metric_value=-100):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -44,7 +47,6 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             checkpoint_path=checkpoint_path,
             k=k,
             k_word=k_word,
-            advantage_enabled=advantage_enabled
         )
         # Assign instance attributes
         self.gpu_id = gpu_id
@@ -55,7 +57,6 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         self.k = k
         self.k_word = k_word
         self.baseline_metric_value = baseline_metric_value
-        self.advantage_enabled = advantage_enabled
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -79,10 +80,9 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
             "checkpoint_path": self.checkpoint_path.replace("\\", "/"),
-            "_PREPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_FUNCTION_PLACEHOLDER,
+            "_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
             "sample_k": str(self.k),
             "baseline_metric_value": str(self.baseline_metric_value),
-            "advantage_enabled": str(self.advantage_enabled),
         }
 
         script_with_config = template_content
@@ -93,3 +93,10 @@ class MedSAMSegmentationPromptsWithSkeleton(TaskPrompts):
         # --- FIX: Apply dedent and strip before returning ---
         dedented_script = textwrap.dedent(script_with_config)
         return dedented_script.strip()
+    
+    def get_postprocessing_function_api(self):
+        api_file_path = os.path.join(os.path.dirname(__file__), "medsam_segmentation_expert_postprocessing_skeleton.py.txt")
+        with open(api_file_path, 'r') as f:
+            template_content = f.read()
+
+        return textwrap.dedent(template_content)

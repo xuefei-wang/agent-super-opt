@@ -103,9 +103,9 @@ pipeline_error = None
 pipeline_traceback = None
 preprocess_images = None
 
-# --- Generated Preprocessing Function Definition ---
+# --- Generated Preprocessing & Postprocessing Function Definition ---
 # This placeholder will be replaced by the executor
-{_PREPROCESSING_FUNCTION_PLACEHOLDER}
+{_PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER}
 # --- End of Generated Code ---
 
 try:
@@ -116,6 +116,13 @@ try:
         raise NameError(err_msg)
     else:
         logger.info("preprocess_images function appears to be defined.")
+
+    if 'postprocess_images' not in globals() or not callable(postprocess_images):
+        err_msg = "FATAL: postprocess_images function not defined correctly by generated code."
+        logger.error(err_msg)
+        raise NameError(err_msg)
+    else:
+        logger.info("postprocess_images function appears to be defined.")
 
     # --- Set random seeds ---
     logger.info(f"Setting random seeds using integer seed: {seed}")
@@ -155,6 +162,19 @@ try:
     prediction_time = time.time() - prediction_start_time
     logger.info(f"Segmentation prediction finished in {prediction_time:.2f} seconds.")
 
+    # --- Apply Postprocessing ---
+    logger.info("Applying postprocess_preds function...")
+    postprocessing_start_time = time.time()
+    try:
+        pred_masks = postprocess_preds(pred_masks) # RUN YOUR POSTPROCESSING HERE
+        postprocessing_time = time.time() - postprocessing_start_time
+        logger.info(f"Postprocessing finished in {postprocessing_time:.2f} seconds.")
+    except Exception as postprocess_error:
+        logger.error(f"!!! ERROR occurred inside the dynamically generated postprocess_preds function:")
+        logger.exception(postprocess_error)
+        raise postprocess_error
+
+    
     # --- Calculate Metrics ---
     logger.info("Calculating metrics...")
     metrics_start_time = time.time()
@@ -170,9 +190,9 @@ try:
     if overall_metrics is not None:
         logger.info("Saving successful results to function bank...")
         # Access the code string variable injected by the executor
-        preprocessing_code_str = globals().get("_GENERATED_CODE_STRING", None)
+        generated_code_str = globals().get("_GENERATED_CODE_STRING", None)
         results_to_save = {
-            'preprocessing_function': preprocessing_code_str,
+            'generated_function': generated_code_str,
             'overall_metrics': overall_metrics, # Known to be not None here
             'seed': seed,
             'timestamp': script_start_time,
@@ -180,6 +200,7 @@ try:
             'timestamp_finish': time.time(),
             'preprocessing_time': preprocessing_time,
             'prediction_time': prediction_time,
+            'postprocessing_time': postprocessing_time,
             'metrics_time': metrics_time,
             'error': None, # Explicitly None on success
             'traceback': None # Explicitly None on success

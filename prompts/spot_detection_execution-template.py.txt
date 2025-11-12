@@ -25,7 +25,6 @@ gpu_id = {gpu_id}
 seed = {seed} # Seed is now an integer, no quotes needed
 k = {sample_k}
 group_baseline = {baseline_metric_value}
-advantage_enabled = {advantage_enabled}
 data_path = r"{dataset_path}"
 function_bank_path = r"{function_bank_path}"
 script_start_time = time.time()
@@ -105,24 +104,30 @@ except Exception as log_e:
 # --- Initialize variables ---
 k_overall_metrics = []
 k_preprocessing_times = []
+k_postprocessing_times = []
 k_prediction_times = []
 k_metrics_times = []
 pipeline_error = None
 pipeline_traceback = None
 k_preprocess_images_fns = []
+k_postprocess_preds_fns = []
 k_preprocessed_images = []
 k_predictions = []
+k_final = []
 k_preprocess_images_fns_single_img = []
+k_postprocess_preds_fns_single_img = []
 k_preprocessed_images_single_img = []
 k_preprocessing_times_single_img = []
+k_postprocessing_times_single_img = []
 k_predictions_single_img = []
+k_final_single_img = []
 k_prediction_times_single_img = []
 k_metrics_times_single_img = []
 k_overall_metrics_single_img = []
 
-# --- Generated Preprocessing Function Definition ---
+# --- Generated Preprocessing & Postprocessing Function Definition ---
 # This placeholder will be replaced by the executor
-{_PREPROCESSING_FUNCTIONS_PLACEHOLDER}
+{_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER}
 # --- End of Generated Code ---
 
 try:
@@ -136,6 +141,16 @@ try:
             k_preprocess_images_fns.append(globals().get(f'preprocess_images_{i + 1}', None))
             k_preprocess_images_fns_single_img.append(globals().get(f'preprocess_images_{i + 1}', None))
             logger.info(f"preprocess_images_{i + 1} function appears to be defined.")
+
+    for i in range(k):
+        if f'postprocess_preds_{i + 1}' not in globals() or not callable(globals().get(f'postprocess_preds_{i + 1}', None)):
+            err_msg = f"FATAL: postprocess_preds_{i + 1} function not defined correctly by generated code."
+            logger.error(err_msg)
+            raise NameError(err_msg)
+        else:
+            k_postprocess_preds_fns.append(globals().get(f'postprocess_preds_{i + 1}', None))
+            k_postprocess_preds_fns_single_img.append(globals().get(f'postprocess_preds_{i + 1}', None))
+            logger.info(f"postprocess_preds_{i + 1} function appears to be defined.")
 
     # --- Set random seeds ---
     logger.info(f"Setting random seeds using integer seed: {seed}")
@@ -182,18 +197,26 @@ try:
         k_prediction_times_single_img.append(time.time() - prediction_start_time)
         logger.info(f"[Single Image] Segmentation prediction finished in {k_prediction_times_single_img[i]:.2f} seconds.")
 
-    # --- [Single Image] Calculate Metrics ---
+    # --- [Single Image] Apply Postprocssing ---
     for i, pred in enumerate(k_predictions_single_img):
+        logger.info(f"[Single Image] Applying postprocess_preds_{i + 1} function...")
+        postprocessing_start_time = time.time()
+        try:
+            k_final_single_img.append(globals().get(f'postprocess_preds_{i + 1}', lambda x: x)(pred))
+            k_postprocessing_times_single_img.append(time.time() - postprocessing_start_time)
+            logger.info(f"[Single Image] Postprocessing {i + 1} finished in {k_postprocessing_times_single_img[i]:.2f} seconds.")
+        except Exception as postprocess_error:
+            logger.error(f"[Single Image] !!! ERROR occurred inside the dynamically generated postprocess_preds_{i + 1} function:")
+            logger.exception(postprocess_error)
+            raise postprocess_error
+    
+    # --- [Single Image] Calculate Metrics ---
+    for i, pred in enumerate(k_final_single_img):
         logger.info(f"[Single Image] Calculating metrics for prediction {i + 1}...")
         metrics_start_time = time.time()
         k_overall_metrics_single_img.append(deepcell_spot_detector.evaluate(pred, spots_data['y'][:1]))
         k_metrics_times_single_img.append(time.time() - metrics_start_time)
         logger.info(f"[Single Image] Metrics calculation finished in {k_metrics_times_single_img[i]:.2f} seconds.")
-
-    # --- [Single Image] Compute Advantages ---
-    if k_overall_metrics_single_img:
-        retrieve_reward = lambda m: m["f1_score"]
-        k_overall_metrics_single_img = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics_single_img]
 
     # --- Apply Preprocessing ---
     for i, preprocess_images in enumerate(k_preprocess_images_fns):
@@ -218,18 +241,26 @@ try:
         k_prediction_times.append(time.time() - prediction_start_time)
         logger.info(f"Spot detection prediction finished in {k_prediction_times[i]:.2f} seconds.")
 
-    # --- Calculate Metrics ---
+    # --- Apply Postprocssing ---
     for i, pred in enumerate(k_predictions):
+        logger.info(f"Applying postprocess_preds_{i + 1} function...")
+        postprocessing_start_time = time.time()
+        try:
+            k_final.append(globals().get(f'postprocess_preds_{i + 1}', lambda x: x)(pred))
+            k_postprocessing_times.append(time.time() - postprocessing_start_time)
+            logger.info(f"Postprocessing {i + 1} finished in {k_postprocessing_times[i]:.2f} seconds.")
+        except Exception as postprocess_error:
+            logger.error(f"!!! ERROR occurred inside the dynamically generated postprocess_preds_{i + 1} function:")
+            logger.exception(postprocess_error)
+            raise postprocess_error
+
+    # --- Calculate Metrics ---
+    for i, pred in enumerate(k_final):
         logger.info(f"Calculating metrics for prediction {i + 1}...")
         metrics_start_time = time.time()
         k_overall_metrics.append(deepcell_spot_detector.evaluate(pred, spots_data['y']))
         k_metrics_times.append(time.time() - metrics_start_time)
         logger.info(f"Metrics calculation finished in {k_metrics_times[i]:.2f} seconds.")
-
-    # --- Compute Advantages ---
-    if k_overall_metrics and advantage_enabled:
-        retrieve_reward = lambda m: m["f1_score"]
-        k_overall_metrics = [{**m, "advantage": retrieve_reward(m) - group_baseline} for m in k_overall_metrics]
 
     # --- Log Metrics ---
     logger.info("All overall metrics: %s", json.dumps(k_overall_metrics if k_overall_metrics else 'N/A', indent=2))
@@ -239,26 +270,47 @@ try:
     if k_overall_metrics:
         logger.info("Saving successful results to function bank...")
         # Access the code string variable injected by the executor
-        preprocessing_code_str = globals().get("_GENERATED_CODE_STRING", None)
-        pattern = rf'(?m)(?=^\s*def\s+preprocess_images_[1-{k}]\s*\()'
+        generated_code_str = globals().get("_GENERATED_CODE_STRING", None)
+        pattern = r'(^(?P<indent>\s*)def\s+preprocess_images_\d+.*?)(?=\n(?P=indent)def\s|\Z)'
+        all_function_chunks = re.findall(
+            pattern,
+            generated_code_str,
+            flags=re.MULTILINE | re.DOTALL
+        )
         k_preprocessing_functions = [
             re.sub(
                 r'^(\s*def\s+)preprocess_images_\d+(\s*\()',
                 r'\1preprocess_images\2',
-                chunk,
+                chunk[0].strip(),
                 flags=re.MULTILINE
-            ).rstrip()
-            for chunk in re.split(pattern, preprocessing_code_str)
-            if chunk.lstrip().startswith("def preprocess_images_")
+            )
+            for chunk in all_function_chunks
+        ]
+        pattern = r'(^(?P<indent>\s*)def\s+postprocess_preds_\d+.*?)(?=\n(?P=indent)def\s|\Z)'
+        all_function_chunks = re.findall(
+            pattern,
+            generated_code_str,
+            flags=re.MULTILINE | re.DOTALL
+        )
+        k_postprocessing_functions = [
+            re.sub(
+                r'^(\s*def\s+)postprocess_preds_\d+(\s*\()',
+                r'\1postprocess_preds\2',
+                chunk[0].strip(),
+                flags=re.MULTILINE
+            )
+            for chunk in all_function_chunks
         ]
         results_to_save = {
             'preprocessing_function': k_preprocessing_functions,
+            'postprocessing_function': k_postprocessing_functions,
             'overall_metrics': k_overall_metrics, # Known to be not None here
             'seed': [seed] * k,
             'timestamp': [script_start_time] * k,
             'gpu_id': [gpu_id] * k,
             'timestamp_finish': [time.time()] * k,
             'preprocessing_times': k_preprocessing_times,
+            'postprocessing_time': k_postprocessing_times,
             'prediction_times': k_prediction_times,
             'metrics_times': k_metrics_times,
             'error': [None] * k, # Explicitly None on success

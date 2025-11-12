@@ -1,3 +1,10 @@
+"""
+python figs/cellpose_analyze_trajectories.py \
+    --k=$K \
+    --data_path=$DATA_FOLDER \
+    --gpu_id=$GPU_ID \
+    --json_path=$JSON_PATH # path to preprocessing_func_bank.json
+"""
 import os 
 import sys
 import json
@@ -18,24 +25,9 @@ import numpy as np
 import torch
 from torch import nn
 import glob
+import numpy as np
+import cv2 as cv
 
-# try:
-#     from data_io import ImageData
-# except ImportError:
-#     from src.data_io import ImageData
-
-# try:
-#     from tools import BaseSegmenter
-# except ImportError:
-#     from src.tools import BaseSegmenter
-
-# try:
-#     from utils import set_gpu_device
-# except ImportError:
-#     from src.utils import set_gpu_device
-
-# Dynamically add the project root to sys.path
-# This allows Python to find the 'src' module correctly
 _CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_CURRENT_SCRIPT_DIR)
 if _PROJECT_ROOT not in sys.path:
@@ -44,7 +36,7 @@ if _PROJECT_ROOT not in sys.path:
 # Project-specific imports from 'src'
 from src.cellpose_segmentation import CellposeTool
 from src.data_io import ImageData
-from src.tools import BaseSegmenter # Added direct import
+# from src.tools import BaseSegmenter # Added direct import
 from src.utils import set_gpu_device # Added direct import
 
 from cellpose import models, denoise
@@ -52,8 +44,6 @@ from cellpose.io import imread
 from cellpose.metrics import average_precision, mask_ious, boundary_scores, aggregated_jaccard_index, flow_error
 
 import os
-# Analyze a agent search trajectory
-# Usage: python figs/fb_analysis.py --json_path <path_to_json> --output_file <output_file>
 
 def find_lowest(json_array: List[Dict], metric_lambda: Callable[[Dict], float]) -> Dict:
     '''Returns object with the lowest metric value from a list of JSON objects.'''
@@ -89,18 +79,8 @@ def find_rolling_highest(json_array: List[Dict], metric_lambda: Callable[[Dict],
         rolling_highest.append(current_highest)
     return rolling_highest
 
-def dump_functions_to_txt(json_array: List[Dict], metric_lambda: Callable[[Dict], float], output_path: str):
-    '''Print preprocessing functions and their metric values to a text file for readability'''
-    with open(output_path, 'w') as file:
-        for obj in json_array:
-            metric_value = metric_lambda(obj)
-            file.write('\n')
-            file.write(f'Value: {metric_value}\n')
-            file.write(obj['preprocessing_function'])
-            file.write('\n')
 
-
-class PriviligedCellposeTool(BaseSegmenter):
+class PriviligedCellposeTool():
     """
     PriviligedCellposeTool is a class that provides a simple interface for the Cellpose model. 
     """
@@ -165,12 +145,8 @@ class PriviligedCellposeTool(BaseSegmenter):
         metrics = {}
         losses = {}
         ap, tp, fp, fn  = average_precision(pred_masks, gt_masks)
-        # metrics["average_precision"] = ap.mean(axis=0) # Average over all images
         metrics["average_precision"] = np.nanmean(ap, axis=0) # Average over all images
-        # metrics["aggregated_jaccard_index"] = aggregated_jaccard_index(pred_masks, gt_masks)
-        # metrics["flow_error"] = flow_error(pred_masks, gt_masks)
-        # classification loss
-
+        
         spatial_shape = pred_masks[0].shape[0:2]
         for x in pred_masks:
             if x.shape[0:2] != spatial_shape:
@@ -275,7 +251,47 @@ def convert_string_to_function(func_str, func_name):
     # Return the function object from the namespace
     return namespace[func_name]
 
+def postprocessing_preds_expert(preds):
+    """ Fills holes in preds (2D/3D) and discards preds smaller than min_size.
+
+    This function fills holes in each mask using scipy.ndimage.morphology.binary_fill_holes.
+    It also removes preds that are smaller than the specified min_size.
+
+    Parameters:
+    preds (list[ndarray]): Int, 2D or 3D array of labelled masks.
+        0 represents no mask, while positive integers represent mask labels.
+        The size can be [Ly x Lx] or [Lz x Ly x Lx].
+
+    Returns:
+        list[ndarray]: Int, 2D or 3D array of masks with holes filled and small preds removed.
+            0 represents no mask, while positive integers represent mask labels.
+            The size is [Ly x Lx] or [Lz x Ly x Lx].
+    """
+    from scipy.ndimage import find_objects, binary_fill_holes
     
+    min_size = 15
+    
+    new_preds = []
+    for mask in preds:
+        slices = find_objects(mask)
+        j = 0
+        for i, slc in enumerate(slices):
+            if slc is not None:
+                msk = mask[slc] == (i + 1)
+                npix = msk.sum()
+                if min_size > 0 and npix < min_size:
+                    mask[slc][msk] = 0
+                elif npix > 0:
+                    if msk.ndim == 3:
+                        for k in range(msk.shape[0]):
+                            msk[k] = binary_fill_holes(msk[k])
+                    else:
+                        msk = binary_fill_holes(msk)
+                    mask[slc][msk] = (j + 1)
+                    j += 1
+        new_preds.append(mask)
+    return new_preds
+
 
 def main(json_path: str, data_path: str, output_dir: str, precision_index: int = 0, device: int = 0, dataset_size: int = 100, batch_size: int = 16, k: int = 10):
     # Let's save these results into a new subfolder of output_dir
@@ -285,18 +301,8 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     with open(json_path, 'r') as file:
         json_array = json.load(file)
 
-    # First evaluate the baseline of no preprocessing
-    segmenter = CellposeTool(model_name="cyto3", device=device)
-    # raw_images, gt_masks = segmenter.loadData(os.path.join(data_path, 'val_set/'))
-    raw_images, gt_masks, image_sources = segmenter.loadCombinedDataset(os.path.join(data_path, 'val_set/'), dataset_size=dataset_size)
 
-    raw_images, gt_masks = raw_images, gt_masks
-    images = ImageData(raw=raw_images, masks=gt_masks, batch_size=batch_size, image_ids=image_sources)
-
-    images.predicted_masks = segmenter.predict(images, batch_size=images.batch_size)
-    metrics_val_no_preprocessing = segmenter.evaluateDisaggregated(images)
-    no_preprocess = metrics_val_no_preprocessing
-    print('Evaluated no preprocessing baseline on val (black line)')
+    # ---  Expert baseline (val) --- 
 
     # Use priviliged CellposeTool to get "best" results, to_normalize=True
     priviliged_segmenter = PriviligedCellposeTool(model_name="cyto3", device=device, channels=[2,1], to_normalize=True)
@@ -305,19 +311,47 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     raw_images_val, gt_masks_val, image_sources_val = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'val_set/'), dataset_size=dataset_size)
 
     images_val = ImageData(raw=raw_images_val, masks=gt_masks_val, batch_size=batch_size, image_ids=image_sources_val)
-    images_val.predicted_masks = priviliged_segmenter.predict(images_val, batch_size=images_val.batch_size)
+    preds = priviliged_segmenter.predict(images_val, batch_size=images_val.batch_size)
+    final_preds = postprocessing_preds_expert(preds)
+    images_val.predicted_masks = final_preds
     metrics_val_expert_baseline = priviliged_segmenter.evaluateDisaggregated(images_val)
     print('Evaluated expert baseline on val (cyan line)')
 
-    # raw_images_test, gt_masks_test = priviliged_segmenter.loadData(os.path.join(data_path, 'test_set/'))
-    # images = ImageData(raw=raw_images_test, batch_size=8, image_ids=[i for i in range(len(raw_images_test))])
-    # pred_masks_test = priviliged_segmenter.predict(images, batch_size=8)
-    # metrics_test = priviliged_segmenter.evaluate(pred_masks_test, gt_masks_test)
+    # --- Expert baseline (test) ---
+    test_dataset_size = 808 # hardcoded  --- 
 
+    raw_images_test, gt_masks_test, image_sources_test = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'test_set/'), dataset_size=test_dataset_size)
+
+    images_test = ImageData(raw=raw_images_test, masks=gt_masks_test, batch_size=batch_size, image_ids=image_sources_test)
+    preds = priviliged_segmenter.predict(images_test, batch_size=images_test.batch_size)
+    final_preds = postprocessing_preds_expert(preds)
+    images_test.predicted_masks = final_preds
+    metrics_test_expert_baseline = priviliged_segmenter.evaluateDisaggregated(images_test)
+    print("Evaluated expert baseline on test (blue bar)")
+
+
+    # --- Save or Load expert baseline ---
+    save_path = os.path.join(output_dir, 'expert_baseline_performances.json')
+    
+    # Save expert baseline performances to a JSON file
+    expert_baseline_performances = {
+        "expert_baseline_val_avg_precision": metrics_val_expert_baseline['average_precision'],
+        "expert_baseline_test_avg_precision": metrics_test_expert_baseline['average_precision'],
+        "disaggregated_expert_baseline_test_avg_precision": metrics_test_expert_baseline['disaggregated_average_precision'],
+        'disaggregated_expert_baseline_val_avg_precision': metrics_val_expert_baseline['disaggregated_average_precision']
+    }
+
+    with open(save_path, 'w') as file:
+        json.dump(expert_baseline_performances, file, indent=4)
+    print(f"Saved expert baseline performances to {save_path}")
+
+
+    
     # handle json ambiguities
     new_json = []
     for i in range(len(json_array)):
-        data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function']}
+        data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function'],
+                         'postprocessing_function' : json_array[i]['postprocessing_function']}
         try:
             avg_prec = json_array[i]['average_precision']['average_precision']
         except:
@@ -351,7 +385,6 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     plt.ylabel('Average Precision @ IoU=0.5')
     plt.title(f'Validation Metrics during Agent Search: {json_path.split("/")[-2]}')
 
-    plt.axhline(no_preprocess['average_precision'], color='k', linestyle='--', label=f'No preprocessing. IOU threshold 0.5: {no_preprocess["average_precision"]}')
     plt.axhline(metrics_val_expert_baseline['average_precision'], color='cyan', linestyle='--', label=f"Baseline: cellpose's min-max norm {metrics_val_expert_baseline['average_precision']}") 
     plt.legend(loc='best')
 
@@ -360,64 +393,27 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     # Now begin the image analysis and attempt to convert string to function
 
     best_preprocessing_function_str = highest_metric_obj['preprocessing_function']
+    best_postprocessing_function_str = highest_metric_obj['postprocessing_function']
     best_preprocessing_function = convert_string_to_function(best_preprocessing_function_str, 'preprocess_images')
+    best_postprocessing_function = convert_string_to_function(best_postprocessing_function_str, 'postprocess_preds')
 
     # Print a dump of the function to a text file
-    with open(os.path.join(output_dir, 'best_preprocessing_function.txt'), 'w') as file:
+    with open(os.path.join(output_dir, 'best_functions.txt'), 'w') as file:
         file.write(highest_metric_obj['preprocessing_function'])
+        file.write('\n\n')
+        file.write(highest_metric_obj['postprocessing_function'])
 
-    # Now let's get images with and without preprocessing
-    # First evaluate the baseline of no preprocessing
-    segmenter = CellposeTool(model_name="cyto3", device=device)
-    # raw_images, gt_masks = segmenter.loadData(os.path.join(data_path, 'val_set/'))
-    # Re-use raw_images and gt_masks from validation set loading earlier
-    # raw_images, gt_masks = segmenter.loadCombinedDataset(os.path.join(data_path, 'val_set/'), dataset_size=dataset_size)
-
-    # raw_images, gt_masks = raw_images, gt_masks
-    # images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))]) # This is images_val
-
-    orig_images_val = ImageData(raw=[np.copy(img_arr) for img_arr in raw_images_val], masks=gt_masks_val, batch_size=images_val.batch_size, image_ids=image_sources_val)
-    best_preprocessed_images_val = best_preprocessing_function(ImageData(raw=[np.copy(img_arr) for img_arr in raw_images_val], masks=gt_masks_val, batch_size=images_val.batch_size, image_ids=image_sources_val))
-    agent_images_val = best_preprocessed_images_val.raw
-    print("Preprocessed validation images with best function")
-
-    plt.figure()
-    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
-    for i in range(min(4, len(orig_images_val.raw))): # Ensure we don't go out of bounds
-        axes[0, i].imshow(orig_images_val.raw[i])
-        axes[0, i].set_title(f'Original Val Image {i+1}')
-        axes[1, i].imshow(agent_images_val[i])
-        axes[1, i].set_title(f'Agent Val Image {i+1}')
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'preprocessed_val_images.png'))
-
-    # Now let's do test set evaluation
-
-    # # First, the baseline (to_normalize=True)
-    # priviliged_segmenter is already initialized
-    # raw_images_test, gt_masks_test = priviliged_segmenter.loadData(os.path.join(data_path, 'test_set/'))
-    test_dataset_size = 808#08 # hardcoded  
-    raw_images_test, gt_masks_test, image_sources_test = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'test_set/'), dataset_size=test_dataset_size)
-    images_test = ImageData(raw=raw_images_test, masks=gt_masks_test, batch_size=batch_size, image_ids=image_sources_test)
-    images_test.predicted_masks = priviliged_segmenter.predict(images_test, batch_size=images_test.batch_size)
-    metrics_test_expert_baseline = priviliged_segmenter.evaluateDisaggregated(images_test)
-    print("Evaluated expert baseline on test (blue bar)")
-
-    # Now let's do the other baseline (to_normalize=False) for test set
-    non_privileged_segmenter_test = CellposeTool(model_name="cyto3", device=device) # ensure fresh segmenter for test
-    # We use images_test which contains the raw test images
-    raw_images_test_no_norm, gt_masks_test_no_norm, image_sources_test_no_norm = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'test_set/'), dataset_size=test_dataset_size)
-    images_test_no_norm = ImageData(raw=raw_images_test_no_norm, masks=gt_masks_test_no_norm, batch_size=batch_size, image_ids=image_sources_test_no_norm)
-    images_test_no_norm.predicted_masks = non_privileged_segmenter_test.predict(images_test_no_norm, batch_size=images_test_no_norm.batch_size)
-    metrics_test_baseline_no_norm = non_privileged_segmenter_test.evaluateDisaggregated(images_test_no_norm)
-    print("Evaluated no preprocessing baseline on test (black bar)")
 
     # Agent's best function on test set, without to_normalize
+    non_privileged_segmenter_test = CellposeTool(model_name="cyto3", device=device) # ensure fresh segmenter for test
     raw_images_test_agent, gt_masks_test_agent, image_sources_test_agent = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'test_set/'), dataset_size=test_dataset_size)
+
     images_test_agent = ImageData(raw=raw_images_test_agent, masks=gt_masks_test_agent, batch_size=batch_size, image_ids=image_sources_test_agent)
     best_preprocessed_images_test = best_preprocessing_function(images_test_agent)
     # non_privileged_segmenter_test is already initialized
-    images_test_agent.predicted_masks = non_privileged_segmenter_test.predict(best_preprocessed_images_test, batch_size=batch_size)
+    preds = non_privileged_segmenter_test.predict(best_preprocessed_images_test, batch_size=batch_size)
+    final_preds = best_postprocessing_function(preds)
+    images_test_agent.predicted_masks = preds
     metrics_test_agent_function = non_privileged_segmenter_test.evaluateDisaggregated(images_test_agent)
     print("Evaluated top performing agent function on test (red bar)")
 
@@ -425,45 +421,12 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     plt.figure()
     plt.bar('expert_baseline', metrics_test_expert_baseline['average_precision'], color='b', label=f"Expert Baseline (min-max norm) Test Set: {metrics_test_expert_baseline['average_precision']:.4f}")
     plt.bar('agent_designed', metrics_test_agent_function['average_precision'], color='r', label=f"Agent Designed Test Set: {metrics_test_agent_function['average_precision']:.4f}")
-    plt.bar('no_preprocessing_baseline', metrics_test_baseline_no_norm['average_precision'], color='k', label=f"No Preprocessing Baseline Test Set: {metrics_test_baseline_no_norm['average_precision']:.4f}")
     plt.xlabel('Method')
     plt.ylabel('Average Precision')
     plt.legend(loc='lower right')
     plt.title(f'Test Set Performance Comparison: {json_path.split("/")[-2]}')
     plt.savefig(os.path.join(output_dir, 'test_set_metrics.png'))
 
-    # Save expert baseline performances to a JSON file
-    expert_baseline_performances = {
-        "expert_baseline_val_avg_precision": metrics_val_expert_baseline['average_precision'],
-        "expert_baseline_test_avg_precision": metrics_test_expert_baseline['average_precision'],
-        "disaggregated_expert_baseline_test_avg_precision": metrics_test_expert_baseline['disaggregated_average_precision'],
-        'disaggregated_expert_baseline_val_avg_precision': metrics_val_expert_baseline['disaggregated_average_precision']
-    }
-
-    # no_nan_disaggregated_expert_baseline_test_avg_precision = {}
-    # for name, data in metrics_test_expert_baseline['disaggregated_average_precision'].items():
-    #     if data is None:
-    #         no_nan_disaggregated_expert_baseline_test_avg_precision[name] = None
-    #     elif isinstance(data, (int, float)):
-    #         no_nan_disaggregated_expert_baseline_test_avg_precision[name] = None if np.isnan(data) else float(data)
-    #     else:
-    #         no_nan_disaggregated_expert_baseline_test_avg_precision[name] = data
-    
-    # no_nan_disaggregated_expert_baseline_val_avg_precision = {}
-    # for name, data in metrics_val_expert_baseline['disaggregated_average_precision'].items():
-    #     if data is None:
-    #         no_nan_disaggregated_expert_baseline_val_avg_precision[name] = None
-    #     elif isinstance(data, (int, float)):
-    #         no_nan_disaggregated_expert_baseline_val_avg_precision[name] = None if np.isnan(data) else float(data)
-    #     else:
-    #         no_nan_disaggregated_expert_baseline_val_avg_precision[name] = data
-
-    # expert_baseline_performances['no_nan_disaggregated_expert_baseline_test_avg_precision'] = no_nan_disaggregated_expert_baseline_test_avg_precision
-    # expert_baseline_performances['no_nan_disaggregated_expert_baseline_val_avg_precision'] = no_nan_disaggregated_expert_baseline_val_avg_precision
-
-    with open(os.path.join(output_dir, 'expert_baseline_performances.json'), 'w') as file:
-        json.dump(expert_baseline_performances, file, indent=4)
-    print(f"Saved expert baseline performances to {os.path.join(output_dir, 'expert_baseline_performances.json')}")
 
     # Let's find the top performing k functions, evaluate them on the test set and save the results into a new file (pickle)
     def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k: int) -> List[Dict]:
@@ -486,23 +449,26 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
 
     for idx, function_item in enumerate(top_k_functions):
         print(f"Evaluating {idx+1} of top {len(top_k_functions)}")
-        current_function_str = function_item['preprocessing_function']
+        current_function_str = (function_item['preprocessing_function'], function_item['postprocessing_function'])
         current_metrics_val_float = function_item['average_precision']
         current_metrics_val_dict = function_item['disaggregated_average_precision']
-        if current_function_str == best_preprocessing_function_str: # Compare strings to avoid issues with function object comparison
+        if current_function_str == (best_preprocessing_function_str, best_postprocessing_function_str): # Compare strings to avoid issues with function object comparison
             current_metrics_test_dict = metrics_test_agent_function # Use already computed result for the best function
             function_str_to_save = current_function_str
         else:
-            cur_preprocessing_fn_obj = convert_string_to_function(current_function_str, 'preprocess_images')
+            cur_preprocessing_fn_obj = convert_string_to_function(current_function_str[0], 'preprocess_images')
+            cur_postprocessing_fn_obj = convert_string_to_function(current_function_str[1], 'postprocess_preds')
             
             # Ensure fresh ImageData object for each preprocessing
             raw_images_test, gt_masks_test, image_sources_test = priviliged_segmenter.loadCombinedDataset(os.path.join(data_path, 'test_set/'), dataset_size=test_dataset_size)
             images_test = ImageData(raw=raw_images_test, masks=gt_masks_test, batch_size=batch_size, image_ids=image_sources_test)
-            current_images_to_preprocess_test = cur_preprocessing_fn_obj(images_test)
+            current_images_to_preprocess_test = images_test
 
             cur_preprocessed_images_test = cur_preprocessing_fn_obj(current_images_to_preprocess_test)
             # Evaluate with non_privileged_segmenter, same as the best agent function
-            images_test.predicted_masks = segmenter_for_top_k_agent_eval.predict(cur_preprocessed_images_test, batch_size=batch_size)
+            preds = segmenter_for_top_k_agent_eval.predict(cur_preprocessed_images_test, batch_size=batch_size)
+            final_preds = cur_postprocessing_fn_obj(preds)
+            images_test.predicted_masks = final_preds
             current_metrics_test_dict = segmenter_for_top_k_agent_eval.evaluateDisaggregated(images_test)
             function_str_to_save = current_function_str
         
@@ -518,7 +484,8 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     top_k_functions_results_output = []
     for i in range(len(top_k_functions)):
         rank = i + 1
-        preprocessing_function_string = top_k_functions_str[i]
+        preprocessing_function_string = top_k_functions_str[i][0]
+        postprocessing_function_string = top_k_functions_str[i][1]
         test_metrics_dict = top_k_functions_results_test[i]
         val_metric_float = top_k_functions_results_val[i]
         val_metrics_dict = top_k_functions_results_val[i]
@@ -526,6 +493,7 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
         top_k_functions_results_output.append({
             "rank": rank,
             "preprocessing_function": preprocessing_function_string,
+            "postprocessing_function": postprocessing_function_string,
             "average_precision_test": test_metrics_dict['average_precision'],
             "average_precision_val": val_metric_float,
             "disaggregated_average_precision_test": top_k_functions_disaggregated_test[i],
@@ -546,219 +514,18 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     print(f"Saved top-k function results to {os.path.join(output_dir, 'top_k_functions_results.json')}")
 
 
-
-    # Calculate relative improvements over baseline expert
-    # using top_k_functions_results_output
-    # Calculate relative improvements over baseline expert
-    expert_baseline_val_avg_precision = metrics_val_expert_baseline['average_precision']
-    expert_baseline_test_avg_precision = metrics_test_expert_baseline['average_precision']
-
-    function_improvements = []
-    for func_obj in top_k_functions_results_output:
-        val_improvement = (func_obj['average_precision_val'] - expert_baseline_val_avg_precision)
-        test_improvement = (func_obj['average_precision_test'] - expert_baseline_test_avg_precision)
-
-        # Let's also calculate the improvements in the disaggregated metrics
-        val_disaggregated_improvements = {}
-        for key in metrics_val_expert_baseline['disaggregated_average_precision'].keys():
-            func_val = func_obj['disaggregated_average_precision_val'].get(key)
-            baseline_val = metrics_val_expert_baseline['disaggregated_average_precision'].get(key)
-            
-            if func_val is not None and baseline_val is not None:
-                val_disaggregated_improvements[key] = func_val - baseline_val
-            else:
-                val_disaggregated_improvements[key] = None
-        
-        test_disaggregated_improvements = {}
-        for key in metrics_test_expert_baseline['disaggregated_average_precision'].keys():
-            func_val = func_obj['disaggregated_average_precision_test'].get(key)
-            baseline_val = metrics_test_expert_baseline['disaggregated_average_precision'].get(key)
-            
-            if func_val is not None and baseline_val is not None:
-                test_disaggregated_improvements[key] = func_val - baseline_val
-            else:
-                test_disaggregated_improvements[key] = None
-        
-        # Store the improvements along with function info for sorting
-        function_improvements.append({
-            'val_improvement': val_improvement,
-            'test_improvement': test_improvement,
-            'function_name': func_obj.get('function_name', 'unknown'),
-            'val_disaggregated_improvements': val_disaggregated_improvements,
-            'test_disaggregated_improvements': test_disaggregated_improvements
-        })
-
-    # Let's also plot a scatter plot of the relative performance of the top k functions on the test set (Y) axis, val set (x) axis
-    
-
-
-
-    # Create the scatter plot
-    plt.figure(figsize=(10, 10))
-        # Extract val_improvement and test_improvement from the list of dicts
-    val_improvements = [item['val_improvement'] for item in function_improvements]
-    test_improvements = [item['test_improvement'] for item in function_improvements]
-
-    plt.scatter(val_improvements, test_improvements, alpha=0.7)
-    # plt.scatter(function_improvements['val_improvement'], function_improvements['test_improvement'], alpha=0.7)
-    plt.xlabel('Validation Relative Improvement')
-    plt.ylabel('Test Relative Improvement')
-    plt.title(f'Top {k} Functions over Expert Baseline')
-
-    # Add grid lines
-    plt.grid(True, linestyle='--', alpha=0.7)
-
-    # Add thicker lines at x=0 and y=0
-    plt.axhline(0, color='black', linewidth=1.5)
-    plt.axvline(0, color='black', linewidth=1.5)
-    
-    # Determine axis limits
-    
-    
-    # Calculate dynamic axis limit based on data
-    all_values = val_improvements + test_improvements
-    if all_values:
-        max_abs_val = max(abs(max(all_values)), abs(min(all_values)))
-        # Add some padding (10%)
-        axis_limit = max_abs_val * 1.1
-        # Ensure minimum axis limit
-        if axis_limit < 0.005:
-            axis_limit = 0.005
-        # Round up to nearest 0.005 for cleaner axis
-        axis_limit = np.ceil(axis_limit / 0.005) * 0.005
-    else:
-        axis_limit = 0.02  # Default if no data
-    
-
-    plt.xlim([-axis_limit, axis_limit])
-    plt.ylim([-axis_limit, axis_limit])
-    plt.gca().set_aspect('equal', adjustable='box')
-
-    # Add a diagonal line to show where val=test
-    plt.plot([-axis_limit, axis_limit], [-axis_limit, axis_limit], 'r--', alpha=0.5, 
-            label='Val = Test performance')
-    plt.legend()
-
-    plt.savefig(os.path.join(output_dir, f'scatter_plot_top_{k}_functions_over_expert_baseline.png'))
-
-
-    # Let's plot a 2x2 grid of the same scatter plots comparing the performance of the top k functions over the expert baseline in the disaggregated metrics
-    # Recall metrics['disaggregated_average_precision'] contains keys: 'cellpose', 'bact_phase', 'bact_fluor', 'tissuenet'. We should plot each modality as a separate subplot
-    # Plot scatter grid here    
-    # 2x2 grid plot
-# Let's plot a 2x2 grid of the same scatter plots comparing the performance of the top k functions over the expert baseline
-    plt.figure(figsize=(20, 20))
-    datasets = ['cellpose', 'bact_phase', 'bact_fluor', 'tissuenet']
-
-    for idx, dataset_name in enumerate(datasets):
-        plt.subplot(2, 2, idx + 1)
-        plt.title(f'{dataset_name}: Top {k} Functions over Expert Baseline')
-        
-        # Extract disaggregated improvements for this specific dataset
-        val_improvements_for_dataset = []
-        test_improvements_for_dataset = []
-        
-        for func_improvement in function_improvements:
-            val_imp = func_improvement['val_disaggregated_improvements'].get(dataset_name)
-            test_imp = func_improvement['test_disaggregated_improvements'].get(dataset_name)
-            
-            if val_imp is not None and test_imp is not None:
-                val_improvements_for_dataset.append(val_imp)
-                test_improvements_for_dataset.append(test_imp)
-        
-        if val_improvements_for_dataset:
-            plt.scatter(val_improvements_for_dataset, test_improvements_for_dataset, alpha=0.7)
-            
-            # Determine axis limits for this specific dataset
-            all_values = val_improvements_for_dataset + test_improvements_for_dataset
-            max_abs_val = max(abs(max(all_values)), abs(min(all_values)))
-            # Add some padding (10%) to the maximum absolute value for better visualization
-            axis_limit = max_abs_val * 1.1
-            # Ensure minimum axis limit if values are very small
-            if axis_limit < 0.005:
-                axis_limit = 0.005
-            # Round up to nearest 0.005 for cleaner axis
-            axis_limit = np.ceil(axis_limit / 0.005) * 0.005
-        else:
-            axis_limit = 0.02  # Default if no data
-        
-        # Apply all the formatting from the main scatter plot
-        plt.xlabel('Validation Relative Improvement')
-        plt.ylabel('Test Relative Improvement')
-        
-        # Add grid lines
-        plt.grid(True, linestyle='--', alpha=0.7)
-        
-        # Add thicker lines at x=0 and y=0
-        plt.axhline(0, color='black', linewidth=1.5)
-        plt.axvline(0, color='black', linewidth=1.5)
-        
-        # Set axis limits to make it square - each subplot has its own limits
-        plt.xlim([-axis_limit, axis_limit])
-        plt.ylim([-axis_limit, axis_limit])
-        
-        # Make the axes perfectly square
-        plt.gca().set_aspect('equal', adjustable='box')
-        
-        # Add a diagonal line to show where val=test
-        plt.plot([-axis_limit, axis_limit], [-axis_limit, axis_limit], 'r--', alpha=0.5, 
-                label='Val = Test performance')
-        plt.legend()
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, f'scatter_grid_top_{k}_functions_over_expert_baseline_disaggregated.png'))
-    # NOW CREATE A NEW FIGURE for the bar charts!
-    plt.figure(figsize=(20, 20))  # This was missing!
-
-    # Plot bar charts for test performance
-    for idx, dataset_name in enumerate(datasets):
-        plt.subplot(2, 2, idx + 1)
-        
-        # Get values and format them
-        expert_val = metrics_test_expert_baseline['disaggregated_average_precision'].get(dataset_name)
-        agent_val = metrics_test_agent_function['disaggregated_average_precision'].get(dataset_name)
-        baseline_val = metrics_test_baseline_no_norm['disaggregated_average_precision'].get(dataset_name)
-        
-        # Format labels
-        expert_label = f"Expert Baseline: {expert_val:.4f}" if expert_val is not None else "Expert Baseline: N/A"
-        agent_label = f"Agent Designed: {agent_val:.4f}" if agent_val is not None else "Agent Designed: N/A"
-        baseline_label = f"No Preprocessing: {baseline_val:.4f}" if baseline_val is not None else "No Preprocessing: N/A"
-        
-        # Use 0 for None values for visualization (or skip them)
-        expert_val = expert_val if expert_val is not None else 0
-        agent_val = agent_val if agent_val is not None else 0
-        baseline_val = baseline_val if baseline_val is not None else 0
-        
-        plt.bar('expert_baseline', expert_val, color='b', label=expert_label)
-        plt.bar('agent_designed', agent_val, color='r', label=agent_label)
-        plt.bar('no_preprocessing', baseline_val, color='k', label=baseline_label)
-        
-        plt.xlabel('Method')
-        plt.ylabel('Average Precision')
-        plt.title(f'{dataset_name} - Test Set Performance')
-        plt.legend(loc='best', fontsize=8)
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'test_set_metrics_disaggregated.png'))
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
-    parser.add_argument('--json_path', type=str, required=True, help='Path to the JSON file containing the function bank.')
+    parser.add_argument('--k', type=int, required=True, default=10, help='Number of top functions to run analysis on.')
+    parser.add_argument('--json_path', type=str, required=True, help='Path to the data directory.')
     parser.add_argument('--data_path', type=str, required=True, help='Path to the data directory.')
-    parser.add_argument('--precision_index', type=int, required=False, default=0, help='Which average precision index to use. [0.5, 0.75, 0.9].')
-    parser.add_argument('--device', type=int, required=False, default=0, help='Which GPU to use.')
-    parser.add_argument('--dataset_size', type=int, required=False, default=256, help='Number of dataset size to show in the function bank.')
-    parser.add_argument('--batch_size', type=int, required=False, default=16, help='Batch size for Cellpose.')
-    parser.add_argument('--k', type=int, required=False, default=10, help='Number of top performing functions to evaluate on the test set.')
+    parser.add_argument('--gpu_id', type=int, default=0, help='GPU ID to use. Use -1 for CPU.')
     args = parser.parse_args()
-    
 
-    
-    output_dir = os.path.dirname(args.json_path)
-    json_path = args.json_path
     data_path = args.data_path
-    # print(f"data_path: {data_path}")
-    # data_path = os.path.dirname(os.path.dirname(data_path))
-    print(f"data_path: {data_path}")
-    main(json_path, data_path, output_dir, args.precision_index, args.device, args.dataset_size, args.batch_size, args.k)
-    
+    gpu_id = args.gpu_id
+    json_path = args.json_path
+
+    print(json_path)
+    output_dir = os.path.dirname(json_path)
+    main(json_path, data_path, output_dir, precision_index=0, device=gpu_id, dataset_size=100, batch_size=16, k=args.k)

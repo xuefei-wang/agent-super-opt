@@ -20,7 +20,8 @@ def pretty_print_list(lst: list) -> str:
             result += "  Performance: (Not available)\n"
             
         # Print the preprocessing function
-        result += f"  Function:\n```python\n{item.get('preprocessing_function', '# Preprocessing function code not found')}\n```\n\n"
+        result += f"  Preprocessing Function:\n```python\n{item.get('preprocessing_function', '# Preprocessing function code not found')}\n```\n"
+        result += f"  Postprocessing Function:\n```python\n{item.get('postprocessing_function', '# Postprocessing function code not found')}\n```\n\n"
     
     return result
 

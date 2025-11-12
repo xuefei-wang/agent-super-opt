@@ -181,34 +181,3 @@ class CellposeTool():
 
         return metrics
     
-if __name__ == "__main__":
-    device = 1  
-    # set_gpu_device(device)
-    cellpose_tool = CellposeTool(model_name="cyto3", device=device)
-    num_files = 100
-    files = sorted(glob.glob('../data/cellpose/train/*_img.png'))[:num_files]
-    # raw_images = np.array([imread(f) for f in files], dtype=object)
-    # raw_images = np.array([imread(f) for f in files])
-    raw_images = [imread(f) for f in files]
-    # transposed_raw = np.transpose(raw_images, axes=[0, 3, 1, 2])
-    # gt_masks = [np.expand_dims(np.array(imread((f.split('.')[0][:-3] + 'masks' + '.' + f.split('.')[1]))), axis=2) for f in files]
-    # gt_masks = np.array([imread(f.split('.')[0][:-3] + 'masks' + '.' + f.split('.')[1]) for f in files])
-    gt_masks = [imread(f.split('.')[0][:-3] + 'masks' + '.' + f.split('.')[1]) for f in files]
-    gt_masks = [np.expand_dims(mask, axis=2) for mask in gt_masks]
-    # gt_masks = np.expand_dims(gt_masks, axis=1)
-    # gt_masks = np.expand_dims(gt_masks, axis=3)
-
-    images = ImageData(raw=raw_images,
-                       batch_size=8,
-                       image_ids=[i for i in range(num_files)],
-                       masks=gt_masks,
-                       predicted_masks=gt_masks)
-
-
-    pred_masks, flows, styles, imgs = cellpose_tool.predict(images, batch_size=images.batch_size)
-    # gt_masks_list = [images.masks[i] for i in range(images.masks.shape[0])] 
-    gt_masks_list = images.masks
-    metrics, losses = cellpose_tool.evaluate(pred_masks, gt_masks_list)
-    print(metrics)
-    print(losses)
-    print('done')
