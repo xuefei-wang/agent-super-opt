@@ -1,3 +1,7 @@
+"""
+python figs/cellpose_analyze_trajectories.py \
+    --data_path=$DATA_FOLDER
+"""
 import os 
 import sys
 import json

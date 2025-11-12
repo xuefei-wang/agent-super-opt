@@ -74,38 +74,8 @@ This guide provides instructions for replicating the experimental results presen
     ```
 
 4. **Analyze the trajectories**
-
-      Run the following two commands to: 
       
-      First, analyze trajectories - It will create a `analysis_results` folder under each timestamped result folder, evaluate the functions on test sets and generate plots. This might a while, feel free to parallize the runs if needed.
-
-      Second, aggregates all results into the global function json file and generate a learning curve plot.
-
-      
-      - For Cellpose: 
-            
-      ```python
-      python figs/cellpose_analyze_trajectories.py \
-            --data_path=$DATA_FOLDER
-      ```
-
-      - For Polaris:
-
-      ```python
-      python figs/spot_detection_analyze_trajectories.py \
-            --checkpoint_path=$CHECKPOINT_FILE \
-            --val_data_path=$VAL_DATA_FILE \
-            --test_data_path=$TEST_DATA_FILE \
-            --gpu_id=$GPU_ID
-      ```
-
-      - For MedSAM:
-            
-      ```python
-      python figs/spot_detection_analyze_trajectories.py \
-            --data_path=$DATA_FOLDER \ # this should be the folder where val/ and test/ are stored
-            --gpu_id $GPU_ID
-      ```
+      Analyze trajectories using `figs/{task_name}_analyze_trajectories.py`. It will create a `analysis_results` folder under each timestamped result folder, evaluate the functions on test sets and generate plots. This might a while, feel free to parallize the runs if needed.
 
 
 ### For Scientists: Applying to Your Own Data 🧪

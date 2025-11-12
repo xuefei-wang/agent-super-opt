@@ -1,3 +1,10 @@
+"""
+python figs/spot_detection_analyze_trajectories.py \
+    --checkpoint_path=$CHECKPOINT_FILE \
+    --val_data_path=$VAL_DATA_FILE \
+    --test_data_path=$TEST_DATA_FILE \
+    --gpu_id=$GPU_ID
+"""
 import os 
 import sys
 import json

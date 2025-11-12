@@ -1,3 +1,8 @@
+"""
+python figs/spot_detection_analyze_trajectories.py \
+    --data_path=$DATA_FOLDER \ # this should be the folder where val/ and test/ are stored
+    --gpu_id $GPU_ID
+"""
 import json
 import os
 import json
