@@ -75,8 +75,8 @@ def set_up_agents(executor: CodeExecutor, llm_model: str, k, k_word):
 
 
 # Load openCV function APIs
-with open("assets/opencv_APIs.txt", "r") as file:
-    opencv_APIs = file.read()
+with open("assets/APIs.txt", "r") as file:
+    APIs = file.read()
 
 
 
@@ -203,7 +203,7 @@ def preprocess_images_i(images: ImageData) -> ImageData:
 {textwrap.dedent(function_bank_sample(function_bank_path, n_top=n_top, n_worst=n_worst, n_last=n_last, sorting_function=sampling_function, current_iteration=current_iteration, history_threshold=history_threshold, total_iterations=total_iterations))}
 
 ## Useful primitive functions API that can be used in the preprocessing and postprocessing functions:
-{textwrap.dedent(opencv_APIs)}
+{textwrap.dedent(APIs)}
 
 ## Additional Notes:
 {textwrap.dedent(notes_shared)}
