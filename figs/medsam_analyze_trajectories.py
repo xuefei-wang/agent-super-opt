@@ -1,3 +1,12 @@
+"""
+python figs/medsam_analyze_trajectories.py \
+    --k=$K \
+    --checkpoint_path=$CHECKPOINT_FILE \
+    --val_data_path=$VAL_DATA_FILE \
+    --test_data_path=$TEST_DATA_FILE \
+    --gpu_id=$GPU_ID \
+    --json_path=$JSON_PATH # path to preprocessing_func_bank.json
+"""
 import json
 import os
 import json
@@ -332,7 +341,6 @@ def main(json_path, k, modality, gpu_id, val_baseline, test_baseline, test_data_
 
     segmenter = MedSAMTool(gpu_id=gpu_id, checkpoint_path=checkpoint_path)
 
-    print("\n\nExtracting top k=10 functions from the 20 chat histories in a timestamp rollout")
     results_k = extract_top_k_preprocessing_functions_to_json(k, json_path, segmenter, test_data_path)
     # if file doesn't exist, create  that file
     with open(top_k_json_output_path, 'w') as f:
@@ -349,6 +357,7 @@ def main(json_path, k, modality, gpu_id, val_baseline, test_baseline, test_data_
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze agent search trajectory.')
+    parser.add_argument('--k', type=int, required=True, default=10, help='Number of top functions to run analysis on.')
     parser.add_argument('--checkpoint_path', type=str, required=True, default="", help='Path to the MedSAM checkpoint.')
     parser.add_argument('--val_data_path', type=str, required=True, default="", help='Path to validation dataset.')
     parser.add_argument('--test_data_path', type=str, required=True, default="", help='Path to test dataset.')
@@ -415,13 +424,5 @@ if __name__ == "__main__":
         }
         json.dump(json_output, f)
 
-    # outer_folder_path = "medSAM_segmentation"
-    # all_expr_folders = os.listdir(outer_folder_path)
-    # for i, rollout_timestamp in enumerate(all_expr_folders):
-    #     if rollout_timestamp.startswith('2025'):
-    #         print(f"\nProcessing rollout timestamp: {i + 1}/20, {rollout_timestamp}")
-    #         json_bank_path = os.path.join(outer_folder_path, rollout_timestamp, "preprocessing_func_bank.json")
-    #         main(json_bank_path, k=10, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)
 
-
-    main(json_path, k=10, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)
+    main(json_path, k=args.k, modality="dermoscopy", gpu_id=gpu_id, val_baseline=val_baseline, test_baseline=test_baseline, test_data_path=test_data_path, checkpoint_path=checkpoint_path)
