@@ -556,7 +556,6 @@ def main(args: argparse.Namespace):
                     for message in automl_chat_result.chat_history:
                         automl_file.write(f"{message['name']}: {message['content']}\n\n")
 
-                # Note: automl_superseded flags are now set by the template based on metric improvement
 
             except Exception as e:
                 print(f"ERROR: AutoML optimization failed at iteration {iteration_num}: {e}")
