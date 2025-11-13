@@ -489,22 +489,21 @@ def main(args: argparse.Namespace):
                     with open("prompts/automl_execution_template.py.txt", "r") as f:
                         template = f.read()
 
-                    # Fill in the template placeholders with actual number of functions
-                    formatted_template = template.format(
-                        function_bank_path=output_function_bank,
-                        n_trials=args.n_hyper_optimize_trials,
-                        n_fns=len(top_function_entries),
-                        source_indices=source_function_indices,
-                        experiment_name=args.experiment_name,
-                        dataset_path=args.dataset,
-                        gpu_id=args.gpu_id,
-                        checkpoint_path=args.checkpoint_path or "",
-                        dataset_size=args.dataset_size,
-                        batch_size=args.batch_size,
-                        seed=seed,
-                        sampling_function_code=sampling_func_str,
-                        _AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER=_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER
-                    )
+                    class TemplateConfig(dict):
+                        def __missing__(self, key):
+                            return "None"
+
+                    automl_template_config = {
+                        "n_trials": args.n_hyper_optimize_trials,
+                        "n_fns": len(top_function_entries),
+                        "source_indices": source_function_indices,
+                        "experiment_name": args.experiment_name,
+                        "seed": seed,
+                        "sampling_function_code": sampling_func_str,
+                        "_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER": _AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER,
+                        **kwargs_for_prompt_class,
+                    }
+                    formatted_template = template.format_map(TemplateConfig(automl_template_config))
                     return formatted_template
 
                 optuna_executor_instance = TemplatedLocalCommandLineCodeExecutor(
