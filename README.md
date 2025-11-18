@@ -1,8 +1,9 @@
-# Agentic Superoptimization of Scientific Analysis Workflows
+# Simple Agents Outperform Experts in Biomedical Imaging Workflow Optimization
 
 ## 💡 Overview
 
-This repository contains the code for our paper, "Agentic Superoptimization of Scientific Analysis Workflows" ([TODO: Add link when available]). This work introduces a novel paradigm where AI agents autonomously write and optimize data analysis code for complex scientific tasks. Our method generates solutions that can surpass manually-tuned, expert-written code, significantly accelerating the pace of scientific discovery.
+Adapting production-level computer vision tools to bespoke scientific datasets is a critical ``last mile'' bottleneck. We consider using AI agents to automate this manual coding process, and focus on the open question of optimal agent design. We introduce a systematic evaluation framework for agentic code optimization and use it to study three production-level biomedical imaging pipelines. We demonstrate that a simple agent framework consistently generates adaptation code that outperforms human-expert solutions. Our analysis reveals that common, complex agent architectures are not universally beneficial, leading to a practical roadmap for agent design. This repository contains the code for 1) Evaluate and compare different agent designs, 2) Allow scientists to add their own tasks and achieve tool adaptation.
+
 
 
 ## 🚀 Getting Started
