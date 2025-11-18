@@ -6,6 +6,8 @@ import json
 import os
 import time
 import traceback
+import re
+import inspect
 import cv2 as cv
 
 # --- Dependency Imports ---
@@ -21,6 +23,7 @@ except ImportError as import_err:
 # --- Configuration (Replaced by run_pipeline_prompt) ---
 gpu_id = {gpu_id}
 seed = {seed} # Seed is now an integer, no quotes needed
+k = {sample_k}
 data_path = r"{dataset_path}"
 function_bank_path = r"{function_bank_path}"
 script_start_time = time.time()
@@ -51,7 +54,8 @@ def save_results_to_json(file_path, results_dict):
         except Exception as read_err:
              print(f"(Saver) Error reading existing file {file_path}: {read_err}. Starting new list.")
              existing_data = []
-        existing_data.append(results_dict)
+        results_list = [dict(zip(results_dict.keys(), values)) for values in zip(*results_dict.values())]
+        existing_data.extend(results_list)
         with open(file_path, 'w') as f:
             json.dump(existing_data, f, indent=4)
         print(f"(Saver) Successfully appended results to {file_path}")
@@ -95,34 +99,55 @@ except Exception as log_e:
 
 
 # --- Initialize variables ---
-overall_metrics = None
-preprocessing_time = None
-prediction_time = None
-metrics_time = None
+k_overall_metrics = []
+k_preprocessing_times = []
+k_postprocessing_times = []
+k_prediction_times = []
+k_metrics_times = []
 pipeline_error = None
 pipeline_traceback = None
-preprocess_images = None
+k_preprocess_images_fns = []
+k_postprocess_preds_fns = []
+k_preprocessed_images = []
+k_predictions = []
+k_final = []
+k_preprocess_images_fns_single_img = []
+k_postprocess_preds_fns_single_img = []
+k_preprocessed_images_single_img = []
+k_preprocessing_times_single_img = []
+k_postprocessing_times_single_img = []
+k_predictions_single_img = []
+k_final_single_img = []
+k_prediction_times_single_img = []
+k_metrics_times_single_img = []
+k_overall_metrics_single_img = []
 
 # --- Generated Preprocessing & Postprocessing Function Definition ---
 # This placeholder will be replaced by the executor
-{_PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER}
+{_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER}
 # --- End of Generated Code ---
 
 try:
-    # --- Check if function exists ---
-    if 'preprocess_images' not in globals() or not callable(preprocess_images):
-        err_msg = "FATAL: preprocess_images function not defined correctly by generated code."
-        logger.error(err_msg)
-        raise NameError(err_msg)
-    else:
-        logger.info("preprocess_images function appears to be defined.")
+    # --- Check if functions exist ---
+    for i in range(k):
+        if f'preprocess_images_{i + 1}' not in globals() or not callable(globals().get(f'preprocess_images_{i + 1}', None)):
+            err_msg = f"FATAL: preprocess_images_{i + 1} function not defined correctly by generated code."
+            logger.error(err_msg)
+            raise NameError(err_msg)
+        else:
+            k_preprocess_images_fns.append(globals().get(f'preprocess_images_{i + 1}', None))
+            k_preprocess_images_fns_single_img.append(globals().get(f'preprocess_images_{i + 1}', None))
+            logger.info(f"preprocess_images_{i + 1} function appears to be defined.")
 
-    if 'postprocess_images' not in globals() or not callable(postprocess_images):
-        err_msg = "FATAL: postprocess_images function not defined correctly by generated code."
-        logger.error(err_msg)
-        raise NameError(err_msg)
-    else:
-        logger.info("postprocess_images function appears to be defined.")
+    for i in range(k):
+        if f'postprocess_preds_{i + 1}' not in globals() or not callable(globals().get(f'postprocess_preds_{i + 1}', None)):
+            err_msg = f"FATAL: postprocess_preds_{i + 1} function not defined correctly by generated code."
+            logger.error(err_msg)
+            raise NameError(err_msg)
+        else:
+            k_postprocess_preds_fns.append(globals().get(f'postprocess_preds_{i + 1}', None))
+            k_postprocess_preds_fns_single_img.append(globals().get(f'postprocess_preds_{i + 1}', None))
+            logger.info(f"postprocess_preds_{i + 1} function appears to be defined.")
 
     # --- Set random seeds ---
     logger.info(f"Setting random seeds using integer seed: {seed}")
@@ -130,86 +155,152 @@ try:
     torch.manual_seed(seed)
     if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
 
-    # --- Initialize segmenter tool ---
-    logger.info("Initializing CellposeTool...")
-    # segmenter = CellposeTool(model_name="cyto3", device=gpu_id) # INSTANTIATE YOUR TOOL HERE
+    # --- Initialize tool ---
+    logger.info("Initializing Tool...")
+    # tool = YourTool(device=gpu_id) # INSTANTIATE YOUR TOOL HERE
     logger.info(f"Loading data from {data_path}...")
-    #raw_images, gt_masks = segmenter.loadData(data_path) # LOAD YOUR DATA HERE
+    # raw_images, gt_data = tool.loadData(data_path) # LOAD YOUR DATA HERE
     logger.info(f"Data loaded: {len(raw_images)} images.")
+    logger.info(f"[Single Image] Loading single image as a tester...")
 
     # --- Prepare ImageData ---
     batch_size = YOUR_BATCH_SIZE # Set this here
-    images = ImageData(raw=raw_images, batch_size=16, image_ids=[i for i in range(len(raw_images))])
+    images = ImageData(raw=raw_images, batch_size=batch_size, image_ids=[i for i in range(len(raw_images))])
+
+    # Run the pipeline on a single image at first so that if the pipeline fails,
+    # we fail fast.
+    # --- [Single Image] Prepare ImageData ---
+    single_image_data = ImageData(raw=raw_images[:2], batch_size=2, image_ids=[0, 1])
+
+    for i, preprocess_images in enumerate(k_preprocess_images_fns_single_img):
+        logger.info(f"[Single Image] Applying preprocess_images_{i + 1} function...")
+        preprocessing_start_time = time.time()
+        try:
+            k_preprocessed_images_single_img.append(preprocess_images(single_image_data))
+            k_preprocessing_times_single_img.append(time.time() - preprocessing_start_time)
+            logger.info(f"[Single Image] Preprocessing {i + 1} finished in {k_preprocessing_times_single_img[i]:.2f} seconds.")
+            if not isinstance(single_image_data, ImageData):
+                raise TypeError(f"Preprocessing function {i + 1} returned type {type(single_image_data)}, expected ImageData.")
+        except Exception as preprocess_error:
+            logger.error(f"[Single Image] !!! ERROR occurred inside the dynamically generated preprocess_images_{i + 1} function:")
+            logger.exception(preprocess_error)
+            raise preprocess_error
+
+    # --- [Single Image] Run Predictions ---
+    for i, preprocessed_images in enumerate(k_preprocessed_images_single_img):
+        logger.info(f"[Single Image] Running prediction {i + 1}...")
+        prediction_start_time = time.time()
+        # k_predictions_single_img.append(tool.predict(preprocessed_images, batch_size=preprocessed_images.batch_size)) # RUN YOUR TOOL PREDICTIONS HERE
+        k_prediction_times_single_img.append(time.time() - prediction_start_time)
+        logger.info(f"[Single Image] Prediction finished in {k_prediction_times_single_img[i]:.2f} seconds.")
+
+    # --- [Single Image] Apply Postprocessing ---
+    for i, pred in enumerate(k_predictions_single_img):
+        logger.info(f"[Single Image] Applying postprocess_preds_{i + 1} function...")
+        postprocessing_start_time = time.time()
+        try:
+            k_final_single_img.append(globals().get(f'postprocess_preds_{i + 1}', lambda x: x)(pred))
+            k_postprocessing_times_single_img.append(time.time() - postprocessing_start_time)
+            logger.info(f"[Single Image] Postprocessing {i + 1} finished in {k_postprocessing_times_single_img[i]:.2f} seconds.")
+        except Exception as postprocess_error:
+            logger.error(f"[Single Image] !!! ERROR occurred inside the dynamically generated postprocess_preds_{i + 1} function:")
+            logger.exception(postprocess_error)
+            raise postprocess_error
+
+    # --- [Single Image] Calculate Metrics ---
+    for i, pred in enumerate(k_final_single_img):
+        logger.info(f"[Single Image] Calculating metrics for prediction {i + 1}...")
+        metrics_start_time = time.time()
+        # k_overall_metrics_single_img.append(tool.evaluate(pred, gt_data[:2])) # CALCULATE YOUR METRICS HERE
+        k_metrics_times_single_img.append(time.time() - metrics_start_time)
+        logger.info(f"[Single Image] Metrics calculation finished in {k_metrics_times_single_img[i]:.2f} seconds.")
 
     # --- Apply Preprocessing ---
-    logger.info("Applying preprocess_images function...")
-    preprocessing_start_time = time.time()
-    try:
-        images = preprocess_images(images)
-        preprocessing_time = time.time() - preprocessing_start_time
-        logger.info(f"Preprocessing finished in {preprocessing_time:.2f} seconds.")
-        if not isinstance(images, ImageData):
-            raise TypeError(f"Preprocessing function returned type {type(images)}, expected ImageData.")
-    except Exception as preprocess_error:
-        logger.error(f"!!! ERROR occurred inside the dynamically generated preprocess_images function:")
-        logger.exception(preprocess_error)
-        raise preprocess_error
+    for i, preprocess_images in enumerate(k_preprocess_images_fns):
+        logger.info(f"Applying preprocess_images_{i + 1} function...")
+        preprocessing_start_time = time.time()
+        try:
+            k_preprocessed_images.append(preprocess_images(images))
+            k_preprocessing_times.append(time.time() - preprocessing_start_time)
+            logger.info(f"Preprocessing {i + 1} finished in {k_preprocessing_times[i]:.2f} seconds.")
+            if not isinstance(images, ImageData):
+                raise TypeError(f"Preprocessing function {i + 1} returned type {type(images)}, expected ImageData.")
+        except Exception as preprocess_error:
+            logger.error(f"!!! ERROR occurred inside the dynamically generated preprocess_images_{i + 1} function:")
+            logger.exception(preprocess_error)
+            raise preprocess_error
 
-    # --- Run Segmenter ---
-    logger.info("Running segmentation prediction...")
-    prediction_start_time = time.time()
-    #pred_masks = segmenter.predict(images, batch_size=images.batch_size) # RUN YOUR TOOL PREDICTIONS HERE
-    prediction_time = time.time() - prediction_start_time
-    logger.info(f"Segmentation prediction finished in {prediction_time:.2f} seconds.")
+    # --- Run Predictions ---
+    for i, preprocessed_images in enumerate(k_preprocessed_images):
+        logger.info(f"Running prediction {i + 1}...")
+        prediction_start_time = time.time()
+        # k_predictions.append(tool.predict(preprocessed_images, batch_size=preprocessed_images.batch_size)) # RUN YOUR TOOL PREDICTIONS HERE
+        k_prediction_times.append(time.time() - prediction_start_time)
+        logger.info(f"Prediction finished in {k_prediction_times[i]:.2f} seconds.")
 
     # --- Apply Postprocessing ---
-    logger.info("Applying postprocess_preds function...")
-    postprocessing_start_time = time.time()
-    try:
-        pred_masks = postprocess_preds(pred_masks) # RUN YOUR POSTPROCESSING HERE
-        postprocessing_time = time.time() - postprocessing_start_time
-        logger.info(f"Postprocessing finished in {postprocessing_time:.2f} seconds.")
-    except Exception as postprocess_error:
-        logger.error(f"!!! ERROR occurred inside the dynamically generated postprocess_preds function:")
-        logger.exception(postprocess_error)
-        raise postprocess_error
+    for i, pred in enumerate(k_predictions):
+        logger.info(f"Applying postprocess_preds_{i + 1} function...")
+        postprocessing_start_time = time.time()
+        try:
+            k_final.append(globals().get(f'postprocess_preds_{i + 1}', lambda x: x)(pred))
+            k_postprocessing_times.append(time.time() - postprocessing_start_time)
+            logger.info(f"Postprocessing {i + 1} finished in {k_postprocessing_times[i]:.2f} seconds.")
+        except Exception as postprocess_error:
+            logger.error(f"!!! ERROR occurred inside the dynamically generated postprocess_preds_{i + 1} function:")
+            logger.exception(postprocess_error)
+            raise postprocess_error
 
-    
     # --- Calculate Metrics ---
-    logger.info("Calculating metrics...")
-    metrics_start_time = time.time()
-    # overall_metrics = segmenter.evaluate(pred_masks, gt_masks) # CALCULATE YOUR METRICS HERE
-    metrics_time = time.time() - metrics_start_time
-    logger.info(f"Metrics calculation finished in {metrics_time:.2f} seconds.")
+    for i, pred in enumerate(k_final):
+        logger.info(f"Calculating metrics for prediction {i + 1}...")
+        metrics_start_time = time.time()
+        # k_overall_metrics.append(tool.evaluate(pred, gt_data)) # CALCULATE YOUR METRICS HERE
+        k_metrics_times.append(time.time() - metrics_start_time)
+        logger.info(f"Metrics calculation finished in {k_metrics_times[i]:.2f} seconds.")
 
     # --- Log Metrics ---
-    logger.info("Overall metrics: %s", json.dumps(overall_metrics if overall_metrics is not None else 'N/A', indent=2))
+    logger.info("All overall metrics: %s", json.dumps(k_overall_metrics if k_overall_metrics else 'N/A', indent=2))
 
-    # --- CHANGE: Save Results ONLY on SUCCESS (End of Try Block) ---
-    # Check if metrics were actually calculated (not None)
-    if overall_metrics is not None:
+    # --- Save Results ---
+    if k_overall_metrics:
         logger.info("Saving successful results to function bank...")
-        # Access the code string variable injected by the executor
-        generated_code_str = globals().get("_GENERATED_CODE_STRING", None)
+        # Use inspect.getsource to get function source code and rename functions
+        k_preprocessing_functions = [
+            re.sub(
+                r'^(\s*def\s+)preprocess_images_\d+(\s*\()',
+                r'\1preprocess_images\2',
+                inspect.getsource(func),
+                flags=re.MULTILINE
+            )
+            for func in k_preprocess_images_fns
+        ]
+        k_postprocessing_functions = [
+            re.sub(
+                r'^(\s*def\s+)postprocess_preds_\d+(\s*\()',
+                r'\1postprocess_preds\2',
+                inspect.getsource(func),
+                flags=re.MULTILINE
+            )
+            for func in k_postprocess_preds_fns
+        ]
         results_to_save = {
-            'generated_function': generated_code_str,
-            'overall_metrics': overall_metrics, # Known to be not None here
-            'seed': seed,
-            'timestamp': script_start_time,
-            'gpu_id': gpu_id,
-            'timestamp_finish': time.time(),
-            'preprocessing_time': preprocessing_time,
-            'prediction_time': prediction_time,
-            'postprocessing_time': postprocessing_time,
-            'metrics_time': metrics_time,
-            'error': None, # Explicitly None on success
-            'traceback': None # Explicitly None on success
+            'preprocessing_function': k_preprocessing_functions,
+            'postprocessing_function': k_postprocessing_functions,
+            'overall_metrics': k_overall_metrics,
+            'seed': [seed] * k,
+            'timestamp': [script_start_time] * k,
+            'gpu_id': [gpu_id] * k,
+            'timestamp_finish': [time.time()] * k,
+            'preprocessing_time': k_preprocessing_times,
+            'prediction_time': k_prediction_times,
+            'postprocessing_time': k_postprocessing_times,
+            'metrics_time': k_metrics_times,
+            'error': [None] * k,
+            'traceback': [None] * k
         }
-        # Call the save function defined earlier
         save_results_to_json(function_bank_path, results_to_save)
     else:
-        # This case shouldn't normally be reached if evaluate() works,
-        # but good to log if metrics end up None without an exception.
         logger.warning("Pipeline seemed to complete, but no metrics were generated. Not saving to bank.")
 
 except Exception as e:
@@ -220,7 +311,6 @@ except Exception as e:
      logger.exception(e)
 
 finally:
-    # --- CHANGE: Finally block now only handles logging end and exit code ---
     logger.info("--- Run Finished ---")
     # Check if an error was recorded in the except block
     if 'pipeline_error' in locals() and pipeline_error:

@@ -189,19 +189,9 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     return sample
 
-def prepare_prompt(
-        notes_shared: str, 
-        function_bank_path: str, 
-        prompts : TaskPrompts, 
-        sampling_function: callable, 
-        current_iteration: int, 
-        history_threshold: int=0, 
-        total_iterations: int=30,
-        maximize = True, 
-        n_top: int=5,
-        n_worst: int=5, 
-        n_last: int=5,
-        baseline_metric: str = ""):
+def prepare_prompt(notes_shared: str, function_bank_path: str, prompts: TaskPrompts, sampling_function: callable,
+                   current_iteration: int, history_threshold: int = 0, total_iterations: int = 30, maximize=True,
+                   n_top: int = 5, n_worst: int = 5, n_last: int = 5):
 
     prompt_pipeline_optimization = textwrap.dedent(f"""\
 Your task is to implement {prompts.k_word} pairs of preprocessing and postprocessing functions to optimize the performance of a machine learning pipeline on a specific dataset.
@@ -232,7 +222,6 @@ def preprocess_images_i(images: ImageData) -> ImageData:
 
 ## About the dataset: 
 {textwrap.dedent(prompts.dataset_info)}
-{textwrap.dedent(baseline_metric)}
 
 ## Task Details:
 {textwrap.dedent(prompts.get_task_details())}
@@ -443,9 +432,6 @@ def main(args: argparse.Namespace):
         
         notes_shared = prepare_notes_shared(max_rounds=max_round)
 
-        # Run baseline and insert to function bank first
-        baseline_metric = ""
-
         def run_automl_optimization(iteration_num, seed):
             """Run AutoML hyperparameter optimization"""
             print(f"Starting AutoML hyperparameter optimization at iteration {iteration_num}")
@@ -596,7 +582,16 @@ def main(args: argparse.Namespace):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=args.num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt(notes_shared,
+                                                                                                     output_function_bank,
+                                                                                                     prompts,
+                                                                                                     sampling_function,
+                                                                                                     i,
+                                                                                                     history_threshold=args.history_threshold,
+                                                                                                     total_iterations=args.num_optim_iter,
+                                                                                                     n_top=args.n_top,
+                                                                                                     n_worst=args.n_worst,
+                                                                                                     n_last=args.n_last)
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             cache=cache)
@@ -694,7 +689,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--n_hyper_optimize_trials',
         type=int,
-        default=25,
+        default=24,
         help="Number of trials for each function to optimize."
     )
 

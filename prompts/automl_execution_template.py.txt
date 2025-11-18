@@ -15,7 +15,7 @@ from filelock import FileLock
 
 # --- Configuration ---
 function_bank_path = r"{function_bank_path}"
-N_TRIALS = {n_trials}
+N_TRIALS = {n_trials} + 1  # 1 additional trial for enqueued default parameters
 N_FNS = {n_fns}
 SOURCE_INDICES = {source_indices}
 STUDY_NAME = "automl_optimization"
