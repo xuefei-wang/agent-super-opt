@@ -88,42 +88,8 @@ class TemplatedLocalCommandLineCodeExecutor(LocalCommandLineCodeExecutor):
             # Return SimpleNamespace indicating failure
             return SimpleNamespace(exit_code=1, output=f"{error_msg}\n{traceback.format_exc()}")
 
-        # --- Code Injection (Code String Variable) ---
-        try:
-            # Safely escape the generated code string for embedding
-            # json.dumps creates a valid Python string literal, handling quotes etc.
-            escaped_code_string = json.dumps(generated_code)
-
-            # Define the variable assignment string to inject
-            # Inject it near the top, after imports but before use
-            code_string_injection = f"_GENERATED_CODE_STRING = {escaped_code_string}\n"
-
-            # Find a suitable injection point (e.g., after imports or config)
-            # Let's inject it right after the 'Configuration' block
-            config_marker = "# --- Configuration ---"
-            injection_point = script_with_func.find(config_marker)
-            if injection_point != -1:
-                 # Find the end of the configuration block (start of next block)
-                 next_block_start = script_with_func.find("\n# ---", injection_point)
-                 if next_block_start != -1:
-                      # Inject the code string variable definition after the config block
-                      full_script = script_with_func[:next_block_start] + code_string_injection + script_with_func[next_block_start:]
-                 else:
-                      # Fallback: Append if next block marker not found 
-                      full_script = script_with_func + "\n" + code_string_injection
-            else:
-                 # Fallback: Inject at the beginning if marker not found
-                 # This might place it before imports if not careful with template
-                 full_script = code_string_injection + script_with_func
-
-        except Exception as e:
-            error_msg = f"Error: Failed during code string variable injection: {e}"
-            # logger.exception(error_msg)
-            # Return SimpleNamespace indicating failure
-            return SimpleNamespace(exit_code=1, output=f"{error_msg}\n{traceback.format_exc()}")
-
         # --- Execution via Parent Class ---
-        final_code_block = CodeBlock(language="python", code=full_script)
+        final_code_block = CodeBlock(language="python", code=script_with_func)
 
         # Call the original execute_code_blocks with the single, combined script
         exit_code, output, image = super().execute_code_blocks([final_code_block])

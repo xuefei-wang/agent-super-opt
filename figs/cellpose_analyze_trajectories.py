@@ -38,6 +38,7 @@ from src.cellpose_segmentation import CellposeTool
 from src.data_io import ImageData
 # from src.tools import BaseSegmenter # Added direct import
 from src.utils import set_gpu_device # Added direct import
+from utils.function_bank_utils import should_include_function
 
 from cellpose import models, denoise
 from cellpose.io import imread
@@ -350,8 +351,26 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     # handle json ambiguities
     new_json = []
     for i in range(len(json_array)):
-        data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function'],
-                         'postprocessing_function' : json_array[i]['postprocessing_function']}
+        if json_array[i].get('automl_superseded', False):
+            automl_status = "superseded"  # EXCLUDE - old replaced version
+        elif json_array[i].get('automl_optimized', False):
+            automl_status = "optimized"  # KEEP - new improved version
+        elif 'automl_optimized' in json_array[i]:  # Key exists but is False
+            automl_status = "failed_optimization"  # EXCLUDE - new but worse
+        elif 'automl_superseded' in json_array[i]:  # Key exists but is False
+            automl_status = "not_improved"  # KEEP - original kept because optimization didn't help
+        else:
+            automl_status = "never_optimized"  # KEEP - no optimization attempted
+        data_for_json = {
+            'preprocessing_function': json_array[i]['preprocessing_function'],
+            'postprocessing_function': json_array[i]['postprocessing_function'],
+            'automl_status': automl_status,
+        }
+        # Preserve original automl flags for should_include_function()
+        if 'automl_optimized' in json_array[i]:
+            data_for_json['automl_optimized'] = json_array[i]['automl_optimized']
+        if 'automl_superseded' in json_array[i]:
+            data_for_json['automl_superseded'] = json_array[i]['automl_superseded']
         try:
             avg_prec = json_array[i]['average_precision']['average_precision']
         except:
@@ -430,8 +449,10 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
 
     # Let's find the top performing k functions, evaluate them on the test set and save the results into a new file (pickle)
     def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k: int) -> List[Dict]:
-        '''Returns object containing the top k highest metric values from a list of JSON objects.'''
-        return sorted(json_array, key=metric_lambda, reverse=True)[:k]
+        '''Returns object containing the top k highest metric values from a list of JSON objects, excluding superseded and failed_optimization.'''
+        # Use centralized filtering logic
+        filtered_array = [obj for obj in json_array if should_include_function(obj)]
+        return sorted(filtered_array, key=metric_lambda, reverse=True)[:k]
     
     top_k_functions = find_top_k(json_array, metric_lambda, k)
 
@@ -441,6 +462,7 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
     top_k_functions_str = []
     top_k_functions_disaggregated_val = []
     top_k_functions_disaggregated_test = []
+    top_k_functions_automl_status = []
 
     # priviliged_segmenter_for_top_k = PriviligedCellposeTool(model_name="cyto3", device=device, channels=[2,1], to_normalize=True)
     # Use non_privileged_segmenter_test for evaluating agent functions, as per earlier logic for "Our function, without to_normalize"
@@ -452,6 +474,7 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
         current_function_str = (function_item['preprocessing_function'], function_item['postprocessing_function'])
         current_metrics_val_float = function_item['average_precision']
         current_metrics_val_dict = function_item['disaggregated_average_precision']
+        current_automl_status = function_item['automl_status']
         if current_function_str == (best_preprocessing_function_str, best_postprocessing_function_str): # Compare strings to avoid issues with function object comparison
             current_metrics_test_dict = metrics_test_agent_function # Use already computed result for the best function
             function_str_to_save = current_function_str
@@ -477,6 +500,7 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
         top_k_functions_str.append(function_str_to_save)
         top_k_functions_disaggregated_test.append(current_metrics_test_dict['disaggregated_average_precision'])
         top_k_functions_disaggregated_val.append(current_metrics_val_dict)
+        top_k_functions_automl_status.append(current_automl_status)
 
     print(f"Evaluated top {k} functions on test set using non-privileged segmenter.")
 
@@ -497,7 +521,8 @@ def main(json_path: str, data_path: str, output_dir: str, precision_index: int =
             "average_precision_test": test_metrics_dict['average_precision'],
             "average_precision_val": val_metric_float,
             "disaggregated_average_precision_test": top_k_functions_disaggregated_test[i],
-            "disaggregated_average_precision_val": top_k_functions_disaggregated_val[i]
+            "disaggregated_average_precision_val": top_k_functions_disaggregated_val[i],
+            "automl_status": top_k_functions_automl_status[i]
         })
     
     # Let's convert nans to None for all top_k_functions_results_outputs.  the only possible ones are disaggregated_average_precision_test and disaggregated_average_precision_val

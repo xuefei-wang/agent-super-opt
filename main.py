@@ -20,6 +20,7 @@ from autogen.coding.jupyter import (
 
 from prompts.task_prompts import TaskPrompts, _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER
 from prompts.agent_prompts import sys_prompt_code_writer
+from prompts.automl_prompts import sys_prompt_automl_agent, prepare_automl_prompt, _AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER
 
 from utils.function_bank_utils import top_n, last_n, pretty_print_list, worst_n
 
@@ -72,6 +73,46 @@ def set_up_agents(executor: CodeExecutor, llm_model: str, k, k_word):
     
     # return code_executor_agent, code_writer_agent, code_verifier_agent, state_transition
     return code_executor_agent, code_writer_agent, state_transition
+
+
+def set_up_automl_agents(optuna_executor: CodeExecutor, llm_model: str, n_functions: int):
+    ''' Prepare AutoML agents and state transition for hyperparameter optimization'''
+
+    automl_agent = ConversableAgent(
+        "automl_agent",
+        system_message=sys_prompt_automl_agent(n_functions),
+        llm_config={
+            "config_list": [
+                {"model": llm_model, "api_key": os.environ["OPENAI_API_KEY"]}
+            ]
+        },
+        code_execution_config=False,  # Turn off code execution for this agent.
+        human_input_mode="NEVER",
+    )
+
+    optuna_executor_agent = ConversableAgent(
+        "optuna_executor_agent",
+        llm_config=False,  # Turn off LLM for this agent.
+        code_execution_config={
+            "executor": optuna_executor
+        },
+        human_input_mode="NEVER",  # Never take human input for this agent
+    )
+
+    def automl_state_transition(last_speaker, groupchat):
+        ''' Transition between speakers in AutoML optimization '''
+        messages = groupchat.messages
+
+        if len(messages) <= 1:
+            return automl_agent
+
+        if last_speaker is automl_agent:
+            return optuna_executor_agent
+        elif last_speaker is optuna_executor_agent:
+            # After execution, end the conversation
+            return automl_agent
+
+    return automl_agent, optuna_executor_agent, automl_state_transition
 
 
 # Load openCV function APIs
@@ -148,19 +189,9 @@ def function_bank_sample(function_bank_path: str, n_top: int, n_worst: int, n_la
 
     return sample
 
-def prepare_prompt(
-        notes_shared: str, 
-        function_bank_path: str, 
-        prompts : TaskPrompts, 
-        sampling_function: callable, 
-        current_iteration: int, 
-        history_threshold: int=0, 
-        total_iterations: int=30,
-        maximize = True, 
-        n_top: int=5,
-        n_worst: int=5, 
-        n_last: int=5,
-        baseline_metric: str = ""):
+def prepare_prompt(notes_shared: str, function_bank_path: str, prompts: TaskPrompts, sampling_function: callable,
+                   current_iteration: int, history_threshold: int = 0, total_iterations: int = 30, maximize=True,
+                   n_top: int = 5, n_worst: int = 5, n_last: int = 5):
 
     prompt_pipeline_optimization = textwrap.dedent(f"""\
 Your task is to implement {prompts.k_word} pairs of preprocessing and postprocessing functions to optimize the performance of a machine learning pipeline on a specific dataset.
@@ -191,7 +222,6 @@ def preprocess_images_i(images: ImageData) -> ImageData:
 
 ## About the dataset: 
 {textwrap.dedent(prompts.dataset_info)}
-{textwrap.dedent(baseline_metric)}
 
 ## Task Details:
 {textwrap.dedent(prompts.get_task_details())}
@@ -284,6 +314,10 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
          "sample_k": k,
          "sample_k_word": k_word,
          "llm_model": llm_model,
+         "hyperparameter_optimization": args.hyper_optimize,
+         "n_hyper_optimize": args.n_hyper_optimize,
+         "n_hyper_optimize_trials": args.n_hyper_optimize_trials,
+         "hyper_optimize_interval": args.hyper_optimize_interval,
          "prompts_data": {
              "task_specific_prompts": {
                  "dataset_info": prompts_instance.dataset_info,
@@ -292,6 +326,7 @@ def save_run_info(args, run_output_dir, num_optim_iter, prompts_instance, cur_ti
              },
              "agent_system_prompts": {
                  "code_writer": sys_prompt_code_writer(k, k_word),
+                 "automl": sys_prompt_automl_agent(args.n_hyper_optimize)
              },
              "executable_pipeline_script_template": prompts_instance.run_pipeline_prompt(), # Call the method to get the script string
          }
@@ -397,8 +432,120 @@ def main(args: argparse.Namespace):
         
         notes_shared = prepare_notes_shared(max_rounds=max_round)
 
-        # Run baseline and insert to function bank first
-        baseline_metric = ""
+        def run_automl_optimization(iteration_num, seed):
+            """Run AutoML hyperparameter optimization"""
+            print(f"Starting AutoML hyperparameter optimization at iteration {iteration_num}")
+
+            try:
+                # Check if function bank has any functions
+                with open(output_function_bank, 'r') as f:
+                    function_bank = json.load(f)
+
+                if len(function_bank) == 0:
+                    print("WARNING: Function bank is empty, cannot run AutoML optimization")
+                    return
+
+                # Get indices of the top N functions that will be optimized (before AutoML runs)
+                # Create list of (index, entry) tuples for eligible functions
+                # Only include functions that have never been attempted for optimization
+                eligible_functions = [
+                    (idx, entry) for idx, entry in enumerate(function_bank)
+                    if 'automl_optimized' not in entry and 'automl_superseded' not in entry
+                ]
+
+                # Filter out None values and sort by performance
+                eligible_functions = [(idx, entry) for idx, entry in eligible_functions if sampling_function(entry) is not None]
+                eligible_functions = sorted(eligible_functions, key=lambda x: sampling_function(x[1]), reverse=True)
+
+                # Get the top N and extract both indices and entries
+                top_functions_with_indices = eligible_functions[:args.n_hyper_optimize]
+                source_function_indices = [idx for idx, entry in top_functions_with_indices]
+                top_function_entries = [entry for idx, entry in top_functions_with_indices]
+
+                if len(source_function_indices) == 0:
+                    print("WARNING: No eligible functions for AutoML optimization (all are already optimized or superseded)")
+                    return
+
+                # Create Optuna executor with the AutoML execution template
+                # Create a string representation of the sampling function
+                import inspect
+                sampling_func_str = inspect.getsource(sampling_function).strip()
+
+                def run_automl_template():
+                    with open("prompts/automl_execution_template.py.txt", "r") as f:
+                        template = f.read()
+
+                    class TemplateConfig(dict):
+                        def __missing__(self, key):
+                            return "None"
+
+                    automl_template_config = {
+                        "n_trials": args.n_hyper_optimize_trials,
+                        "n_fns": len(top_function_entries),
+                        "source_indices": source_function_indices,
+                        "experiment_name": args.experiment_name,
+                        "seed": seed,
+                        "sampling_function_code": sampling_func_str,
+                        "_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER": _AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER,
+                        **kwargs_for_prompt_class,
+                    }
+                    formatted_template = template.format_map(TemplateConfig(automl_template_config))
+                    return formatted_template
+
+                optuna_executor_instance = TemplatedLocalCommandLineCodeExecutor(
+                    template_script_func=run_automl_template,
+                    placeholder=_AUTOML_PARAMETERIZED_FUNCTION_PLACEHOLDER,
+                    work_dir=work_dir,
+                    timeout=300 * 2.5 * len(top_function_entries) * args.n_hyper_optimize_trials
+                )
+
+                # Set up AutoML agents with actual number of functions
+                automl_agent, optuna_executor_agent, automl_state_transition = set_up_automl_agents(
+                    optuna_executor_instance, llm_model, len(top_function_entries)
+                )
+
+                # Create AutoML group chat
+                automl_group_chat = GroupChat(
+                    agents=[automl_agent, optuna_executor_agent],
+                    messages=[],
+                    max_round=max_round,
+                    send_introductions=True,
+                    speaker_selection_method=automl_state_transition,
+                )
+
+                # Initialize AutoML group chat manager
+                automl_group_chat_manager = GroupChatManager(
+                    groupchat=automl_group_chat,
+                    llm_config={
+                        "config_list": [{"model": "gpt-4o-mini", "api_key": os.environ["OPENAI_API_KEY"]}],
+                    },
+                    is_termination_msg=lambda msg: (
+                        "TERMINATE" in msg["content"] if msg["content"] else False
+                    ),
+                )
+
+                # Prepare AutoML prompt with the pre-filtered top functions
+                automl_prompt = prepare_automl_prompt(top_function_entries)
+
+                # Run AutoML optimization
+                automl_chat_result = automl_agent.initiate_chat(
+                    automl_group_chat_manager,
+                    message=automl_prompt,
+                    summary_method=None,
+                    cache=cache
+                )
+
+                # Save AutoML chat history
+                automl_output_file = os.path.join(run_output_dir, f"automl_chat_history_iter_{iteration_num}.txt")
+                with open(automl_output_file, "w") as automl_file:
+                    for message in automl_chat_result.chat_history:
+                        automl_file.write(f"{message['name']}: {message['content']}\n\n")
+
+
+            except Exception as e:
+                print(f"ERROR: AutoML optimization failed at iteration {iteration_num}: {e}")
+                import traceback
+                traceback.print_exc()
 
         for i in range(args.num_optim_iter):
 
@@ -435,11 +582,24 @@ def main(args: argparse.Namespace):
             )
 
 
-            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt(notes_shared, output_function_bank, prompts, sampling_function, i, history_threshold=args.history_threshold, total_iterations=args.num_optim_iter, n_top=args.n_top, n_worst=args.n_worst, n_last=args.n_last, baseline_metric=baseline_metric)
+            prompt_pipeline_optimization = f"Agent Pipeline Seed {seed_list[i]} \n" + prepare_prompt(notes_shared,
+                                                                                                     output_function_bank,
+                                                                                                     prompts,
+                                                                                                     sampling_function,
+                                                                                                     i,
+                                                                                                     history_threshold=args.history_threshold,
+                                                                                                     total_iterations=args.num_optim_iter,
+                                                                                                     n_top=args.n_top,
+                                                                                                     n_worst=args.n_worst,
+                                                                                                     n_last=args.n_last)
             
             chat_result = code_executor_agent.initiate_chat(group_chat_manager, message=prompt_pipeline_optimization, summary_method=None,
                                             cache=cache)
             save_chat_history(chat_result.chat_history, i, run_output_dir)
+
+            # Run AutoML optimization at specified intervals
+            if args.hyper_optimize and (i + 1) % args.hyper_optimize_interval == 0:
+                run_automl_optimization(i, seed_list[i])
 
     update_run_info_with_end_timestamp(run_output_dir)
 
@@ -454,7 +614,7 @@ if __name__ == "__main__":
         required=True,
         help="Path to the dataset."
     )
-    
+
     parser.add_argument(
         "--experiment_name",
         type=str,
@@ -511,6 +671,33 @@ if __name__ == "__main__":
         type=int,
         default=20,
         help="Number of optimization iterations."
+    )
+
+    parser.add_argument(
+        '--hyper_optimize',
+        action='store_true',
+        help="Whether to run a hyperparameter search after the trial is over."
+    )
+
+    parser.add_argument(
+        '--n_hyper_optimize',
+        type=int,
+        default=3,
+        help="Number of functions to optimize."
+    )
+
+    parser.add_argument(
+        '--n_hyper_optimize_trials',
+        type=int,
+        default=24,
+        help="Number of trials for each function to optimize."
+    )
+
+    parser.add_argument(
+        '--hyper_optimize_interval',
+        type=int,
+        default=5,
+        help="Run hyperparameter optimization every N iterations (default: 5)."
     )
 
     parser.add_argument(

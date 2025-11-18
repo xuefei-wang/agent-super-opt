@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=$GPU_ID python figs/spot_detection_analyze_trajectories.py 
     --data_path=$DATA_PATH \
     --json_path=$JSON_PATH # path to preprocessing_func_bank.json
 """
-import os 
+import os
 import sys
 import json
 import numpy as np
@@ -31,6 +31,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from src.spot_detection import DeepcellSpotsDetector
 from src.data_io import ImageData
+from utils.function_bank_utils import should_include_function
 
 from skimage.feature import peak_local_max
 
@@ -135,8 +136,26 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     # handle json ambiguities
     new_json = []
     for i in range(len(json_array)):
-        data_for_json = {'preprocessing_function' : json_array[i]['preprocessing_function'], 
-                         'postprocessing_function' : json_array[i]['postprocessing_function']}
+        if json_array[i].get('automl_superseded', False):
+            automl_status = "superseded"  # EXCLUDE - old replaced version
+        elif json_array[i].get('automl_optimized', False):
+            automl_status = "optimized"  # KEEP - new improved version
+        elif 'automl_optimized' in json_array[i]:  # Key exists but is False
+            automl_status = "failed_optimization"  # EXCLUDE - new but worse
+        elif 'automl_superseded' in json_array[i]:  # Key exists but is False
+            automl_status = "not_improved"  # KEEP - original kept because optimization didn't help
+        else:
+            automl_status = "never_optimized"  # KEEP - no optimization attempted
+        data_for_json = {
+            'preprocessing_function': json_array[i]['preprocessing_function'],
+            'postprocessing_function': json_array[i]['postprocessing_function'],
+            'automl_status': automl_status,
+        }
+        # Preserve original automl flags for should_include_function()
+        if 'automl_optimized' in json_array[i]:
+            data_for_json['automl_optimized'] = json_array[i]['automl_optimized']
+        if 'automl_superseded' in json_array[i]:
+            data_for_json['automl_superseded'] = json_array[i]['automl_superseded']
         try:
             avg_prec = json_array[i]['f1_score']['f1_score']
         except:
@@ -246,8 +265,9 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     ## Evaluate TOP K
 
     def find_top_k(json_array: List[Dict], metric_lambda: Callable[[Dict], float], k: int) -> List[Dict]:
-        '''Returns object containing the top k highest metric values from a list of JSON objects.'''
-        return sorted(json_array, key=metric_lambda, reverse=True)[:k]
+        '''Returns object containing the top k highest metric values from a list of JSON objects, excluding superseded and failed_optimization.'''
+        filtered_array = [obj for obj in json_array if should_include_function(obj)]
+        return sorted(filtered_array, key=metric_lambda, reverse=True)[:k]
     
     top_k_functions = find_top_k(json_array, metric_lambda, k)
 
@@ -255,10 +275,12 @@ def main(json_path: str, data_path: str, output_dir: str, k):
     top_k_functions_results_val = []
     top_k_functions_results_test = []
     top_k_functions_str = []
+    top_k_functions_automl_status = []
 
     for function_item in top_k_functions:
         current_function_str = (function_item['preprocessing_function'], function_item['postprocessing_function'])
         current_metrics_val_float = function_item['f1_score']
+        current_automl_status = function_item['automl_status']
 
         if current_function_str == (best_preprocessing_function_str, best_postprocessing_function_str): # Compare strings to avoid issues with function object comparison
             current_metrics_test_dict = metrics_test_our_function # Use already computed result for the best function
@@ -281,6 +303,7 @@ def main(json_path: str, data_path: str, output_dir: str, k):
         top_k_functions_results_test.append(current_metrics_test_dict)
         top_k_functions_results_val.append(current_metrics_val_float)
         top_k_functions_str.append(function_str_to_save)
+        top_k_functions_automl_status.append(current_automl_status)
 
     print(f"Evaluated top {k} functions on test set.")
 
@@ -298,7 +321,8 @@ def main(json_path: str, data_path: str, output_dir: str, k):
             "preprocessing_function": preprocessing_function_string,
             "postprocessing_function": postprocessing_function_string,
             "average_f1_test": test_metrics_dict['f1_score'],
-            "average_f1_val": val_metric_float
+            "average_f1_val": val_metric_float,
+            "automl_status": top_k_functions_automl_status[i],
         })
     
     with open(os.path.join(output_dir, 'top_k_functions_results.json'), 'w') as file:

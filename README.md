@@ -92,6 +92,19 @@ To integrate your custom workflow, you'll need to implement the following compon
 
 4.  **Expert Baseline** (Postprocessing step only): Provide an expert-written baseline implementation in `prompts/{task_name}_expert_postprocessing.py.txt`. For highly specific postprocessing steps, provide a skeleton in `prompts/{task_name}_expert_postprocessing_skeleton.py.txt` to provide minimal guidance for LLM agents.
 
+5.  **Register Task in Main**: Add your task to the if/else branch in `main.py` (around line 404-420). You'll need to:
+    - Import your prompt class from `prompts/{task_name}_prompts.py`
+    - Define the `sampling_function` that extracts the optimization metric from the results saved to the function bank (e.g., `lambda x: x['overall_metrics']['metric_name']`)
+    - Specify the `kwargs_for_prompt_class` with parameters your prompt class needs (e.g., `gpu_id`, `seed`, `dataset_path`, `function_bank_path`, `k`, `k_word`). These are passed to your prompt class constructor and can be used to fill `{placeholder}` values in your execution template or for generating agent prompts.
+    - Add your task name to the `choices` list in the argument parser (around line 622)
+
+6.  **AutoML Support** (Optional): If you want to enable hyperparameter optimization with the `--hyper_optimize` flag, add an evaluation branch for your task in `prompts/automl_execution_template.py.txt` (around line 166-237). This branch should:
+    - Import your tool wrapper
+    - Load your dataset
+    - Create an `ImageData` object
+    - Call the preprocessing function, model prediction, and postprocessing function
+    - Return metrics in the format `{'overall_metrics': metrics}`
+
 Once you've implemented these components, you can run the optimization:
 
 ```bash
@@ -108,16 +121,28 @@ python main.py \
 
 The `main.py` script is the entry point for running the framework and offers a variety of command-line arguments to customize the optimization process.
 
+### Basic Arguments
+
   * `--dataset (-d)`: Path to your dataset.
   * `--experiment_name`: Name of the experiment. For reproducibility, choose from `"spot_detection"`, `"cellpose_segmentation"`, or `"medSAM_segmentation"`. For custom workflows, use the name you defined for your task.
   * `--checkpoint_path`: Path to a model checkpoint file. Currently used only for MedSAM segmentation.
   * `--gpu_id`: The ID of the GPU to use (default: `0`).
   * `--random_seed`: The random seed for reproducibility (default: `42`).
+  * `--num_optim_iter`: The number of iterations to run in total (default: `20`).
+
+### Function Bank Display Arguments
+
   * `--n_top`: The number of top-performing functions to display in the function bank (default: `3`).
   * `--n_worst`: The number of worst-performing functions to display in the function bank (default: `3`).
   * `--n_last`: The number of last functions to show in the function bank (default: `0`).
-  * `--num_optim_iter`: The number of iterations to run in total (default: `20`).
   * `--history_threshold`: The number of iterations to wait before incorporating the accumulated function bank history into the agent's prompt (default: `0`).
+
+### Hyperparameter Optimization Arguments
+
+  * `--hyper_optimize`: Enable hyperparameter optimization. When set, runs automated hyperparameter search using Optuna after function generation.
+  * `--n_hyper_optimize`: Number of top-performing functions to optimize hyperparameters for (default: `3`).
+  * `--n_hyper_optimize_trials`: Number of Optuna trials to run for each function during hyperparameter optimization (default: `24`).
+  * `--hyper_optimize_interval`: Run hyperparameter optimization every N iterations during the optimization process (default: `5`).
 
 ## 📦 Output Structure
 

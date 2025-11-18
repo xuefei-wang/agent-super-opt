@@ -36,7 +36,7 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
     """
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, baseline_metric_value=-100):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -55,7 +55,6 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
         self.function_bank_path = function_bank_path
         self.k = k
         self.k_word = k_word
-        self.baseline_metric_value = baseline_metric_value
 
     def run_pipeline_prompt(self) -> str:
         """
@@ -80,7 +79,6 @@ class SpotDetectionPromptsWithSkeleton(TaskPrompts):
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
             "_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
             "sample_k": str(self.k),
-            "baseline_metric_value": str(self.baseline_metric_value),
         }
 
         script_with_config = template_content

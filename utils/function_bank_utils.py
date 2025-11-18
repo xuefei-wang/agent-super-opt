@@ -1,6 +1,30 @@
 import json
 from typing import Callable
 
+def should_include_function(entry: dict) -> bool:
+    """
+    Determine if a function should be included based on AutoML optimization status.
+
+    KEEP functions that are:
+    - optimized (automl_optimized=True)
+    - not_improved (automl_superseded=False explicitly set)
+    - never_optimized (neither key set)
+
+    EXCLUDE functions that are:
+    - superseded (automl_superseded=True) - old replaced version
+    - failed_optimization (automl_optimized=False) - new but worse version
+    """
+    # Exclude old superseded versions
+    if entry.get('automl_superseded', False):
+        return False
+
+    # Exclude failed optimization attempts (key exists and is False)
+    if 'automl_optimized' in entry and not entry['automl_optimized']:
+        return False
+
+    # Keep everything else (optimized=True, superseded=False, or never optimized)
+    return True
+
 def pretty_print_list(lst: list) -> str:
     if not lst:
         return "    (No entries to display in this section)\n"
@@ -26,25 +50,27 @@ def pretty_print_list(lst: list) -> str:
     return result
 
 def top_n(function_bank_path: str, sorting_function: Callable[[dict], float], n: int = 5, maximize = True) -> list:
-    '''Return top N functions from function bank as a list'''
+    '''Return top N functions from function bank as a list, excluding superseded and failed_optimization functions'''
     with open(function_bank_path, 'r') as file:
         json_array = json.load(file)
-        # Filter out None values
-        sorted_bank = list(filter(lambda x:sorting_function(x) is not None, json_array))
+        # Filter out None values, superseded functions, and failed optimizations
+        sorted_bank = list(filter(lambda x: sorting_function(x) is not None and should_include_function(x), json_array))
         sorted_bank = sorted(sorted_bank, key=lambda x: sorting_function(x), reverse=maximize)
         return sorted_bank[:n]
     
 def worst_n(function_bank_path: str, sorting_function: Callable[[dict], float], n: int = 5, maximize = True) -> list:
-    '''Return worst N functions from function bank as a list'''
+    '''Return worst N functions from function bank as a list, excluding superseded and failed_optimization functions'''
     with open(function_bank_path, 'r') as file:
         json_array = json.load(file)
-        # Filter out None values
-        sorted_bank = list(filter(lambda x:sorting_function(x) is not None, json_array))
+        # Filter out None values, superseded functions, and failed optimizations
+        sorted_bank = list(filter(lambda x: sorting_function(x) is not None and should_include_function(x), json_array))
         sorted_bank = sorted(sorted_bank, key=lambda x:sorting_function(x), reverse = not maximize)
         return sorted_bank[:n]
 
 def last_n(function_bank_path: str, n: int = 5) -> list:
-    '''Return last N functions from function bank as a list'''
+    '''Return last N functions from function bank as a list, excluding superseded and failed_optimization functions'''
     with open(function_bank_path, 'r') as file:
         json_array = json.load(file)
-        return json_array[-n:]
+        # Filter out superseded functions and failed optimizations
+        filtered_array = list(filter(should_include_function, json_array))
+        return filtered_array[-n:]

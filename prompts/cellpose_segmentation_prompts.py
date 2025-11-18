@@ -40,7 +40,7 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
 
     # --- End of CLASS attributes ---
 
-    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, dataset_size=256, batch_size=16, baseline_metric_value=-100):
+    def __init__(self, gpu_id, seed, dataset_path, function_bank_path, k, k_word, dataset_size=256, batch_size=16):
         # Call super using the class attributes
         super().__init__(
             gpu_id=gpu_id,
@@ -61,7 +61,6 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
         self.function_bank_path = function_bank_path
         self.k = k
         self.k_word = k_word
-        self.baseline_metric_value = baseline_metric_value
         self.dataset_size = dataset_size
         self.batch_size = batch_size
 
@@ -87,7 +86,6 @@ class CellposeSegmentationPromptsWithSkeleton(TaskPrompts):
             "dataset_path": self.dataset_path.replace("\\", "/"),
             "function_bank_path": self.function_bank_path.replace("\\", "/"),
             "_PREPROCESSING_POSTPROCESSING_FUNCTIONS_PLACEHOLDER": _PREPROCESSING_POSTPROCESSING_FUNCTION_PLACEHOLDER,
-            "baseline_metric_value": str(self.baseline_metric_value),
             "sample_k": str(self.k),
             "dataset_size": str(self.dataset_size),
             "batch_size": str(self.batch_size)
